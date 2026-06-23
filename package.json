@@ -1,0 +1,37 @@
+{
+  "name": "herdr-symphony",
+  "bin": {
+    "herdr-symphony": "bin/herdr-symphony"
+  },
+  "module": "src/index.ts",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "dev": "bun --hot src/index.ts",
+    "start": "bun src/index.ts",
+    "test": "bun test",
+    "typecheck": "bunx tsc --noEmit",
+    "lint": "biome lint .",
+    "lint:fix": "biome lint --write .",
+    "format": "biome format --write .",
+    "check": "biome check .",
+    "check:fix": "biome check --write .",
+    "link:dev": "mkdir -p ~/.local/bin && ln -sf \"$PWD/bin/herdr-symphony\" ~/.local/bin/herdr-symphony"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.4.7",
+    "@types/bun": "latest",
+    "@types/hast": "^3.0.4",
+    "typescript": "^5"
+  },
+  "dependencies": {
+    "cron-parser": "^5.6.0",
+    "gray-matter": "^4.0.3",
+    "liquidjs": "^10.24.0",
+    "rehype-raw": "^7.0.0",
+    "remark-parse": "^11.0.0",
+    "remark-rehype": "^11.1.2",
+    "unified": "^11.0.5",
+    "zod": "^4.3.6"
+  }
+}
