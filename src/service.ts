@@ -250,7 +250,10 @@ export class SymphonyService {
         const content = await this.renderPromptFn(this.template, runtimeConfig.issue, null)
         const runnerTimeoutMs = runtimeConfig.runner.turnTimeoutMs
         const runnerAgent = runtimeConfig.runner.opencode.agent
-        const runnerModel = runtimeConfig.runner.opencode.model
+        const runnerModel =
+          runtimeConfig.runner.agent === "claude"
+            ? runtimeConfig.runner.claude.model
+            : runtimeConfig.runner.opencode.model
         this.debugLog(
           `runner start kind=${runtimeConfig.runner.kind} workspace=${workspace.path}` +
             (runnerAgent ? ` agent=${runnerAgent}` : "") +
@@ -260,6 +263,7 @@ export class SymphonyService {
           content,
           attempt: null,
           workspacePath: workspace.path,
+          agentKind: runtimeConfig.runner.agent,
           agent: runnerAgent,
           model: runnerModel,
           timeoutMs: runnerTimeoutMs,

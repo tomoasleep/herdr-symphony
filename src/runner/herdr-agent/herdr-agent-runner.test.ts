@@ -39,6 +39,7 @@ function makeConfig(overrides: Partial<ServiceConfig["work"]> = {}): ServiceConf
       herdrAgent: {
         agent: "opencode",
         opencode: { model: "openai/gpt-5.4", agent: "build" },
+        claude: { model: null },
         workspaceLabel: null,
         turnTimeoutMs: 3_600_000,
       },
@@ -105,6 +106,7 @@ describe("HerdrAgentRunner", () => {
 
     const result = await runner.runIssue(issue, {
       content: "Fix the bug",
+      agentKind: "opencode",
       attempt: null,
       workspacePath: "/repo/worktree",
     })
@@ -120,6 +122,7 @@ describe("HerdrAgentRunner", () => {
 
     await runner.runIssue(makeIssue(), {
       content: "Fix the bug",
+      agentKind: "opencode",
       attempt: null,
       workspacePath: "/repo/worktree",
       model: "openai/gpt-5.4",
@@ -142,6 +145,7 @@ describe("HerdrAgentRunner", () => {
 
     await runner.runIssue(makeIssue(), {
       content: "Implement feature X",
+      agentKind: "opencode",
       attempt: null,
       workspacePath: "/repo/worktree",
     })
@@ -157,6 +161,7 @@ describe("HerdrAgentRunner", () => {
 
     await runner.runIssue(issue, {
       content: "Do work",
+      agentKind: "opencode",
       attempt: null,
       workspacePath: "/repo/worktree",
     })
@@ -189,6 +194,7 @@ describe("HerdrAgentRunner", () => {
 
     await runner.runIssue(makeIssue(), {
       content: "Fix the bug",
+      agentKind: "opencode",
       attempt: null,
       workspacePath: "/repo/worktree",
     })
@@ -204,6 +210,7 @@ describe("HerdrAgentRunner", () => {
 
     const result = await runner.runIssue(makeIssue(), {
       content: "Fix the bug",
+      agentKind: "opencode",
       attempt: null,
       workspacePath: "/repo/worktree",
       timeoutMs: 50,
@@ -220,6 +227,7 @@ describe("HerdrAgentRunner", () => {
 
     const result = await runner.runIssue(makeIssue(), {
       content: "Fix the bug",
+      agentKind: "opencode",
       attempt: null,
       workspacePath: "/repo/worktree",
     })
@@ -233,6 +241,7 @@ describe("HerdrAgentRunner", () => {
 
     await runner.runIssue(makeIssue(), {
       content: "Fix the bug",
+      agentKind: "opencode",
       attempt: null,
       workspacePath: "/repo/worktree",
       model: null,
@@ -242,6 +251,57 @@ describe("HerdrAgentRunner", () => {
     const args = client.startAgentArgs
     expect(args?.argv).not.toContain("--model")
     expect(args?.argv).not.toContain("--agent")
+  })
+
+  test("claude argv に claude --print が含まれる", async () => {
+    const client = makeMockHerdrClient({})
+    const runner = new HerdrAgentRunner(makeConfig(), { herdrClient: client, pollIntervalMs: 10 })
+
+    await runner.runIssue(makeIssue(), {
+      content: "Fix the bug",
+      agentKind: "claude",
+      attempt: null,
+      workspacePath: "/repo/worktree",
+    })
+
+    const args = client.startAgentArgs
+    expect(args?.argv[0]).toBe("claude")
+    expect(args?.argv[1]).toBe("--print")
+    expect(args?.argv.includes("Fix the bug")).toBe(true)
+  })
+
+  test("claude に model が渡される", async () => {
+    const client = makeMockHerdrClient({})
+    const runner = new HerdrAgentRunner(makeConfig(), { herdrClient: client, pollIntervalMs: 10 })
+
+    await runner.runIssue(makeIssue(), {
+      content: "Fix the bug",
+      agentKind: "claude",
+      attempt: null,
+      workspacePath: "/repo/worktree",
+      model: "claude-sonnet-4-20250514",
+    })
+
+    const args = client.startAgentArgs
+    expect(args?.argv).toContain("--model")
+    expect(args?.argv).toContain("claude-sonnet-4-20250514")
+  })
+
+  test("claude では --agent を付けない", async () => {
+    const client = makeMockHerdrClient({})
+    const runner = new HerdrAgentRunner(makeConfig(), { herdrClient: client, pollIntervalMs: 10 })
+
+    await runner.runIssue(makeIssue(), {
+      content: "Fix the bug",
+      agentKind: "claude",
+      attempt: null,
+      workspacePath: "/repo/worktree",
+      agent: "build",
+    })
+
+    const args = client.startAgentArgs
+    expect(args?.argv).not.toContain("--agent")
+    expect(args?.argv).not.toContain("build")
   })
 
   test("cancelRun が pane を閉じる", async () => {

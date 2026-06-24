@@ -55,6 +55,7 @@ export async function resolveIssueConfig(issue: Issue, attempt: number | null): 
       herdrAgent: {
         agent: "opencode",
         opencode: { model: null, agent: null },
+        claude: { model: null },
         workspaceLabel: null,
         turnTimeoutMs: null,
       },
@@ -88,6 +89,9 @@ export async function resolveIssueRuntimeConfig(
         agent: work.herdrAgent.opencode.agent,
         model: work.herdrAgent.opencode.model,
       },
+      claude: {
+        model: work.herdrAgent.claude.model,
+      },
       workspaceLabel: work.herdrAgent.workspaceLabel,
       workspace: {
         provider: work.workspace.provider,
@@ -107,6 +111,7 @@ export async function resolveIssueRuntimeConfig(
   )) as {
     repository: string | null
     opencode: { agent: string | null; model: string | null }
+    claude: { model: string | null }
     workspaceLabel: string | null
     workspace: WorkConfig["workspace"]
   }
@@ -121,10 +126,13 @@ export async function resolveIssueRuntimeConfig(
     workspace: normalizeWorkspaceConfig(rendered.workspace, work.workspace),
     runner: {
       kind: "herdr-agent",
-      agent: "opencode",
+      agent: work.herdrAgent.agent,
       opencode: {
         agent: normalizeOverride(rendered.opencode.agent),
         model: normalizeOverride(rendered.opencode.model),
+      },
+      claude: {
+        model: normalizeOverride(rendered.claude.model),
       },
       workspaceLabel: normalizeOverride(rendered.workspaceLabel),
       turnTimeoutMs: work.herdrAgent.turnTimeoutMs,

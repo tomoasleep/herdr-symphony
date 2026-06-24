@@ -15,6 +15,7 @@ export type RunnerOptions = {
   content: string
   attempt: number | null
   workspacePath: string
+  agentKind: "opencode" | "claude"
   agent?: string | null
   model?: string | null
   timeoutMs?: number | null

@@ -36,6 +36,7 @@ function makeWorkConfig(overrides: Partial<WorkConfig> = {}): WorkConfig {
     herdrAgent: {
       agent: "opencode",
       opencode: { model: null, agent: null },
+      claude: { model: null },
       workspaceLabel: null,
       turnTimeoutMs: 3_600_000,
     },
@@ -70,6 +71,7 @@ test("opencode model/agent を Liquid で解決できる", async () => {
         model: '{{ issue.fields["Model"] | default: "openai/gpt-5.4" }}',
         agent: '{{ issue.fields["Agent"] | default: "build" }}',
       },
+      claude: { model: null },
       workspaceLabel: null,
       turnTimeoutMs: 3_600_000,
     },
@@ -128,6 +130,7 @@ test("workspaceLabel を Liquid で解決できる", async () => {
     herdrAgent: {
       agent: "opencode",
       opencode: { model: null, agent: null },
+      claude: { model: null },
       workspaceLabel: '{{ issue.identifier | replace: "/", "_" }}',
       turnTimeoutMs: null,
     },
@@ -142,6 +145,7 @@ test("turnTimeoutMs が引き継がれる", async () => {
     herdrAgent: {
       agent: "opencode",
       opencode: { model: null, agent: null },
+      claude: { model: null },
       workspaceLabel: null,
       turnTimeoutMs: 1_800_000,
     },

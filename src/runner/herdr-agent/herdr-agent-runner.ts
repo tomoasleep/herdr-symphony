@@ -112,6 +112,17 @@ export class HerdrAgentRunner implements Runner {
   }
 
   private buildAgentArgv(options: RunnerOptions): string[] {
+    if (options.agentKind === "claude") {
+      const argv: string[] = ["claude", "--print"]
+
+      if (options.model) {
+        argv.push("--model", options.model)
+      }
+
+      argv.push(options.content)
+      return argv
+    }
+
     const argv: string[] = ["opencode", "run"]
 
     if (options.model) {

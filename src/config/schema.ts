@@ -110,9 +110,14 @@ const HerdrAgentOpencodeSchema = z.object({
   agent: z.string().optional().nullable(),
 })
 
+const HerdrAgentClaudeSchema = z.object({
+  model: z.string().optional().nullable(),
+})
+
 const HerdrAgentSchema = z.object({
-  agent: z.literal("opencode"),
+  agent: z.enum(["opencode", "claude"]),
   opencode: HerdrAgentOpencodeSchema.optional(),
+  claude: HerdrAgentClaudeSchema.optional(),
   workspace_label: z.string().optional().nullable(),
   turn_timeout_ms: z.union([z.number(), z.string(), z.null()]).optional().nullable(),
 })
@@ -216,6 +221,10 @@ export function resolveConfigFromSchema(input: unknown): ServiceConfig {
               ? herdrAgentRaw.opencode.agent
               : null,
         },
+        claude: {
+          model:
+            typeof herdrAgentRaw?.claude?.model === "string" ? herdrAgentRaw.claude.model : null,
+        },
         workspaceLabel: normalizeOptionalString(herdrAgentRaw?.workspace_label),
         turnTimeoutMs,
       },
@@ -295,6 +304,13 @@ export function validateDispatchConfig(config: ServiceConfig): void {
     throw new WorkflowError(
       ErrorCode.INVALID_FRONT_MATTER,
       `unsupported runner: ${config.work.runner}`,
+    )
+  }
+
+  if (config.work.herdrAgent.agent !== "opencode" && config.work.herdrAgent.agent !== "claude") {
+    throw new WorkflowError(
+      ErrorCode.INVALID_FRONT_MATTER,
+      `unsupported herdr_agent.agent: ${config.work.herdrAgent.agent}`,
     )
   }
 }

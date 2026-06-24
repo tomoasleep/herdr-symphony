@@ -68,9 +68,14 @@ export type HerdrAgentOpencodeConfig = {
   agent: string | null
 }
 
+export type HerdrAgentClaudeConfig = {
+  model: string | null
+}
+
 export type HerdrAgentConfig = {
-  agent: "opencode"
+  agent: "opencode" | "claude"
   opencode: HerdrAgentOpencodeConfig
+  claude: HerdrAgentClaudeConfig
   workspaceLabel: string | null
   turnTimeoutMs: number | null
 }
@@ -93,8 +98,9 @@ export type WorkspaceConfig = {
 
 export type ResolvedHerdrAgentRunnerConfig = {
   kind: "herdr-agent"
-  agent: "opencode"
+  agent: "opencode" | "claude"
   opencode: { model: string | null; agent: string | null }
+  claude: { model: string | null }
   workspaceLabel: string | null
   turnTimeoutMs: number | null
 }

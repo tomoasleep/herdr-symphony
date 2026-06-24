@@ -31,6 +31,7 @@ function makeConfig(overrides: Partial<ServiceConfig["work"]> = {}): ServiceConf
       herdrAgent: {
         agent: "opencode",
         opencode: { model: null, agent: null },
+        claude: { model: null },
         workspaceLabel: null,
         turnTimeoutMs: 3_600_000,
       },
