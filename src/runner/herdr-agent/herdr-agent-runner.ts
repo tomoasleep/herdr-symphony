@@ -1,22 +1,26 @@
 import type { Issue, ServiceConfig } from "../../domain/types"
-import type { HerdrClient } from "../../herdr/herdr-client"
+import type { HerdrAgentState, HerdrClient } from "../../herdr/herdr-client"
 import { createHerdrClient } from "../../herdr/herdr-client"
 import type { Runner, RunnerEvent, RunnerOptions, RunnerResult } from "../types"
 
 export type HerdrAgentRunnerDeps = {
   herdrClient?: HerdrClient
+  pollIntervalMs?: number
 }
 
 const DEFAULT_TIMEOUT_MS = 86_400_000
+const DEFAULT_POLL_INTERVAL_MS = 2_000
 
 export class HerdrAgentRunner implements Runner {
   private readonly client: HerdrClient
+  private readonly pollIntervalMs: number
 
   constructor(
     private readonly config: ServiceConfig,
     deps: HerdrAgentRunnerDeps = {},
   ) {
     this.client = deps.herdrClient ?? createHerdrClient()
+    this.pollIntervalMs = deps.pollIntervalMs ?? DEFAULT_POLL_INTERVAL_MS
   }
 
   async runIssue(issue: Issue, options: RunnerOptions): Promise<RunnerResult> {
@@ -43,9 +47,9 @@ export class HerdrAgentRunner implements Runner {
         workspaceId: workspace.id,
       })
 
-      const waitResult = await this.client.waitAgent(agent.paneId ?? agentName, "done", timeoutMs)
+      const waitState = await this.waitForAgentCompletion(agent.paneId ?? agentName, timeoutMs)
 
-      if (waitResult === null) {
+      if (waitState === null) {
         return {
           status: "timeout",
           error: `agent timed out after ${timeoutMs}ms`,
@@ -53,7 +57,7 @@ export class HerdrAgentRunner implements Runner {
         }
       }
 
-      if (waitResult.state === "blocked") {
+      if (waitState === "blocked") {
         return {
           status: "timeout",
           error: "agent is blocked, needs operator input",
@@ -64,7 +68,7 @@ export class HerdrAgentRunner implements Runner {
       this.emit(options, {
         event: "agent_status",
         timestamp: new Date().toISOString(),
-        state: waitResult.state,
+        state: waitState,
       })
 
       const responseText = await this.client.readAgent(agentName)
@@ -86,6 +90,25 @@ export class HerdrAgentRunner implements Runner {
 
   async cancelRun(target: string): Promise<void> {
     await this.client.closePane(target)
+  }
+
+  private async waitForAgentCompletion(
+    target: string,
+    timeoutMs: number,
+  ): Promise<HerdrAgentState | null> {
+    const deadline = Date.now() + timeoutMs
+
+    while (Date.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, this.pollIntervalMs))
+      const info = await this.client.getAgent(target)
+      if (info === null) {
+        return "done"
+      }
+      if (info.state === "blocked") {
+        return "blocked"
+      }
+    }
+    return null
   }
 
   private buildAgentArgv(options: RunnerOptions): string[] {

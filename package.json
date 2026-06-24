@@ -16,12 +16,15 @@
     "format": "biome format --write .",
     "check": "biome check .",
     "check:fix": "biome check --write .",
-    "link:dev": "mkdir -p ~/.local/bin && ln -sf \"$PWD/bin/herdr-symphony\" ~/.local/bin/herdr-symphony"
+    "link:dev": "mkdir -p ~/.local/bin && ln -sf \"$PWD/bin/herdr-symphony\" ~/.local/bin/herdr-symphony",
+    "test:e2e": "bun test src/e2e"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.4.7",
+    "@copilotkit/aimock": "^1.27.1",
     "@types/bun": "latest",
     "@types/hast": "^3.0.4",
+    "tuistory": "^0.1.0",
     "typescript": "^5"
   },
   "dependencies": {
