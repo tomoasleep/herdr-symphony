@@ -104,18 +104,35 @@ export class HerdrAgentRunner implements Runner {
     onBlocked: "continue" | "fail" | null,
   ): Promise<HerdrAgentState | null> {
     const deadline = Date.now() + timeoutMs
+    let sawActive = false
 
     while (Date.now() < deadline) {
       await new Promise((resolve) => setTimeout(resolve, this.pollIntervalMs))
       const info = await this.client.getAgent(target)
+
       if (info === null) {
+        if (sawActive) {
+          return "done"
+        }
+        continue
+      }
+
+      if (info.state === "working" || info.state === "blocked") {
+        sawActive = true
+        if (info.state === "blocked" && onBlocked === "fail") {
+          return "blocked"
+        }
+        continue
+      }
+
+      if (info.state === "done") {
         return "done"
       }
-      if (info.state === "blocked" && onBlocked === "fail") {
-        return "blocked"
-      }
+
       if (info.state === "idle") {
-        return "idle"
+        if (sawActive) {
+          return "idle"
+        }
       }
     }
     return null

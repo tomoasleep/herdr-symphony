@@ -62,16 +62,18 @@ function makeConfig(overrides: Partial<ServiceConfig["work"]> = {}): ServiceConf
 function makeMockHerdrClient(opts: {
   workspace?: HerdrWorkspaceInfo
   agentStarted?: HerdrAgentInfo
-  getAgentResult?: HerdrAgentInfo | null
+  getAgentResult?: HerdrAgentInfo | null | (HerdrAgentInfo | null)[]
   readText?: string
 }): HerdrClient & {
   startAgentArgs: { name: string; argv: string[] } | null
   sentInputs: { target: string; text: string }[]
   sentKeys: { target: string; keys: string[] }[]
+  getAgentCallCount: number
 } {
   let startAgentArgs: { name: string; argv: string[] } | null = null
   const sentInputs: { target: string; text: string }[] = []
   const sentKeys: { target: string; keys: string[] }[] = []
+  let getAgentCallCount = 0
   return {
     async ensureWorkspace() {
       return opts.workspace ?? { id: "w1", label: "TEST-1", cwd: "/repo/worktree" }
@@ -94,7 +96,17 @@ function makeMockHerdrClient(opts: {
       return opts.readText ?? "Task completed successfully."
     },
     async getAgent() {
-      return opts.getAgentResult !== undefined ? opts.getAgentResult : null
+      const seq: (HerdrAgentInfo | null)[] = Array.isArray(opts.getAgentResult)
+        ? opts.getAgentResult
+        : opts.getAgentResult !== undefined
+          ? [opts.getAgentResult]
+          : [
+              { name: "TEST-1", state: "working", paneId: "w1:p1", workspaceId: "w1" },
+              { name: "TEST-1", state: "done", paneId: "w1:p1", workspaceId: "w1" },
+            ]
+      const idx = Math.min(getAgentCallCount, seq.length - 1)
+      getAgentCallCount++
+      return seq[idx] ?? null
     },
     async sendInput(target, text) {
       sentInputs.push({ target, text })
@@ -112,10 +124,14 @@ function makeMockHerdrClient(opts: {
     get sentKeys() {
       return sentKeys
     },
+    get getAgentCallCount() {
+      return getAgentCallCount
+    },
   } as HerdrClient & {
     startAgentArgs: { name: string; argv: string[] } | null
     sentInputs: { target: string; text: string }[]
     sentKeys: { target: string; keys: string[] }[]
+    getAgentCallCount: number
   }
 }
 
@@ -194,6 +210,7 @@ describe("HerdrAgentRunner", () => {
 
   test("workspace label が解決される", async () => {
     let receivedLabel = ""
+    let getAgentCallCount = 0
     const client: HerdrClient = {
       async ensureWorkspace(_cwd, label) {
         receivedLabel = label
@@ -209,7 +226,11 @@ describe("HerdrAgentRunner", () => {
         return "done"
       },
       async getAgent() {
-        return null
+        getAgentCallCount++
+        if (getAgentCallCount === 1) {
+          return { name: "TEST-1", state: "working", paneId: "w1:p1", workspaceId: "w1" }
+        }
+        return { name: "TEST-1", state: "done", paneId: "w1:p1", workspaceId: "w1" }
       },
       async sendInput() {},
       async sendKeys() {},
@@ -300,7 +321,10 @@ describe("HerdrAgentRunner", () => {
 
   test("agent が idle に戻った場合は succeeded になる", async () => {
     const client = makeMockHerdrClient({
-      getAgentResult: { name: "TEST-1", state: "idle", paneId: "w1:p1", workspaceId: "w1" },
+      getAgentResult: [
+        { name: "TEST-1", state: "working", paneId: "w1:p1", workspaceId: "w1" },
+        { name: "TEST-1", state: "idle", paneId: "w1:p1", workspaceId: "w1" },
+      ],
       readText: "Done.",
     })
     const runner = new HerdrAgentRunner(makeConfig(), { herdrClient: client, pollIntervalMs: 10 })
@@ -467,6 +491,69 @@ describe("HerdrAgentRunner", () => {
     const args = client.startAgentArgs
     expect(args?.argv).not.toContain("--agent")
     expect(args?.argv).not.toContain("build")
+  })
+
+  test("working 前の idle は完了とみなさず、working 後の idle で完了する", async () => {
+    const client = makeMockHerdrClient({
+      getAgentResult: [
+        { name: "TEST-1", state: "idle", paneId: "w1:p1", workspaceId: "w1" },
+        { name: "TEST-1", state: "working", paneId: "w1:p1", workspaceId: "w1" },
+        { name: "TEST-1", state: "idle", paneId: "w1:p1", workspaceId: "w1" },
+      ],
+      readText: "Done.",
+    })
+    const runner = new HerdrAgentRunner(makeConfig(), { herdrClient: client, pollIntervalMs: 10 })
+
+    const result = await runner.runIssue(makeIssue(), {
+      content: "Fix the bug",
+      agentKind: "claude",
+      attempt: null,
+      workspacePath: "/repo/worktree",
+    })
+
+    expect(result.status).toBe("succeeded")
+    expect(result.responseText).toBe("Done.")
+    expect(client.getAgentCallCount).toBeGreaterThanOrEqual(3)
+  })
+
+  test("working 前の null は完了とみなさず、working 後の null で完了する", async () => {
+    const client = makeMockHerdrClient({
+      getAgentResult: [
+        null,
+        { name: "TEST-1", state: "working", paneId: "w1:p1", workspaceId: "w1" },
+        null,
+      ],
+      readText: "Done.",
+    })
+    const runner = new HerdrAgentRunner(makeConfig(), { herdrClient: client, pollIntervalMs: 10 })
+
+    const result = await runner.runIssue(makeIssue(), {
+      content: "Fix the bug",
+      agentKind: "claude",
+      attempt: null,
+      workspacePath: "/repo/worktree",
+    })
+
+    expect(result.status).toBe("succeeded")
+    expect(result.responseText).toBe("Done.")
+    expect(client.getAgentCallCount).toBeGreaterThanOrEqual(3)
+  })
+
+  test("working を一度も観測せず idle が続く場合はタイムアウトする", async () => {
+    const client = makeMockHerdrClient({
+      getAgentResult: { name: "TEST-1", state: "idle", paneId: "w1:p1", workspaceId: "w1" },
+    })
+    const runner = new HerdrAgentRunner(makeConfig(), { herdrClient: client, pollIntervalMs: 10 })
+
+    const result = await runner.runIssue(makeIssue(), {
+      content: "Fix the bug",
+      agentKind: "claude",
+      attempt: null,
+      workspacePath: "/repo/worktree",
+      timeoutMs: 50,
+    })
+
+    expect(result.status).toBe("timeout")
   })
 
   test("cancelRun が pane を閉じる", async () => {
