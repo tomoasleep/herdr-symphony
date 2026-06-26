@@ -63,8 +63,14 @@ function makeMockHerdrClient(opts: {
   agentStarted?: HerdrAgentInfo
   getAgentResult?: HerdrAgentInfo | null
   readText?: string
-}): HerdrClient & { startAgentArgs: { name: string; argv: string[] } | null } {
+}): HerdrClient & {
+  startAgentArgs: { name: string; argv: string[] } | null
+  sentInputs: { target: string; text: string }[]
+  sentKeys: { target: string; keys: string[] }[]
+} {
   let startAgentArgs: { name: string; argv: string[] } | null = null
+  const sentInputs: { target: string; text: string }[] = []
+  const sentKeys: { target: string; keys: string[] }[] = []
   return {
     async ensureWorkspace() {
       return opts.workspace ?? { id: "w1", label: "TEST-1", cwd: "/repo/worktree" }
@@ -89,11 +95,27 @@ function makeMockHerdrClient(opts: {
     async getAgent() {
       return opts.getAgentResult !== undefined ? opts.getAgentResult : null
     },
+    async sendInput(target, text) {
+      sentInputs.push({ target, text })
+    },
+    async sendKeys(target, ...keys) {
+      sentKeys.push({ target, keys })
+    },
     async closePane() {},
     get startAgentArgs() {
       return startAgentArgs
     },
-  } as HerdrClient & { startAgentArgs: { name: string; argv: string[] } | null }
+    get sentInputs() {
+      return sentInputs
+    },
+    get sentKeys() {
+      return sentKeys
+    },
+  } as HerdrClient & {
+    startAgentArgs: { name: string; argv: string[] } | null
+    sentInputs: { target: string; text: string }[]
+    sentKeys: { target: string; keys: string[] }[]
+  }
 }
 
 describe("HerdrAgentRunner", () => {
@@ -188,6 +210,8 @@ describe("HerdrAgentRunner", () => {
       async getAgent() {
         return null
       },
+      async sendInput() {},
+      async sendKeys() {},
       async closePane() {},
     }
     const runner = new HerdrAgentRunner(makeConfig(), { herdrClient: client, pollIntervalMs: 10 })
@@ -235,6 +259,24 @@ describe("HerdrAgentRunner", () => {
     expect(result.status).toBe("timeout")
   })
 
+  test("agent が idle に戻った場合は succeeded になる", async () => {
+    const client = makeMockHerdrClient({
+      getAgentResult: { name: "TEST-1", state: "idle", paneId: "w1:p1", workspaceId: "w1" },
+      readText: "Done.",
+    })
+    const runner = new HerdrAgentRunner(makeConfig(), { herdrClient: client, pollIntervalMs: 10 })
+
+    const result = await runner.runIssue(makeIssue(), {
+      content: "Fix the bug",
+      agentKind: "claude",
+      attempt: null,
+      workspacePath: "/repo/worktree",
+    })
+
+    expect(result.status).toBe("succeeded")
+    expect(result.responseText).toBe("Done.")
+  })
+
   test("model 未指定時は --model を付けない", async () => {
     const client = makeMockHerdrClient({})
     const runner = new HerdrAgentRunner(makeConfig(), { herdrClient: client, pollIntervalMs: 10 })
@@ -253,7 +295,7 @@ describe("HerdrAgentRunner", () => {
     expect(args?.argv).not.toContain("--agent")
   })
 
-  test("claude argv に claude --print が含まれる", async () => {
+  test("claude argv に --print が含まれない", async () => {
     const client = makeMockHerdrClient({})
     const runner = new HerdrAgentRunner(makeConfig(), { herdrClient: client, pollIntervalMs: 10 })
 
@@ -266,8 +308,26 @@ describe("HerdrAgentRunner", () => {
 
     const args = client.startAgentArgs
     expect(args?.argv[0]).toBe("claude")
-    expect(args?.argv[1]).toBe("--print")
-    expect(args?.argv.includes("Fix the bug")).toBe(true)
+    expect(args?.argv).not.toContain("--print")
+  })
+
+  test("claude では prompt を argv に含めず sendInput で送る", async () => {
+    const client = makeMockHerdrClient({})
+    const runner = new HerdrAgentRunner(makeConfig(), { herdrClient: client, pollIntervalMs: 10 })
+
+    await runner.runIssue(makeIssue(), {
+      content: "Fix the bug",
+      agentKind: "claude",
+      attempt: null,
+      workspacePath: "/repo/worktree",
+    })
+
+    const args = client.startAgentArgs
+    expect(args?.argv).not.toContain("Fix the bug")
+    expect(client.sentInputs).toHaveLength(1)
+    expect(client.sentInputs[0]?.text).toBe("Fix the bug")
+    expect(client.sentKeys).toHaveLength(1)
+    expect(client.sentKeys[0]?.keys).toContain("Enter")
   })
 
   test("claude に model が渡される", async () => {
@@ -322,6 +382,8 @@ describe("HerdrAgentRunner", () => {
       async getAgent() {
         return null
       },
+      async sendInput() {},
+      async sendKeys() {},
       async closePane(paneId: string) {
         captured.paneId = paneId
       },

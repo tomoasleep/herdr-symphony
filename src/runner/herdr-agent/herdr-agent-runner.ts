@@ -40,6 +40,13 @@ export class HerdrAgentRunner implements Runner {
         argv,
       })
 
+      const target = agent.paneId ?? agentName
+
+      if (options.agentKind === "claude") {
+        await this.client.sendInput(target, options.content)
+        await this.client.sendKeys(target, "Enter")
+      }
+
       this.emit(options, {
         event: "agent_started",
         timestamp: new Date().toISOString(),
@@ -47,7 +54,7 @@ export class HerdrAgentRunner implements Runner {
         workspaceId: workspace.id,
       })
 
-      const waitState = await this.waitForAgentCompletion(agent.paneId ?? agentName, timeoutMs)
+      const waitState = await this.waitForAgentCompletion(target, timeoutMs)
 
       if (waitState === null) {
         return {
@@ -71,7 +78,7 @@ export class HerdrAgentRunner implements Runner {
         state: waitState,
       })
 
-      const responseText = await this.client.readAgent(agentName)
+      const responseText = await this.client.readAgent(target)
 
       return {
         status: "succeeded",
@@ -107,19 +114,21 @@ export class HerdrAgentRunner implements Runner {
       if (info.state === "blocked") {
         return "blocked"
       }
+      if (info.state === "idle") {
+        return "idle"
+      }
     }
     return null
   }
 
   private buildAgentArgv(options: RunnerOptions): string[] {
     if (options.agentKind === "claude") {
-      const argv: string[] = ["claude", "--print"]
+      const argv: string[] = ["claude"]
 
       if (options.model) {
         argv.push("--model", options.model)
       }
 
-      argv.push(options.content)
       return argv
     }
 

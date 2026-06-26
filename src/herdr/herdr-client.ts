@@ -46,6 +46,8 @@ export type HerdrClient = {
   ): Promise<HerdrAgentInfo | null>
   readAgent(target: string, lines?: number): Promise<string>
   getAgent(target: string): Promise<HerdrAgentInfo | null>
+  sendInput(target: string, text: string): Promise<void>
+  sendKeys(target: string, ...keys: string[]): Promise<void>
   closePane(paneId: string): Promise<void>
 }
 
@@ -126,11 +128,16 @@ function parseAgentInfo(stdout: string): HerdrAgentInfo | null {
   if (env.error) return null
   const result = env.result
   if (!result) return null
+  const agent = result.agent as Record<string, unknown> | undefined
+  const name = agent?.name ?? result.name
+  const status = agent?.agent_status ?? result.agent_status
+  const paneId = agent?.pane_id ?? result.pane_id
+  const workspaceId = agent?.workspace_id ?? result.workspace_id
   return {
-    name: typeof result.name === "string" ? result.name : null,
-    state: extractAgentState(result.agent_status),
-    paneId: typeof result.pane_id === "string" ? result.pane_id : null,
-    workspaceId: typeof result.workspace_id === "string" ? result.workspace_id : null,
+    name: typeof name === "string" ? name : null,
+    state: extractAgentState(status),
+    paneId: typeof paneId === "string" ? paneId : null,
+    workspaceId: typeof workspaceId === "string" ? workspaceId : null,
   }
 }
 
@@ -250,6 +257,14 @@ export function createHerdrClient(deps: HerdrClientDeps = {}): HerdrClient {
         return null
       }
       return parseAgentInfo(result.stdout)
+    },
+
+    async sendInput(target, text) {
+      await runCommand(herdrBin, ["agent", "send", target, text], process.cwd())
+    },
+
+    async sendKeys(target, ...keys) {
+      await runCommand(herdrBin, ["pane", "send-keys", target, ...keys], process.cwd())
     },
 
     async closePane(paneId) {

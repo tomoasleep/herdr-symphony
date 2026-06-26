@@ -248,10 +248,12 @@ describe("HerdrClient", () => {
         stdout: JSON.stringify({
           id: "cli:agent:get",
           result: {
-            name: "ISSUE-1",
-            pane_id: "w2:p2",
-            workspace_id: "w2",
-            agent_status: "working",
+            agent: {
+              name: "ISSUE-1",
+              pane_id: "w2:p2",
+              workspace_id: "w2",
+              agent_status: "working",
+            },
           },
         }),
         stderr: "",
@@ -265,6 +267,30 @@ describe("HerdrClient", () => {
     expect(info?.name).toBe("ISSUE-1")
     expect(info?.state).toBe("working")
     expect(info?.paneId).toBe("w2:p2")
+  })
+
+  test("getAgent parses legacy flat result format", async () => {
+    const { runner } = makeCommandRunner({
+      "agent get": {
+        exitCode: 0,
+        stdout: JSON.stringify({
+          id: "cli:agent:get",
+          result: {
+            name: "ISSUE-1",
+            pane_id: "w2:p2",
+            workspace_id: "w2",
+            agent_status: "idle",
+          },
+        }),
+        stderr: "",
+      },
+    })
+    const client = createHerdrClient({ runCommand: runner })
+
+    const info = await client.getAgent("ISSUE-1")
+
+    expect(info).not.toBeNull()
+    expect(info?.state).toBe("idle")
   })
 
   test("getAgent returns null when agent not found", async () => {
@@ -283,6 +309,44 @@ describe("HerdrClient", () => {
     const info = await client.getAgent("ISSUE-1")
 
     expect(info).toBeNull()
+  })
+
+  test("sendInput calls herdr agent send with target and text", async () => {
+    const { runner, calls } = makeCommandRunner({
+      "agent send": {
+        exitCode: 0,
+        stdout: JSON.stringify({ id: "cli:agent:send", result: { type: "ok" } }),
+        stderr: "",
+      },
+    })
+    const client = createHerdrClient({ runCommand: runner })
+
+    await client.sendInput("w2:p2", "Fix the bug")
+
+    const args = calls[0]?.args ?? []
+    expect(args).toContain("agent")
+    expect(args).toContain("send")
+    expect(args).toContain("w2:p2")
+    expect(args).toContain("Fix the bug")
+  })
+
+  test("sendKeys calls herdr pane send-keys with target and keys", async () => {
+    const { runner, calls } = makeCommandRunner({
+      "pane send-keys": {
+        exitCode: 0,
+        stdout: JSON.stringify({ id: "cli:pane:send-keys", result: { type: "ok" } }),
+        stderr: "",
+      },
+    })
+    const client = createHerdrClient({ runCommand: runner })
+
+    await client.sendKeys("w2:p2", "Enter")
+
+    const args = calls[0]?.args ?? []
+    expect(args).toContain("pane")
+    expect(args).toContain("send-keys")
+    expect(args).toContain("w2:p2")
+    expect(args).toContain("Enter")
   })
 
   test("closePane calls herdr pane close", async () => {
