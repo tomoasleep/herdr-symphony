@@ -19,6 +19,7 @@ export type RunnerOptions = {
   agent?: string | null
   model?: string | null
   permissionMode?: string | null
+  onBlocked?: "continue" | "fail" | null
   timeoutMs?: number | null
   onEvent?: (event: RunnerEvent) => void
 }

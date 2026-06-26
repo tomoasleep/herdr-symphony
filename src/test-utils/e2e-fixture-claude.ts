@@ -74,6 +74,7 @@ async function main(): Promise<void> {
         claude: { model: null, permissionMode: null },
         workspaceLabel: null,
         turnTimeoutMs: 120_000,
+        onBlocked: null,
       },
     }),
     renderPrompt: async () => `Test prompt for ${issueIdentifier}`,
@@ -148,6 +149,7 @@ function makeConfig(trackerDir: string): ServiceConfig {
         claude: { model: null, permissionMode: null },
         workspaceLabel: null,
         turnTimeoutMs: 120_000,
+        onBlocked: null,
       },
       workspace: {
         provider: "git",

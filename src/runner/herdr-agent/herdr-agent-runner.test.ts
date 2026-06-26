@@ -42,6 +42,7 @@ function makeConfig(overrides: Partial<ServiceConfig["work"]> = {}): ServiceConf
         claude: { model: null, permissionMode: null },
         workspaceLabel: null,
         turnTimeoutMs: 3_600_000,
+        onBlocked: null,
       },
       workspace: {
         provider: "gwq",
@@ -243,7 +244,7 @@ describe("HerdrAgentRunner", () => {
     expect(result.status).toBe("timeout")
   })
 
-  test("agent が blocked の場合は timeout 扱い", async () => {
+  test("on_blocked 未指定時は blocked でもポーリングを継続しタイムアウトする", async () => {
     const client = makeMockHerdrClient({
       getAgentResult: { name: "TEST-1", state: "blocked", paneId: "w1:p1", workspaceId: "w1" },
     })
@@ -254,6 +255,44 @@ describe("HerdrAgentRunner", () => {
       agentKind: "opencode",
       attempt: null,
       workspacePath: "/repo/worktree",
+      timeoutMs: 50,
+    })
+
+    expect(result.status).toBe("timeout")
+  })
+
+  test("on_blocked: fail のときは blocked を即 failed にする", async () => {
+    const client = makeMockHerdrClient({
+      getAgentResult: { name: "TEST-1", state: "blocked", paneId: "w1:p1", workspaceId: "w1" },
+    })
+    const runner = new HerdrAgentRunner(makeConfig(), { herdrClient: client, pollIntervalMs: 10 })
+
+    const result = await runner.runIssue(makeIssue(), {
+      content: "Fix the bug",
+      agentKind: "opencode",
+      attempt: null,
+      workspacePath: "/repo/worktree",
+      onBlocked: "fail",
+      timeoutMs: 1_000,
+    })
+
+    expect(result.status).toBe("failed")
+    expect(result.error).toContain("blocked")
+  })
+
+  test("on_blocked: continue のときは blocked を継続しタイムアウトする", async () => {
+    const client = makeMockHerdrClient({
+      getAgentResult: { name: "TEST-1", state: "blocked", paneId: "w1:p1", workspaceId: "w1" },
+    })
+    const runner = new HerdrAgentRunner(makeConfig(), { herdrClient: client, pollIntervalMs: 10 })
+
+    const result = await runner.runIssue(makeIssue(), {
+      content: "Fix the bug",
+      agentKind: "opencode",
+      attempt: null,
+      workspacePath: "/repo/worktree",
+      onBlocked: "continue",
+      timeoutMs: 50,
     })
 
     expect(result.status).toBe("timeout")

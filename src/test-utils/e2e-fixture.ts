@@ -68,6 +68,7 @@ async function main(): Promise<void> {
         claude: { model: null, permissionMode: null },
         workspaceLabel: null,
         turnTimeoutMs: 60_000,
+        onBlocked: null,
       },
     }),
     renderPrompt: async () => "Test prompt for test/repo#1",
@@ -127,6 +128,7 @@ function makeConfig(trackerDir: string): ServiceConfig {
         claude: { model: null, permissionMode: null },
         workspaceLabel: null,
         turnTimeoutMs: 60_000,
+        onBlocked: null,
       },
       workspace: {
         provider: "git",

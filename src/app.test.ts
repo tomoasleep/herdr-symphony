@@ -53,6 +53,7 @@ function _makeConfig(baseDir: string): ServiceConfig {
         claude: { model: null, permissionMode: null },
         workspaceLabel: null,
         turnTimeoutMs: 3_600_000,
+        onBlocked: null,
       },
       workspace: {
         provider: "gwq",

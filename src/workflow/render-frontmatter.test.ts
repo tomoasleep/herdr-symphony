@@ -40,6 +40,7 @@ function makeWorkConfig(overrides: Partial<WorkConfig> = {}): WorkConfig {
       claude: { model: null, permissionMode: null },
       workspaceLabel: null,
       turnTimeoutMs: 3_600_000,
+      onBlocked: null,
     },
     workspace: {
       provider: "gwq",
@@ -75,6 +76,7 @@ test("opencode model/agent を Liquid で解決できる", async () => {
       claude: { model: null, permissionMode: null },
       workspaceLabel: null,
       turnTimeoutMs: 3_600_000,
+      onBlocked: null,
     },
   })
   const result = await resolveIssueRuntimeConfig(makeIssue(), config, null)
@@ -134,6 +136,7 @@ test("workspaceLabel を Liquid で解決できる", async () => {
       claude: { model: null, permissionMode: null },
       workspaceLabel: '{{ issue.identifier | replace: "/", "_" }}',
       turnTimeoutMs: null,
+      onBlocked: null,
     },
   })
   const result = await resolveIssueRuntimeConfig(makeIssue(), config, null)
@@ -152,6 +155,7 @@ test("claude permissionMode を Liquid で解決できる", async () => {
       },
       workspaceLabel: null,
       turnTimeoutMs: null,
+      onBlocked: null,
     },
   })
   const result = await resolveIssueRuntimeConfig(makeIssue(), config, null)
@@ -167,6 +171,7 @@ test("claude permissionMode が null のときは null になる", async () => {
       claude: { model: null, permissionMode: null },
       workspaceLabel: null,
       turnTimeoutMs: null,
+      onBlocked: null,
     },
   })
   const result = await resolveIssueRuntimeConfig(makeIssue(), config, null)
@@ -182,9 +187,26 @@ test("turnTimeoutMs が引き継がれる", async () => {
       claude: { model: null, permissionMode: null },
       workspaceLabel: null,
       turnTimeoutMs: 1_800_000,
+      onBlocked: null,
     },
   })
   const result = await resolveIssueRuntimeConfig(makeIssue(), config, null)
 
   expect(result.runner.turnTimeoutMs).toBe(1_800_000)
+})
+
+test("onBlocked が runner に引き継がれる", async () => {
+  const config = makeWorkConfig({
+    herdrAgent: {
+      agent: "opencode",
+      opencode: { model: null, agent: null },
+      claude: { model: null, permissionMode: null },
+      workspaceLabel: null,
+      turnTimeoutMs: 3_600_000,
+      onBlocked: "fail",
+    },
+  })
+  const result = await resolveIssueRuntimeConfig(makeIssue(), config, null)
+
+  expect(result.runner.onBlocked).toBe("fail")
 })

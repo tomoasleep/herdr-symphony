@@ -49,7 +49,11 @@ export class HerdrAgentRunner implements Runner {
         workspaceId: workspace.id,
       })
 
-      const waitState = await this.waitForAgentCompletion(target, timeoutMs)
+      const waitState = await this.waitForAgentCompletion(
+        target,
+        timeoutMs,
+        options.onBlocked ?? null,
+      )
 
       if (waitState === null) {
         return {
@@ -61,7 +65,7 @@ export class HerdrAgentRunner implements Runner {
 
       if (waitState === "blocked") {
         return {
-          status: "timeout",
+          status: "failed",
           error: "agent is blocked, needs operator input",
           responseText: null,
         }
@@ -97,6 +101,7 @@ export class HerdrAgentRunner implements Runner {
   private async waitForAgentCompletion(
     target: string,
     timeoutMs: number,
+    onBlocked: "continue" | "fail" | null,
   ): Promise<HerdrAgentState | null> {
     const deadline = Date.now() + timeoutMs
 
@@ -106,7 +111,7 @@ export class HerdrAgentRunner implements Runner {
       if (info === null) {
         return "done"
       }
-      if (info.state === "blocked") {
+      if (info.state === "blocked" && onBlocked === "fail") {
         return "blocked"
       }
       if (info.state === "idle") {

@@ -73,12 +73,15 @@ export type HerdrAgentClaudeConfig = {
   permissionMode: string | null
 }
 
+export type OnBlockedStrategy = "continue" | "fail"
+
 export type HerdrAgentConfig = {
   agent: "opencode" | "claude"
   opencode: HerdrAgentOpencodeConfig
   claude: HerdrAgentClaudeConfig
   workspaceLabel: string | null
   turnTimeoutMs: number | null
+  onBlocked: OnBlockedStrategy | null
 }
 
 export type GwqWorkspaceConfig = {
@@ -104,6 +107,7 @@ export type ResolvedHerdrAgentRunnerConfig = {
   claude: { model: string | null; permissionMode: string | null }
   workspaceLabel: string | null
   turnTimeoutMs: number | null
+  onBlocked: OnBlockedStrategy | null
 }
 
 export type ResolvedRunnerConfig = ResolvedHerdrAgentRunnerConfig

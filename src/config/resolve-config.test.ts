@@ -173,6 +173,44 @@ test("herdr_agent.claude.permission_mode 未指定時は null になる", () => 
   expect(config.work.herdrAgent.claude.permissionMode).toBeNull()
 })
 
+test("herdr_agent.on_blocked: fail を解決できる", () => {
+  const config = resolveConfig({
+    tracker: {
+      kind: "file",
+      file: { base_dir: "/issues" },
+    },
+    work: {
+      runner: "herdr_agent",
+      herdr_agent: {
+        agent: "claude",
+        on_blocked: "fail",
+      },
+    },
+  })
+
+  expect(config.work.herdrAgent.onBlocked).toBe("fail")
+})
+
+test("herdr_agent.on_blocked: continue を解決できる", () => {
+  const config = resolveConfig({
+    tracker: { kind: "file", file: { base_dir: "/issues" } },
+    work: {
+      runner: "herdr_agent",
+      herdr_agent: { agent: "opencode", on_blocked: "continue" },
+    },
+  })
+
+  expect(config.work.herdrAgent.onBlocked).toBe("continue")
+})
+
+test("herdr_agent.on_blocked 未指定時は null になる", () => {
+  const config = resolveConfig({
+    tracker: { kind: "file", file: { base_dir: "/issues" } },
+  })
+
+  expect(config.work.herdrAgent.onBlocked).toBeNull()
+})
+
 test("agent 同時実行数と backoff を解決できる", () => {
   const config = resolveConfig({
     tracker: { kind: "file", file: { base_dir: "/issues" } },

@@ -30,6 +30,13 @@ function normalizeOptionalString(input: unknown): string | null {
   return value.length > 0 ? value : null
 }
 
+function normalizeOnBlocked(input: unknown): "continue" | "fail" | null {
+  if (input === "continue" || input === "fail") {
+    return input
+  }
+  return null
+}
+
 function normalizeReporter(input: unknown): ("file" | "tracker")[] {
   if (!Array.isArray(input)) {
     return ["file"]
@@ -121,6 +128,7 @@ const HerdrAgentSchema = z.object({
   claude: HerdrAgentClaudeSchema.optional(),
   workspace_label: z.string().optional().nullable(),
   turn_timeout_ms: z.union([z.number(), z.string(), z.null()]).optional().nullable(),
+  on_blocked: z.enum(["continue", "fail"]).optional().nullable(),
 })
 
 const WorkSchema = z.object({
@@ -229,6 +237,7 @@ export function resolveConfigFromSchema(input: unknown): ServiceConfig {
         },
         workspaceLabel: normalizeOptionalString(herdrAgentRaw?.workspace_label),
         turnTimeoutMs,
+        onBlocked: normalizeOnBlocked(herdrAgentRaw?.on_blocked),
       },
       workspace: {
         provider:

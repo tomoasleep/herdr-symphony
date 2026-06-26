@@ -58,6 +58,7 @@ export async function resolveIssueConfig(issue: Issue, attempt: number | null): 
         claude: { model: null, permissionMode: null },
         workspaceLabel: null,
         turnTimeoutMs: null,
+        onBlocked: null,
       },
       workspace: {
         provider: "gwq",
@@ -138,6 +139,7 @@ export async function resolveIssueRuntimeConfig(
       },
       workspaceLabel: normalizeOverride(rendered.workspaceLabel),
       turnTimeoutMs: work.herdrAgent.turnTimeoutMs,
+      onBlocked: work.herdrAgent.onBlocked,
     },
   }
 }
