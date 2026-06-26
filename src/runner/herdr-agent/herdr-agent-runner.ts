@@ -2,10 +2,14 @@ import type { Issue, ServiceConfig } from "../../domain/types"
 import type { HerdrAgentState, HerdrClient } from "../../herdr/herdr-client"
 import { createHerdrClient } from "../../herdr/herdr-client"
 import type { Runner, RunnerEvent, RunnerOptions, RunnerResult } from "../types"
+import type { ReportResolver } from "./report"
+import { createReportResolver } from "./report"
 
 export type HerdrAgentRunnerDeps = {
   herdrClient?: HerdrClient
   pollIntervalMs?: number
+  reportResolver?: ReportResolver
+  logger?: (msg: string) => void
 }
 
 const DEFAULT_TIMEOUT_MS = 86_400_000
@@ -14,6 +18,8 @@ const DEFAULT_POLL_INTERVAL_MS = 2_000
 export class HerdrAgentRunner implements Runner {
   private readonly client: HerdrClient
   private readonly pollIntervalMs: number
+  private readonly reportResolver: ReportResolver
+  private readonly logger: (msg: string) => void
 
   constructor(
     private readonly config: ServiceConfig,
@@ -21,6 +27,8 @@ export class HerdrAgentRunner implements Runner {
   ) {
     this.client = deps.herdrClient ?? createHerdrClient()
     this.pollIntervalMs = deps.pollIntervalMs ?? DEFAULT_POLL_INTERVAL_MS
+    this.logger = deps.logger ?? (() => {})
+    this.reportResolver = deps.reportResolver ?? createReportResolver({ logger: deps.logger })
   }
 
   async runIssue(issue: Issue, options: RunnerOptions): Promise<RunnerResult> {
@@ -29,6 +37,7 @@ export class HerdrAgentRunner implements Runner {
       options.timeoutMs ?? this.config.work.herdrAgent.turnTimeoutMs ?? DEFAULT_TIMEOUT_MS
 
     try {
+      const startedAt = new Date().toISOString()
       const workspace = await this.client.ensureWorkspace(options.workspacePath, label)
 
       const argv = this.buildAgentArgv(options)
@@ -77,12 +86,20 @@ export class HerdrAgentRunner implements Runner {
         state: waitState,
       })
 
-      const responseText = await this.client.readAgent(target)
+      const resolved = await this.reportResolver.resolve({
+        workspacePath: options.workspacePath,
+        startedAt,
+        agentKind: options.agentKind,
+      })
+      if (resolved === null) {
+        this.logger(`reportResolver returned null, falling back to pane read target=${target}`)
+      }
+      const responseText = resolved ?? (await this.client.readAgent(target))
 
       return {
         status: "succeeded",
         error: null,
-        responseText: responseText.trim() || null,
+        responseText: responseText?.trim() || null,
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)

@@ -2,6 +2,11 @@ import { describe, expect, test } from "bun:test"
 import type { Issue, ServiceConfig } from "../../domain/types"
 import type { HerdrAgentInfo, HerdrClient, HerdrWorkspaceInfo } from "../../herdr/herdr-client"
 import { HerdrAgentRunner } from "./herdr-agent-runner"
+import type { ReportContext, ReportResolver } from "./report"
+
+function nullReportResolver(): ReportResolver {
+  return { resolve: () => Promise.resolve(null) }
+}
 
 function makeIssue(overrides: Partial<Issue> = {}): Issue {
   return {
@@ -140,7 +145,11 @@ describe("HerdrAgentRunner", () => {
     const client = makeMockHerdrClient({
       readText: "Implementation complete.",
     })
-    const runner = new HerdrAgentRunner(makeConfig(), { herdrClient: client, pollIntervalMs: 10 })
+    const runner = new HerdrAgentRunner(makeConfig(), {
+      herdrClient: client,
+      pollIntervalMs: 10,
+      reportResolver: nullReportResolver(),
+    })
     const issue = makeIssue()
 
     const result = await runner.runIssue(issue, {
@@ -155,9 +164,80 @@ describe("HerdrAgentRunner", () => {
     expect(result.responseText).toBe("Implementation complete.")
   })
 
+  test("reportResolver が解決したテキストを responseText に使う", async () => {
+    const client = makeMockHerdrClient({ readText: "pane fallback" })
+    const resolver: ReportResolver = { resolve: () => Promise.resolve("Resolver report.") }
+    const runner = new HerdrAgentRunner(makeConfig(), {
+      herdrClient: client,
+      pollIntervalMs: 10,
+      reportResolver: resolver,
+    })
+
+    const result = await runner.runIssue(makeIssue(), {
+      content: "Fix the bug",
+      agentKind: "opencode",
+      attempt: null,
+      workspacePath: "/repo/worktree",
+    })
+
+    expect(result.status).toBe("succeeded")
+    expect(result.responseText).toBe("Resolver report.")
+  })
+
+  test("reportResolver が null のときは pane read にフォールバックする", async () => {
+    const client = makeMockHerdrClient({ readText: "Pane content." })
+    const runner = new HerdrAgentRunner(makeConfig(), {
+      herdrClient: client,
+      pollIntervalMs: 10,
+      reportResolver: nullReportResolver(),
+    })
+
+    const result = await runner.runIssue(makeIssue(), {
+      content: "Fix the bug",
+      agentKind: "opencode",
+      attempt: null,
+      workspacePath: "/repo/worktree",
+    })
+
+    expect(result.status).toBe("succeeded")
+    expect(result.responseText).toBe("Pane content.")
+  })
+
+  test("reportResolver に workspacePath・startedAt・agentKind が渡る", async () => {
+    const client = makeMockHerdrClient({})
+    const captured: { ctx: ReportContext | null } = { ctx: null }
+    const resolver: ReportResolver = {
+      resolve: (ctx) => {
+        captured.ctx = ctx
+        return Promise.resolve("ok")
+      },
+    }
+    const runner = new HerdrAgentRunner(makeConfig(), {
+      herdrClient: client,
+      pollIntervalMs: 10,
+      reportResolver: resolver,
+    })
+
+    await runner.runIssue(makeIssue(), {
+      content: "Fix the bug",
+      agentKind: "claude",
+      attempt: null,
+      workspacePath: "/repo/claude-wt",
+    })
+
+    expect(captured.ctx).not.toBeNull()
+    expect(captured.ctx?.agentKind).toBe("claude")
+    expect(captured.ctx?.workspacePath).toBe("/repo/claude-wt")
+    expect(typeof captured.ctx?.startedAt).toBe("string")
+  })
+
   test("opencode argv に model と agent が含まれる", async () => {
     const client = makeMockHerdrClient({})
-    const runner = new HerdrAgentRunner(makeConfig(), { herdrClient: client, pollIntervalMs: 10 })
+    const runner = new HerdrAgentRunner(makeConfig(), {
+      herdrClient: client,
+      pollIntervalMs: 10,
+      reportResolver: nullReportResolver(),
+    })
 
     await runner.runIssue(makeIssue(), {
       content: "Fix the bug",
@@ -180,7 +260,11 @@ describe("HerdrAgentRunner", () => {
 
   test("prompt が argv の最後に渡される", async () => {
     const client = makeMockHerdrClient({})
-    const runner = new HerdrAgentRunner(makeConfig(), { herdrClient: client, pollIntervalMs: 10 })
+    const runner = new HerdrAgentRunner(makeConfig(), {
+      herdrClient: client,
+      pollIntervalMs: 10,
+      reportResolver: nullReportResolver(),
+    })
 
     await runner.runIssue(makeIssue(), {
       content: "Implement feature X",
@@ -195,7 +279,11 @@ describe("HerdrAgentRunner", () => {
 
   test("agent name に issue identifier が使われる", async () => {
     const client = makeMockHerdrClient({})
-    const runner = new HerdrAgentRunner(makeConfig(), { herdrClient: client, pollIntervalMs: 10 })
+    const runner = new HerdrAgentRunner(makeConfig(), {
+      herdrClient: client,
+      pollIntervalMs: 10,
+      reportResolver: nullReportResolver(),
+    })
     const issue = makeIssue({ identifier: "PROJ-42" })
 
     await runner.runIssue(issue, {
@@ -236,7 +324,11 @@ describe("HerdrAgentRunner", () => {
       async sendKeys() {},
       async closePane() {},
     }
-    const runner = new HerdrAgentRunner(makeConfig(), { herdrClient: client, pollIntervalMs: 10 })
+    const runner = new HerdrAgentRunner(makeConfig(), {
+      herdrClient: client,
+      pollIntervalMs: 10,
+      reportResolver: nullReportResolver(),
+    })
 
     await runner.runIssue(makeIssue(), {
       content: "Fix the bug",
@@ -252,7 +344,11 @@ describe("HerdrAgentRunner", () => {
     const client = makeMockHerdrClient({
       getAgentResult: { name: "TEST-1", state: "working", paneId: "w1:p1", workspaceId: "w1" },
     })
-    const runner = new HerdrAgentRunner(makeConfig(), { herdrClient: client, pollIntervalMs: 10 })
+    const runner = new HerdrAgentRunner(makeConfig(), {
+      herdrClient: client,
+      pollIntervalMs: 10,
+      reportResolver: nullReportResolver(),
+    })
 
     const result = await runner.runIssue(makeIssue(), {
       content: "Fix the bug",
@@ -269,7 +365,11 @@ describe("HerdrAgentRunner", () => {
     const client = makeMockHerdrClient({
       getAgentResult: { name: "TEST-1", state: "blocked", paneId: "w1:p1", workspaceId: "w1" },
     })
-    const runner = new HerdrAgentRunner(makeConfig(), { herdrClient: client, pollIntervalMs: 10 })
+    const runner = new HerdrAgentRunner(makeConfig(), {
+      herdrClient: client,
+      pollIntervalMs: 10,
+      reportResolver: nullReportResolver(),
+    })
 
     const result = await runner.runIssue(makeIssue(), {
       content: "Fix the bug",
@@ -286,7 +386,11 @@ describe("HerdrAgentRunner", () => {
     const client = makeMockHerdrClient({
       getAgentResult: { name: "TEST-1", state: "blocked", paneId: "w1:p1", workspaceId: "w1" },
     })
-    const runner = new HerdrAgentRunner(makeConfig(), { herdrClient: client, pollIntervalMs: 10 })
+    const runner = new HerdrAgentRunner(makeConfig(), {
+      herdrClient: client,
+      pollIntervalMs: 10,
+      reportResolver: nullReportResolver(),
+    })
 
     const result = await runner.runIssue(makeIssue(), {
       content: "Fix the bug",
@@ -305,7 +409,11 @@ describe("HerdrAgentRunner", () => {
     const client = makeMockHerdrClient({
       getAgentResult: { name: "TEST-1", state: "blocked", paneId: "w1:p1", workspaceId: "w1" },
     })
-    const runner = new HerdrAgentRunner(makeConfig(), { herdrClient: client, pollIntervalMs: 10 })
+    const runner = new HerdrAgentRunner(makeConfig(), {
+      herdrClient: client,
+      pollIntervalMs: 10,
+      reportResolver: nullReportResolver(),
+    })
 
     const result = await runner.runIssue(makeIssue(), {
       content: "Fix the bug",
@@ -327,7 +435,11 @@ describe("HerdrAgentRunner", () => {
       ],
       readText: "Done.",
     })
-    const runner = new HerdrAgentRunner(makeConfig(), { herdrClient: client, pollIntervalMs: 10 })
+    const runner = new HerdrAgentRunner(makeConfig(), {
+      herdrClient: client,
+      pollIntervalMs: 10,
+      reportResolver: nullReportResolver(),
+    })
 
     const result = await runner.runIssue(makeIssue(), {
       content: "Fix the bug",
@@ -342,7 +454,11 @@ describe("HerdrAgentRunner", () => {
 
   test("model 未指定時は --model を付けない", async () => {
     const client = makeMockHerdrClient({})
-    const runner = new HerdrAgentRunner(makeConfig(), { herdrClient: client, pollIntervalMs: 10 })
+    const runner = new HerdrAgentRunner(makeConfig(), {
+      herdrClient: client,
+      pollIntervalMs: 10,
+      reportResolver: nullReportResolver(),
+    })
 
     await runner.runIssue(makeIssue(), {
       content: "Fix the bug",
@@ -360,7 +476,11 @@ describe("HerdrAgentRunner", () => {
 
   test("claude argv に --print が含まれない", async () => {
     const client = makeMockHerdrClient({})
-    const runner = new HerdrAgentRunner(makeConfig(), { herdrClient: client, pollIntervalMs: 10 })
+    const runner = new HerdrAgentRunner(makeConfig(), {
+      herdrClient: client,
+      pollIntervalMs: 10,
+      reportResolver: nullReportResolver(),
+    })
 
     await runner.runIssue(makeIssue(), {
       content: "Fix the bug",
@@ -376,7 +496,11 @@ describe("HerdrAgentRunner", () => {
 
   test("claude では prompt を argv の末尾に含める", async () => {
     const client = makeMockHerdrClient({})
-    const runner = new HerdrAgentRunner(makeConfig(), { herdrClient: client, pollIntervalMs: 10 })
+    const runner = new HerdrAgentRunner(makeConfig(), {
+      herdrClient: client,
+      pollIntervalMs: 10,
+      reportResolver: nullReportResolver(),
+    })
 
     await runner.runIssue(makeIssue(), {
       content: "Fix the bug",
@@ -393,7 +517,11 @@ describe("HerdrAgentRunner", () => {
 
   test("claude に model が渡される", async () => {
     const client = makeMockHerdrClient({})
-    const runner = new HerdrAgentRunner(makeConfig(), { herdrClient: client, pollIntervalMs: 10 })
+    const runner = new HerdrAgentRunner(makeConfig(), {
+      herdrClient: client,
+      pollIntervalMs: 10,
+      reportResolver: nullReportResolver(),
+    })
 
     await runner.runIssue(makeIssue(), {
       content: "Fix the bug",
@@ -410,7 +538,11 @@ describe("HerdrAgentRunner", () => {
 
   test("claude に permission_mode が渡される", async () => {
     const client = makeMockHerdrClient({})
-    const runner = new HerdrAgentRunner(makeConfig(), { herdrClient: client, pollIntervalMs: 10 })
+    const runner = new HerdrAgentRunner(makeConfig(), {
+      herdrClient: client,
+      pollIntervalMs: 10,
+      reportResolver: nullReportResolver(),
+    })
 
     await runner.runIssue(makeIssue(), {
       content: "Fix the bug",
@@ -427,7 +559,11 @@ describe("HerdrAgentRunner", () => {
 
   test("claude permission_mode が bypassPermissions の場合は --dangerously-skip-permissions も付ける", async () => {
     const client = makeMockHerdrClient({})
-    const runner = new HerdrAgentRunner(makeConfig(), { herdrClient: client, pollIntervalMs: 10 })
+    const runner = new HerdrAgentRunner(makeConfig(), {
+      herdrClient: client,
+      pollIntervalMs: 10,
+      reportResolver: nullReportResolver(),
+    })
 
     await runner.runIssue(makeIssue(), {
       content: "Fix the bug",
@@ -445,7 +581,11 @@ describe("HerdrAgentRunner", () => {
 
   test("claude permission_mode 未指定時は --permission-mode を付けない", async () => {
     const client = makeMockHerdrClient({})
-    const runner = new HerdrAgentRunner(makeConfig(), { herdrClient: client, pollIntervalMs: 10 })
+    const runner = new HerdrAgentRunner(makeConfig(), {
+      herdrClient: client,
+      pollIntervalMs: 10,
+      reportResolver: nullReportResolver(),
+    })
 
     await runner.runIssue(makeIssue(), {
       content: "Fix the bug",
@@ -461,7 +601,11 @@ describe("HerdrAgentRunner", () => {
 
   test("opencode では permission_mode を付けない", async () => {
     const client = makeMockHerdrClient({})
-    const runner = new HerdrAgentRunner(makeConfig(), { herdrClient: client, pollIntervalMs: 10 })
+    const runner = new HerdrAgentRunner(makeConfig(), {
+      herdrClient: client,
+      pollIntervalMs: 10,
+      reportResolver: nullReportResolver(),
+    })
 
     await runner.runIssue(makeIssue(), {
       content: "Fix the bug",
@@ -478,7 +622,11 @@ describe("HerdrAgentRunner", () => {
 
   test("claude では --agent を付けない", async () => {
     const client = makeMockHerdrClient({})
-    const runner = new HerdrAgentRunner(makeConfig(), { herdrClient: client, pollIntervalMs: 10 })
+    const runner = new HerdrAgentRunner(makeConfig(), {
+      herdrClient: client,
+      pollIntervalMs: 10,
+      reportResolver: nullReportResolver(),
+    })
 
     await runner.runIssue(makeIssue(), {
       content: "Fix the bug",
@@ -502,7 +650,11 @@ describe("HerdrAgentRunner", () => {
       ],
       readText: "Done.",
     })
-    const runner = new HerdrAgentRunner(makeConfig(), { herdrClient: client, pollIntervalMs: 10 })
+    const runner = new HerdrAgentRunner(makeConfig(), {
+      herdrClient: client,
+      pollIntervalMs: 10,
+      reportResolver: nullReportResolver(),
+    })
 
     const result = await runner.runIssue(makeIssue(), {
       content: "Fix the bug",
@@ -525,7 +677,11 @@ describe("HerdrAgentRunner", () => {
       ],
       readText: "Done.",
     })
-    const runner = new HerdrAgentRunner(makeConfig(), { herdrClient: client, pollIntervalMs: 10 })
+    const runner = new HerdrAgentRunner(makeConfig(), {
+      herdrClient: client,
+      pollIntervalMs: 10,
+      reportResolver: nullReportResolver(),
+    })
 
     const result = await runner.runIssue(makeIssue(), {
       content: "Fix the bug",
@@ -543,7 +699,11 @@ describe("HerdrAgentRunner", () => {
     const client = makeMockHerdrClient({
       getAgentResult: { name: "TEST-1", state: "idle", paneId: "w1:p1", workspaceId: "w1" },
     })
-    const runner = new HerdrAgentRunner(makeConfig(), { herdrClient: client, pollIntervalMs: 10 })
+    const runner = new HerdrAgentRunner(makeConfig(), {
+      herdrClient: client,
+      pollIntervalMs: 10,
+      reportResolver: nullReportResolver(),
+    })
 
     const result = await runner.runIssue(makeIssue(), {
       content: "Fix the bug",
@@ -580,7 +740,10 @@ describe("HerdrAgentRunner", () => {
         captured.paneId = paneId
       },
     }
-    const runner = new HerdrAgentRunner(makeConfig(), { herdrClient: client })
+    const runner = new HerdrAgentRunner(makeConfig(), {
+      herdrClient: client,
+      reportResolver: nullReportResolver(),
+    })
 
     await runner.cancelRun("w1:p1")
 

@@ -163,7 +163,7 @@ workspace:
 4. `herdr workspace create` で Herdr workspace を作成
 5. `herdr agent start` で `opencode run` を Herdr pane 内で起動
 6. `herdr agent wait --status done` で完了を検知
-7. `herdr agent read` で Agent の最終応答を取得
+7. セッション履歴から Agent の最終報告を取得（opencode は `opencode export`、claude は `~/.claude/projects` の JSONL。取得失敗時は pane 読み取りにフォールバック）
 8. tracker の Status を success/failure state へ更新
 9. reporter で結果を記録
 
