@@ -32,7 +32,7 @@ function makeWorkConfig(overrides: Partial<WorkConfig> = {}): WorkConfig {
     successState: null,
     failureState: null,
     stoppedState: null,
-    runner: "herdr-agent",
+    runner: "herdr_agent",
     herdrAgent: {
       agent: "opencode",
       opencode: { model: null, agent: null },
@@ -55,11 +55,11 @@ function makeWorkConfig(overrides: Partial<WorkConfig> = {}): WorkConfig {
   }
 }
 
-test("resolveIssueRuntimeConfig が herdr-agent runner を返す", async () => {
+test("resolveIssueRuntimeConfig が herdr_agent runner を返す", async () => {
   const config = makeWorkConfig()
   const result = await resolveIssueRuntimeConfig(makeIssue(), config, null)
 
-  expect(result.runner.kind).toBe("herdr-agent")
+  expect(result.runner.kind).toBe("herdr_agent")
   expect(result.runner.agent).toBe("opencode")
 })
 

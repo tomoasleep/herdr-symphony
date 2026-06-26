@@ -43,7 +43,7 @@ describe("buildWorktreePlan", () => {
     )
 
     expect(result.key).toBe("feature_abc-123")
-    expect(result.branch).toBe("fairy/feature_abc-123")
+    expect(result.branch).toBe("herdr/feature_abc-123")
     expect(result.path).toContain("feature/abc-123")
   })
 })
@@ -78,7 +78,7 @@ describe("ensureWorkspace", () => {
           return {
             exitCode: 0,
             stdout:
-              "worktree /repos/fairy.worktrees/feature/abc-123\nHEAD abcdef\nbranch refs/heads/fairy/feature_abc-123\n\n",
+              "worktree /repos/fairy.worktrees/feature/abc-123\nHEAD abcdef\nbranch refs/heads/herdr/feature_abc-123\n\n",
             stderr: "",
           }
         }
@@ -135,7 +135,7 @@ describe("ensureWorkspace", () => {
           "worktree",
           "add",
           "-b",
-          "fairy/feature_abc-123",
+          "herdr/feature_abc-123",
           "/repos/fairy.worktrees/feature/abc-123",
         ],
         cwd: "/repos/fairy",
@@ -188,10 +188,10 @@ describe("ensureWorkspace", () => {
         "workspace git command=git args=rev-parse --show-toplevel cwd=/repos/fairy",
       )
       expect(writes.join("\n")).toContain(
-        "workspace git command=git args=worktree add -b fairy/feature_abc-123 /repos/fairy.worktrees/feature/abc-123 cwd=/repos/fairy",
+        "workspace git command=git args=worktree add -b herdr/feature_abc-123 /repos/fairy.worktrees/feature/abc-123 cwd=/repos/fairy",
       )
       expect(writes.join("\n")).toContain(
-        "workspace ready key=feature_abc-123 created=true path=/repos/fairy.worktrees/feature/abc-123 branch=fairy/feature_abc-123",
+        "workspace ready key=feature_abc-123 created=true path=/repos/fairy.worktrees/feature/abc-123 branch=herdr/feature_abc-123",
       )
     })
   })
@@ -225,7 +225,7 @@ describe("ensureWorkspace", () => {
           return {
             exitCode: 0,
             stdout:
-              '[{"path":"/repos/fairy.worktrees/feature/abc-123","branch":"fairy/feature_abc-123","is_main":false}]',
+              '[{"path":"/repos/fairy.worktrees/feature/abc-123","branch":"herdr/feature_abc-123","is_main":false}]',
             stderr: "",
           }
         }
@@ -290,7 +290,7 @@ describe("ensureWorkspace", () => {
           return {
             exitCode: 0,
             stdout:
-              '[{"path":"/repos/fairy.worktrees/feature/abc-123","branch":"fairy/feature_abc-123","is_main":false}]',
+              '[{"path":"/repos/fairy.worktrees/feature/abc-123","branch":"herdr/feature_abc-123","is_main":false}]',
             stderr: "",
           }
         }
@@ -305,7 +305,7 @@ describe("ensureWorkspace", () => {
       expect(result.path).toBe("/repos/fairy.worktrees/feature/abc-123")
       expect(calls.at(2)).toEqual({
         command: "gwq",
-        args: ["add", "-b", "fairy/feature_abc-123"],
+        args: ["add", "-b", "herdr/feature_abc-123"],
         cwd: "/repos/fairy",
       })
     })
@@ -345,7 +345,7 @@ describe("ensureWorkspace", () => {
 
       await expect(
         ensureWorkspace(issue, makeWorkspaceConfig({ provider: "gwq" }), { runCommand }),
-      ).rejects.toThrow("gwq workspace not found after add: fairy/feature_abc-123")
+      ).rejects.toThrow("gwq workspace not found after add: herdr/feature_abc-123")
       expect(listCount).toBe(2)
     })
 
@@ -376,7 +376,7 @@ describe("ensureWorkspace", () => {
           return {
             exitCode: 0,
             stdout:
-              '[{"path":"/gwq-managed/fairy/feature-abc-123","branch":"fairy/feature_abc-123","is_main":false}]',
+              '[{"path":"/gwq-managed/fairy/feature-abc-123","branch":"herdr/feature_abc-123","is_main":false}]',
             stderr: "",
           }
         }
@@ -432,7 +432,7 @@ describe("ensureWorkspace", () => {
           return {
             exitCode: 0,
             stdout:
-              '[{"path":"/repos/fairy.worktrees/feature/abc-123","branch":"fairy/feature_abc-123","is_main":false}]',
+              '[{"path":"/repos/fairy.worktrees/feature/abc-123","branch":"herdr/feature_abc-123","is_main":false}]',
             stderr: "",
           }
         }

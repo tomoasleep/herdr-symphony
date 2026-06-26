@@ -111,7 +111,7 @@ work:
       command: gwq
       create_branch: true
 
-  runner: herdr-agent
+  runner: herdr_agent
   herdr_agent:
     agent: opencode
     opencode:

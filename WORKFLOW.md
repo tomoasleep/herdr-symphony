@@ -1,9 +1,10 @@
 ---
 tracker:
   kind: github_project
-  owner: "@me"
-  number: 4
-  repository: '{{ issue.fields["Repository"] }}'
+  github_project:
+    owner: "@me"
+    number: 4
+    repository: '{{ issue.fields["Repository"] }}'
 
 polling:
   interval_ms: 30000
@@ -26,7 +27,7 @@ work:
       command: gwq
       create_branch: true
 
-  runner: herdr-agent
+  runner: herdr_agent
   herdr_agent:
     agent: opencode
     opencode:

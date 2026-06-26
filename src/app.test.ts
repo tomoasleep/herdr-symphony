@@ -46,7 +46,7 @@ function _makeConfig(baseDir: string): ServiceConfig {
       successState: "Done",
       failureState: "Blocked",
       stoppedState: null,
-      runner: "herdr-agent",
+      runner: "herdr_agent",
       herdrAgent: {
         agent: "opencode",
         opencode: { model: null, agent: null },

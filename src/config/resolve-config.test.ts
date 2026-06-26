@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test"
 import { resolveConfig } from "./resolve-config"
 
-test("デフォルト値を解決できる (gwq provider, herdr-agent runner)", () => {
+test("デフォルト値を解決できる (gwq provider, herdr_agent runner)", () => {
   const config = resolveConfig({
     tracker: {
       kind: "github_project",
@@ -21,7 +21,7 @@ test("デフォルト値を解決できる (gwq provider, herdr-agent runner)", 
   expect(config.work.successState).toBeNull()
   expect(config.work.failureState).toBeNull()
   expect(config.agent.maxConcurrentAgents).toBe(10)
-  expect(config.work.runner).toBe("herdr-agent")
+  expect(config.work.runner).toBe("herdr_agent")
   expect(config.work.herdrAgent.agent).toBe("opencode")
   expect(config.work.herdrAgent.opencode.model).toBeNull()
   expect(config.work.herdrAgent.opencode.agent).toBeNull()
@@ -65,7 +65,7 @@ test("herdr_agent.opencode の設定を解決できる", () => {
       file: { base_dir: "/issues" },
     },
     work: {
-      runner: "herdr-agent",
+      runner: "herdr_agent",
       herdr_agent: {
         agent: "opencode",
         opencode: {
@@ -78,7 +78,7 @@ test("herdr_agent.opencode の設定を解決できる", () => {
     },
   })
 
-  expect(config.work.runner).toBe("herdr-agent")
+  expect(config.work.runner).toBe("herdr_agent")
   expect(config.work.herdrAgent.agent).toBe("opencode")
   expect(config.work.herdrAgent.opencode.model).toBe("openai/gpt-5.4")
   expect(config.work.herdrAgent.opencode.agent).toBe("build")
@@ -110,7 +110,7 @@ test("gwq workspace の設定を解決できる", () => {
   expect(config.work.workspace.gwq.createBranch).toBe(false)
 })
 
-test("runner に herdr-agent 以外を指定するとエラー", () => {
+test("runner に herdr_agent 以外を指定するとエラー", () => {
   expect(() =>
     resolveConfig({
       tracker: { kind: "file", file: { base_dir: "/issues" } },
@@ -124,7 +124,7 @@ test("herdr_agent.agent に opencode 以外を指定するとエラー", () => {
     resolveConfig({
       tracker: { kind: "file", file: { base_dir: "/issues" } },
       work: {
-        runner: "herdr-agent",
+        runner: "herdr_agent",
         herdr_agent: { agent: "codex" },
       },
     }),

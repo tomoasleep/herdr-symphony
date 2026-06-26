@@ -208,7 +208,7 @@ export function resolveConfigFromSchema(input: unknown): ServiceConfig {
       successState: normalizeOptionalString(work.success_state),
       failureState: normalizeOptionalString(work.failure_state),
       stoppedState: normalizeOptionalString(work.stopped_state),
-      runner: normalizeOptionalString(work.runner) ?? "herdr-agent",
+      runner: normalizeOptionalString(work.runner) ?? "herdr_agent",
       herdrAgent: {
         agent: herdrAgentRaw?.agent ?? "opencode",
         opencode: {
@@ -300,7 +300,7 @@ export function validateDispatchConfig(config: ServiceConfig): void {
     )
   }
 
-  if (config.work.runner && config.work.runner !== "herdr-agent") {
+  if (config.work.runner && config.work.runner !== "herdr_agent") {
     throw new WorkflowError(
       ErrorCode.INVALID_FRONT_MATTER,
       `unsupported runner: ${config.work.runner}`,

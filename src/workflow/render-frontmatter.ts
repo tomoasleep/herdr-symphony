@@ -125,7 +125,7 @@ export async function resolveIssueRuntimeConfig(
     },
     workspace: normalizeWorkspaceConfig(rendered.workspace, work.workspace),
     runner: {
-      kind: "herdr-agent",
+      kind: "herdr_agent",
       agent: work.herdrAgent.agent,
       opencode: {
         agent: normalizeOverride(rendered.opencode.agent),

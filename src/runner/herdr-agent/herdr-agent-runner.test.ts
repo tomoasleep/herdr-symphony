@@ -35,7 +35,7 @@ function makeConfig(overrides: Partial<ServiceConfig["work"]> = {}): ServiceConf
       successState: null,
       failureState: null,
       stoppedState: null,
-      runner: "herdr-agent",
+      runner: "herdr_agent",
       herdrAgent: {
         agent: "opencode",
         opencode: { model: "openai/gpt-5.4", agent: "build" },

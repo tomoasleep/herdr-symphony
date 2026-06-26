@@ -31,7 +31,7 @@ function makeConfig(): ServiceConfig {
       successState: null,
       failureState: null,
       stoppedState: null,
-      runner: "herdr-agent",
+      runner: "herdr_agent",
       herdrAgent: {
         agent: "opencode",
         opencode: { model: null, agent: null },

@@ -97,7 +97,7 @@ export type WorkspaceConfig = {
 }
 
 export type ResolvedHerdrAgentRunnerConfig = {
-  kind: "herdr-agent"
+  kind: "herdr_agent"
   agent: "opencode" | "claude"
   opencode: { model: string | null; agent: string | null }
   claude: { model: string | null }

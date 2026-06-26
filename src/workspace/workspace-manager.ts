@@ -107,7 +107,7 @@ function buildWorkspaceSeed(issue: Issue): WorkspaceSeed {
   return {
     rawWorktree,
     key,
-    branch: `fairy/${key}`,
+    branch: `herdr/${key}`,
   }
 }
 
@@ -256,7 +256,7 @@ function warnDeprecatedGwqPathConfig(
   if (!emittedWorkspaceWarnings.has(message)) {
     emittedWorkspaceWarnings.add(message)
     process.emitWarning(message, {
-      code: "FAIRY_GWQ_PATH_DEPRECATED",
+      code: "HDR_GWQ_PATH_DEPRECATED",
       type: "DeprecationWarning",
     })
   }

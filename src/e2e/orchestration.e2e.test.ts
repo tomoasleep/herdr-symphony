@@ -103,9 +103,9 @@ test.skipIf(!HERDR_AVAILABLE)(
         tracker fetchCandidateIssues done count=1
         refresh candidates=1 dispatchable=1 running=0 retrying=0
         start test/repo#1 state=Ready
-        runtime resolved issue=test/repo#1 runner=herdr-agent workspaceProvider=git
+        runtime resolved issue=test/repo#1 runner=herdr_agent workspaceProvider=git
         workspace ready path=TEMP_DIR createdNow=false branch=none
-        runner start kind=herdr-agent workspace=TEMP_DIR model=mock/agent-model
+        runner start kind=herdr_agent workspace=TEMP_DIR model=mock/agent-model
         [test/repo#1] [agent_started] agent_started
         [test/repo#1] [agent_status] agent_status
         tracker moveIssueToState start issue=test-issue-1 state=Done

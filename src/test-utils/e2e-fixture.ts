@@ -62,7 +62,7 @@ async function main(): Promise<void> {
       issue,
       workspace: config.work.workspace,
       runner: {
-        kind: "herdr-agent",
+        kind: "herdr_agent",
         agent: "opencode",
         opencode: { model: "mock/agent-model", agent: null },
         claude: { model: null },
@@ -120,7 +120,7 @@ function makeConfig(trackerDir: string): ServiceConfig {
       successState: "Done",
       failureState: null,
       stoppedState: null,
-      runner: "herdr-agent",
+      runner: "herdr_agent",
       herdrAgent: {
         agent: "opencode",
         opencode: { model: "mock/agent-model", agent: null },
