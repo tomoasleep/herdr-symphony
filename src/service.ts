@@ -254,6 +254,10 @@ export class SymphonyService {
           runtimeConfig.runner.agent === "claude"
             ? runtimeConfig.runner.claude.model
             : runtimeConfig.runner.opencode.model
+        const runnerPermissionMode =
+          runtimeConfig.runner.agent === "claude"
+            ? runtimeConfig.runner.claude.permissionMode
+            : null
         this.debugLog(
           `runner start kind=${runtimeConfig.runner.kind} workspace=${workspace.path}` +
             (runnerAgent ? ` agent=${runnerAgent}` : "") +
@@ -266,6 +270,7 @@ export class SymphonyService {
           agentKind: runtimeConfig.runner.agent,
           agent: runnerAgent,
           model: runnerModel,
+          permissionMode: runnerPermissionMode,
           timeoutMs: runnerTimeoutMs,
           onEvent: (event) => {
             this.state.markEvent(issue.id)

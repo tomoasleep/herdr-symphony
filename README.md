@@ -117,6 +117,9 @@ work:
     opencode:
       model: '{{ issue.fields["Model"] | default: "openai/gpt-5.4" }}'
       agent: '{{ issue.fields["Agent"] | default: "build" }}'
+    claude:
+      model: 'claude-sonnet-4-20250514'
+      permission_mode: '{{ issue.fields["PermissionMode"] | default: "bypassPermissions" }}'
     workspace_label: '{{ issue.identifier | replace: "/", "_" }}'
     turn_timeout_ms: 3600000
 ```
@@ -128,6 +131,8 @@ work:
 | `agent` | `"opencode"` | `"opencode"` | 起動する Agent 種別（将来拡張予定）|
 | `opencode.model` | string (Liquid) | null | `opencode run --model` |
 | `opencode.agent` | string (Liquid) | null | `opencode run --agent` |
+| `claude.model` | string (Liquid) | null | `claude --model` |
+| `claude.permission_mode` | string (Liquid) | null | `claude --permission-mode` (`bypassPermissions` の場合は `--dangerously-skip-permissions` も付与) |
 | `workspace_label` | string (Liquid) | issue.identifier | Herdr workspace の label |
 | `turn_timeout_ms` | number | null (無制限) | Agent 完了待ちタイムアウト |
 

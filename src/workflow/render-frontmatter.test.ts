@@ -15,6 +15,7 @@ function makeIssue(): Issue {
       Repository: "/repos/from-project",
       Model: "openai/gpt-5.4",
       Agent: "build",
+      PermissionMode: "acceptEdits",
     },
     url: null,
     labels: ["bug"],
@@ -36,7 +37,7 @@ function makeWorkConfig(overrides: Partial<WorkConfig> = {}): WorkConfig {
     herdrAgent: {
       agent: "opencode",
       opencode: { model: null, agent: null },
-      claude: { model: null },
+      claude: { model: null, permissionMode: null },
       workspaceLabel: null,
       turnTimeoutMs: 3_600_000,
     },
@@ -71,7 +72,7 @@ test("opencode model/agent を Liquid で解決できる", async () => {
         model: '{{ issue.fields["Model"] | default: "openai/gpt-5.4" }}',
         agent: '{{ issue.fields["Agent"] | default: "build" }}',
       },
-      claude: { model: null },
+      claude: { model: null, permissionMode: null },
       workspaceLabel: null,
       turnTimeoutMs: 3_600_000,
     },
@@ -130,7 +131,7 @@ test("workspaceLabel を Liquid で解決できる", async () => {
     herdrAgent: {
       agent: "opencode",
       opencode: { model: null, agent: null },
-      claude: { model: null },
+      claude: { model: null, permissionMode: null },
       workspaceLabel: '{{ issue.identifier | replace: "/", "_" }}',
       turnTimeoutMs: null,
     },
@@ -140,12 +141,45 @@ test("workspaceLabel を Liquid で解決できる", async () => {
   expect(result.runner.workspaceLabel).toBe("PROJ-77")
 })
 
+test("claude permissionMode を Liquid で解決できる", async () => {
+  const config = makeWorkConfig({
+    herdrAgent: {
+      agent: "claude",
+      opencode: { model: null, agent: null },
+      claude: {
+        model: null,
+        permissionMode: '{{ issue.fields["PermissionMode"] | default: "acceptEdits" }}',
+      },
+      workspaceLabel: null,
+      turnTimeoutMs: null,
+    },
+  })
+  const result = await resolveIssueRuntimeConfig(makeIssue(), config, null)
+
+  expect(result.runner.claude.permissionMode).toBe("acceptEdits")
+})
+
+test("claude permissionMode が null のときは null になる", async () => {
+  const config = makeWorkConfig({
+    herdrAgent: {
+      agent: "claude",
+      opencode: { model: null, agent: null },
+      claude: { model: null, permissionMode: null },
+      workspaceLabel: null,
+      turnTimeoutMs: null,
+    },
+  })
+  const result = await resolveIssueRuntimeConfig(makeIssue(), config, null)
+
+  expect(result.runner.claude.permissionMode).toBeNull()
+})
+
 test("turnTimeoutMs が引き継がれる", async () => {
   const config = makeWorkConfig({
     herdrAgent: {
       agent: "opencode",
       opencode: { model: null, agent: null },
-      claude: { model: null },
+      claude: { model: null, permissionMode: null },
       workspaceLabel: null,
       turnTimeoutMs: 1_800_000,
     },

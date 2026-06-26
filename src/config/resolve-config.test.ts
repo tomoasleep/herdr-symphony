@@ -142,6 +142,37 @@ test("reporter を解決できる", () => {
   expect(config.work.reporter).toEqual(["file", "tracker"])
 })
 
+test("herdr_agent.claude.permission_mode を解決できる", () => {
+  const config = resolveConfig({
+    tracker: {
+      kind: "file",
+      file: { base_dir: "/issues" },
+    },
+    work: {
+      runner: "herdr_agent",
+      herdr_agent: {
+        agent: "claude",
+        claude: {
+          model: "claude-sonnet-4-20250514",
+          permission_mode: "bypassPermissions",
+        },
+      },
+    },
+  })
+
+  expect(config.work.herdrAgent.agent).toBe("claude")
+  expect(config.work.herdrAgent.claude.model).toBe("claude-sonnet-4-20250514")
+  expect(config.work.herdrAgent.claude.permissionMode).toBe("bypassPermissions")
+})
+
+test("herdr_agent.claude.permission_mode 未指定時は null になる", () => {
+  const config = resolveConfig({
+    tracker: { kind: "file", file: { base_dir: "/issues" } },
+  })
+
+  expect(config.work.herdrAgent.claude.permissionMode).toBeNull()
+})
+
 test("agent 同時実行数と backoff を解決できる", () => {
   const config = resolveConfig({
     tracker: { kind: "file", file: { base_dir: "/issues" } },

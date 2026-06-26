@@ -65,7 +65,7 @@ async function main(): Promise<void> {
         kind: "herdr_agent",
         agent: "opencode",
         opencode: { model: "mock/agent-model", agent: null },
-        claude: { model: null },
+        claude: { model: null, permissionMode: null },
         workspaceLabel: null,
         turnTimeoutMs: 60_000,
       },
@@ -124,7 +124,7 @@ function makeConfig(trackerDir: string): ServiceConfig {
       herdrAgent: {
         agent: "opencode",
         opencode: { model: "mock/agent-model", agent: null },
-        claude: { model: null },
+        claude: { model: null, permissionMode: null },
         workspaceLabel: null,
         turnTimeoutMs: 60_000,
       },

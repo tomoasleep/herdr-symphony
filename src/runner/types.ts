@@ -18,6 +18,7 @@ export type RunnerOptions = {
   agentKind: "opencode" | "claude"
   agent?: string | null
   model?: string | null
+  permissionMode?: string | null
   timeoutMs?: number | null
   onEvent?: (event: RunnerEvent) => void
 }

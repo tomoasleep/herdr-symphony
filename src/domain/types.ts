@@ -70,6 +70,7 @@ export type HerdrAgentOpencodeConfig = {
 
 export type HerdrAgentClaudeConfig = {
   model: string | null
+  permissionMode: string | null
 }
 
 export type HerdrAgentConfig = {
@@ -100,7 +101,7 @@ export type ResolvedHerdrAgentRunnerConfig = {
   kind: "herdr_agent"
   agent: "opencode" | "claude"
   opencode: { model: string | null; agent: string | null }
-  claude: { model: string | null }
+  claude: { model: string | null; permissionMode: string | null }
   workspaceLabel: string | null
   turnTimeoutMs: number | null
 }

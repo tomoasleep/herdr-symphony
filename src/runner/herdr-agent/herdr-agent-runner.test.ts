@@ -39,7 +39,7 @@ function makeConfig(overrides: Partial<ServiceConfig["work"]> = {}): ServiceConf
       herdrAgent: {
         agent: "opencode",
         opencode: { model: "openai/gpt-5.4", agent: "build" },
-        claude: { model: null },
+        claude: { model: null, permissionMode: null },
         workspaceLabel: null,
         turnTimeoutMs: 3_600_000,
       },
@@ -345,6 +345,74 @@ describe("HerdrAgentRunner", () => {
     const args = client.startAgentArgs
     expect(args?.argv).toContain("--model")
     expect(args?.argv).toContain("claude-sonnet-4-20250514")
+  })
+
+  test("claude に permission_mode が渡される", async () => {
+    const client = makeMockHerdrClient({})
+    const runner = new HerdrAgentRunner(makeConfig(), { herdrClient: client, pollIntervalMs: 10 })
+
+    await runner.runIssue(makeIssue(), {
+      content: "Fix the bug",
+      agentKind: "claude",
+      attempt: null,
+      workspacePath: "/repo/worktree",
+      permissionMode: "acceptEdits",
+    })
+
+    const args = client.startAgentArgs
+    expect(args?.argv).toContain("--permission-mode")
+    expect(args?.argv).toContain("acceptEdits")
+  })
+
+  test("claude permission_mode が bypassPermissions の場合は --dangerously-skip-permissions も付ける", async () => {
+    const client = makeMockHerdrClient({})
+    const runner = new HerdrAgentRunner(makeConfig(), { herdrClient: client, pollIntervalMs: 10 })
+
+    await runner.runIssue(makeIssue(), {
+      content: "Fix the bug",
+      agentKind: "claude",
+      attempt: null,
+      workspacePath: "/repo/worktree",
+      permissionMode: "bypassPermissions",
+    })
+
+    const args = client.startAgentArgs
+    expect(args?.argv).toContain("--permission-mode")
+    expect(args?.argv).toContain("bypassPermissions")
+    expect(args?.argv).toContain("--dangerously-skip-permissions")
+  })
+
+  test("claude permission_mode 未指定時は --permission-mode を付けない", async () => {
+    const client = makeMockHerdrClient({})
+    const runner = new HerdrAgentRunner(makeConfig(), { herdrClient: client, pollIntervalMs: 10 })
+
+    await runner.runIssue(makeIssue(), {
+      content: "Fix the bug",
+      agentKind: "claude",
+      attempt: null,
+      workspacePath: "/repo/worktree",
+    })
+
+    const args = client.startAgentArgs
+    expect(args?.argv).not.toContain("--permission-mode")
+    expect(args?.argv).not.toContain("--dangerously-skip-permissions")
+  })
+
+  test("opencode では permission_mode を付けない", async () => {
+    const client = makeMockHerdrClient({})
+    const runner = new HerdrAgentRunner(makeConfig(), { herdrClient: client, pollIntervalMs: 10 })
+
+    await runner.runIssue(makeIssue(), {
+      content: "Fix the bug",
+      agentKind: "opencode",
+      attempt: null,
+      workspacePath: "/repo/worktree",
+      permissionMode: "bypassPermissions",
+    })
+
+    const args = client.startAgentArgs
+    expect(args?.argv).not.toContain("--permission-mode")
+    expect(args?.argv).not.toContain("--dangerously-skip-permissions")
   })
 
   test("claude では --agent を付けない", async () => {

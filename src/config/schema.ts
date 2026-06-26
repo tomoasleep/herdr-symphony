@@ -112,6 +112,7 @@ const HerdrAgentOpencodeSchema = z.object({
 
 const HerdrAgentClaudeSchema = z.object({
   model: z.string().optional().nullable(),
+  permission_mode: z.string().optional().nullable(),
 })
 
 const HerdrAgentSchema = z.object({
@@ -224,6 +225,7 @@ export function resolveConfigFromSchema(input: unknown): ServiceConfig {
         claude: {
           model:
             typeof herdrAgentRaw?.claude?.model === "string" ? herdrAgentRaw.claude.model : null,
+          permissionMode: normalizeOptionalString(herdrAgentRaw?.claude?.permission_mode),
         },
         workspaceLabel: normalizeOptionalString(herdrAgentRaw?.workspace_label),
         turnTimeoutMs,

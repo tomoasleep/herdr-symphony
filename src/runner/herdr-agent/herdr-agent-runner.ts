@@ -129,6 +129,13 @@ export class HerdrAgentRunner implements Runner {
         argv.push("--model", options.model)
       }
 
+      if (options.permissionMode) {
+        argv.push("--permission-mode", options.permissionMode)
+        if (options.permissionMode === "bypassPermissions") {
+          argv.push("--dangerously-skip-permissions")
+        }
+      }
+
       return argv
     }
 
