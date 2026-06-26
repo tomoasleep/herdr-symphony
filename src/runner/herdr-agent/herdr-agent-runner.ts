@@ -42,11 +42,6 @@ export class HerdrAgentRunner implements Runner {
 
       const target = agent.paneId ?? agentName
 
-      if (options.agentKind === "claude") {
-        await this.client.sendInput(target, options.content)
-        await this.client.sendKeys(target, "Enter")
-      }
-
       this.emit(options, {
         event: "agent_started",
         timestamp: new Date().toISOString(),
@@ -136,6 +131,7 @@ export class HerdrAgentRunner implements Runner {
         }
       }
 
+      argv.push(options.content)
       return argv
     }
 

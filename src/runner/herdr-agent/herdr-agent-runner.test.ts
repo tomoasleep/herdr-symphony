@@ -311,7 +311,7 @@ describe("HerdrAgentRunner", () => {
     expect(args?.argv).not.toContain("--print")
   })
 
-  test("claude では prompt を argv に含めず sendInput で送る", async () => {
+  test("claude では prompt を argv の末尾に含める", async () => {
     const client = makeMockHerdrClient({})
     const runner = new HerdrAgentRunner(makeConfig(), { herdrClient: client, pollIntervalMs: 10 })
 
@@ -323,11 +323,9 @@ describe("HerdrAgentRunner", () => {
     })
 
     const args = client.startAgentArgs
-    expect(args?.argv).not.toContain("Fix the bug")
-    expect(client.sentInputs).toHaveLength(1)
-    expect(client.sentInputs[0]?.text).toBe("Fix the bug")
-    expect(client.sentKeys).toHaveLength(1)
-    expect(client.sentKeys[0]?.keys).toContain("Enter")
+    expect(args?.argv[args.argv.length - 1]).toBe("Fix the bug")
+    expect(client.sentInputs).toHaveLength(0)
+    expect(client.sentKeys).toHaveLength(0)
   })
 
   test("claude に model が渡される", async () => {
