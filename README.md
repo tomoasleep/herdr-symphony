@@ -162,6 +162,7 @@ workspace:
 3. `gwq add` で worktree を作成
 4. `herdr workspace create` で Herdr workspace を作成
 5. `herdr agent start` で `opencode run` を Herdr pane 内で起動
+   - agent name は `{issue.identifier}-{workflowName}-{timestamp}`（複数 workflow や再実行での name 衝突を回避）
 6. `herdr agent wait --status done` で完了を検知
 7. セッション履歴から Agent の最終報告を取得（opencode は `opencode export`、claude は `~/.claude/projects` の JSONL。取得失敗時は pane 読み取りにフォールバック）
 8. tracker の Status を success/failure state へ更新

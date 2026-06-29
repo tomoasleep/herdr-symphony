@@ -277,12 +277,13 @@ describe("HerdrAgentRunner", () => {
     expect(args?.argv.includes("Implement feature X")).toBe(true)
   })
 
-  test("agent name に issue identifier が使われる", async () => {
+  test("agent name が identifier + timestamp から構成される", async () => {
     const client = makeMockHerdrClient({})
     const runner = new HerdrAgentRunner(makeConfig(), {
       herdrClient: client,
       pollIntervalMs: 10,
       reportResolver: nullReportResolver(),
+      now: () => 1_719_662_400_000,
     })
     const issue = makeIssue({ identifier: "PROJ-42" })
 
@@ -293,7 +294,49 @@ describe("HerdrAgentRunner", () => {
       workspacePath: "/repo/worktree",
     })
 
-    expect(client.startAgentArgs?.name).toBe("PROJ-42")
+    expect(client.startAgentArgs?.name).toBe("PROJ-42-ly02lc00")
+  })
+
+  test("workflowName を渡すと agent name に拡張子除外+sanitize した workflow 名が付く", async () => {
+    const client = makeMockHerdrClient({})
+    const runner = new HerdrAgentRunner(makeConfig(), {
+      herdrClient: client,
+      pollIntervalMs: 10,
+      reportResolver: nullReportResolver(),
+      now: () => 1_719_662_400_000,
+    })
+    const issue = makeIssue({ identifier: "PROJ-42" })
+
+    await runner.runIssue(issue, {
+      content: "Do work",
+      agentKind: "opencode",
+      attempt: null,
+      workspacePath: "/repo/worktree",
+      workflowName: "WORKFLOW.exec.md",
+    })
+
+    expect(client.startAgentArgs?.name).toBe("PROJ-42-WORKFLOW.exec-ly02lc00")
+  })
+
+  test("workflowName にスペースが含まれる場合は sanitize される", async () => {
+    const client = makeMockHerdrClient({})
+    const runner = new HerdrAgentRunner(makeConfig(), {
+      herdrClient: client,
+      pollIntervalMs: 10,
+      reportResolver: nullReportResolver(),
+      now: () => 1_719_662_400_000,
+    })
+    const issue = makeIssue({ identifier: "PROJ-42" })
+
+    await runner.runIssue(issue, {
+      content: "Do work",
+      agentKind: "opencode",
+      attempt: null,
+      workspacePath: "/repo/worktree",
+      workflowName: "my flow.md",
+    })
+
+    expect(client.startAgentArgs?.name).toBe("PROJ-42-my_flow-ly02lc00")
   })
 
   test("workspace label が解決される", async () => {

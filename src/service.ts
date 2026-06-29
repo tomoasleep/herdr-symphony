@@ -280,6 +280,7 @@ export class SymphonyService {
           permissionMode: runnerPermissionMode,
           onBlocked: runnerOnBlocked,
           timeoutMs: runnerTimeoutMs,
+          workflowName: this.workflowName,
           onEvent: (event) => {
             this.state.markEvent(issue.id)
             const message = "message" in event ? event.message : event.event

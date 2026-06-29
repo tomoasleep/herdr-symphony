@@ -30,6 +30,11 @@ const DYNAMIC_REPLACEMENTS: Array<[RegExp, string]> = [
   [/\bw\d+:t\d+\b/g, "TAB_ID"],
   [/\bw\d+\b/g, "WORKSPACE_ID"],
   [/term_[0-9a-f]+/gi, "TERMINAL_ID"],
+  [/-e2e-test-claude-[0-9a-z]+/g, "-e2e-test-claude-TS"],
+  [/-e2e-test-[0-9a-z]+/g, "-e2e-test-TS"],
+  [/\bplain-probe-[0-9a-z]+/g, "plain-probe-ID"],
+  [/\bprobe-[0-9a-z]+/g, "probe-ID"],
+  [/\bplain-[0-9a-z]+/g, "plain-ID"],
 ]
 
 export function normalizeOutput(text: string): string {

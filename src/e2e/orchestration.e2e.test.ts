@@ -52,10 +52,10 @@ test.skipIf(!HERDR_AVAILABLE)(
       expect(await captureOutput(herdrSession)).toMatchInlineSnapshot(`
         "
          spaces                  │ 1       +
-                                 │
-         · ~                     │~ at DATETIME
-                                 │(p _-)ノ
-         · test/repo#1           │
+                                 │pointer display width should be up to 2
+         · ~                     │
+                                 │~ at DATETIME
+         · test/repo#1           │(p _-)ノ
            main                  │
                                  │
                                  │
@@ -70,7 +70,7 @@ test.skipIf(!HERDR_AVAILABLE)(
                                  │
                                  │
                                  │
-         new                 menu│
+         new               ● menu│
         ─────────────────────────│
          agents               all│
                                  │

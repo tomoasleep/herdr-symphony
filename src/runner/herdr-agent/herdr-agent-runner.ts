@@ -1,6 +1,7 @@
 import type { Issue, ServiceConfig } from "../../domain/types"
 import type { HerdrAgentState, HerdrClient } from "../../herdr/herdr-client"
 import { createHerdrClient } from "../../herdr/herdr-client"
+import { sanitizeWorkspaceKey } from "../../utils/normalize"
 import type { Runner, RunnerEvent, RunnerOptions, RunnerResult } from "../types"
 import type { ReportResolver } from "./report"
 import { createReportResolver } from "./report"
@@ -10,6 +11,21 @@ export type HerdrAgentRunnerDeps = {
   pollIntervalMs?: number
   reportResolver?: ReportResolver
   logger?: (msg: string) => void
+  now?: () => number
+}
+
+export function buildAgentName(
+  identifier: string,
+  workflowName: string | undefined,
+  now: number,
+): string {
+  const parts = [identifier]
+  if (workflowName) {
+    const stripped = workflowName.replace(/\.(md|markdown)$/i, "")
+    parts.push(sanitizeWorkspaceKey(stripped))
+  }
+  parts.push(now.toString(36))
+  return parts.join("-")
 }
 
 const DEFAULT_TIMEOUT_MS = 86_400_000
@@ -20,6 +36,7 @@ export class HerdrAgentRunner implements Runner {
   private readonly pollIntervalMs: number
   private readonly reportResolver: ReportResolver
   private readonly logger: (msg: string) => void
+  private readonly now: () => number
 
   constructor(
     private readonly config: ServiceConfig,
@@ -29,6 +46,7 @@ export class HerdrAgentRunner implements Runner {
     this.pollIntervalMs = deps.pollIntervalMs ?? DEFAULT_POLL_INTERVAL_MS
     this.logger = deps.logger ?? (() => {})
     this.reportResolver = deps.reportResolver ?? createReportResolver({ logger: deps.logger })
+    this.now = deps.now ?? Date.now
   }
 
   async runIssue(issue: Issue, options: RunnerOptions): Promise<RunnerResult> {
@@ -41,7 +59,7 @@ export class HerdrAgentRunner implements Runner {
       const workspace = await this.client.ensureWorkspace(options.workspacePath, label)
 
       const argv = this.buildAgentArgv(options)
-      const agentName = issue.identifier
+      const agentName = buildAgentName(issue.identifier, options.workflowName, this.now())
 
       const agent = await this.client.startAgent(agentName, {
         workspaceId: workspace.id,

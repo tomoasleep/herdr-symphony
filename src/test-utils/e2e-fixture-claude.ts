@@ -47,7 +47,8 @@ async function main(): Promise<void> {
     ANTHROPIC_AUTH_TOKEN: "mock-token",
     CI: "true",
   }
-  const herdrClient = wrapForTrustDialog(wrapHerdrClient(baseClient, envVars))
+  const wrappedClient = wrapHerdrClient(baseClient, envVars)
+  const herdrClient = wrapForTrustDialog(wrappedClient)
   const runner = new HerdrAgentRunner(config, {
     herdrClient,
     pollIntervalMs: 3_000,
@@ -88,9 +89,9 @@ async function main(): Promise<void> {
     service.shutdown()
 
     try {
-      const agent = await herdrClient.getAgent(issueIdentifier)
-      if (agent?.paneId) {
-        await herdrClient.closePane(agent.paneId)
+      const paneId = wrappedClient.startedPaneId
+      if (paneId) {
+        await herdrClient.closePane(paneId)
       }
     } catch {}
 
@@ -98,10 +99,21 @@ async function main(): Promise<void> {
   }
 }
 
-function wrapHerdrClient(client: HerdrClient, env: Record<string, string>): HerdrClient {
+function wrapHerdrClient(
+  client: HerdrClient,
+  env: Record<string, string>,
+): HerdrClient & { startedPaneId: string | null } {
+  let paneId: string | null = null
   return {
     ...client,
-    startAgent: (name, opts) => client.startAgent(name, { ...opts, env: { ...opts.env, ...env } }),
+    startAgent: async (name, opts) => {
+      const info = await client.startAgent(name, { ...opts, env: { ...opts.env, ...env } })
+      paneId = info.paneId
+      return info
+    },
+    get startedPaneId(): string | null {
+      return paneId
+    },
   }
 }
 

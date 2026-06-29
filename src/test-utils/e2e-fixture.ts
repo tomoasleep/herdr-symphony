@@ -46,7 +46,6 @@ async function main(): Promise<void> {
     OPENCODE_CONFIG_CONTENT: opencodeConfig,
   })
   const runner = new HerdrAgentRunner(config, { herdrClient })
-
   const service = new SymphonyService(config, "Test prompt for {{ issue.identifier }}", {
     runner,
     workflowId: "e2e-test",
@@ -82,9 +81,9 @@ async function main(): Promise<void> {
     service.shutdown()
 
     try {
-      const agent = await herdrClient.getAgent("test/repo#1")
-      if (agent?.paneId) {
-        await herdrClient.closePane(agent.paneId)
+      const paneId = herdrClient.startedPaneId
+      if (paneId) {
+        await herdrClient.closePane(paneId)
       }
     } catch {}
 
@@ -92,10 +91,21 @@ async function main(): Promise<void> {
   }
 }
 
-function wrapHerdrClient(client: HerdrClient, env: Record<string, string>): HerdrClient {
+function wrapHerdrClient(
+  client: HerdrClient,
+  env: Record<string, string>,
+): HerdrClient & { startedPaneId: string | null } {
+  let paneId: string | null = null
   return {
     ...client,
-    startAgent: (name, opts) => client.startAgent(name, { ...opts, env: { ...opts.env, ...env } }),
+    startAgent: async (name, opts) => {
+      const info = await client.startAgent(name, { ...opts, env: { ...opts.env, ...env } })
+      paneId = info.paneId
+      return info
+    },
+    get startedPaneId(): string | null {
+      return paneId
+    },
   }
 }
 
