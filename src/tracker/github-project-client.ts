@@ -2,6 +2,7 @@ import { spawn } from "node:child_process"
 import type { Issue, TrackerConfig } from "../domain/types"
 import { isActiveState } from "../orchestrator/scheduling"
 import { normalizeState } from "../utils/normalize"
+import { withRetry } from "../utils/retry"
 import type { IssueTrackerClient } from "./types"
 
 type GraphqlPayload = {
@@ -628,7 +629,7 @@ function normalizePriority(value: string | null): number | null {
   return null
 }
 
-async function runGhGraphql(
+async function runGhGraphqlOnce(
   query: string,
   variables: Record<string, string | number>,
   writeLog?: (line: string) => void,
@@ -681,5 +682,21 @@ async function runGhGraphql(
       writeLog?.(`tracker gh error ${String(error)}`)
       reject(error)
     })
+  })
+}
+
+async function runGhGraphql(
+  query: string,
+  variables: Record<string, string | number>,
+  writeLog?: (line: string) => void,
+): Promise<GraphqlPayload> {
+  return withRetry(() => runGhGraphqlOnce(query, variables, writeLog), {
+    times: 2,
+    baseDelayMs: 1000,
+    onRetry: (error, attempt) => {
+      writeLog?.(
+        `tracker gh retry attempt=${attempt + 1} error=${error instanceof Error ? error.message : String(error)}`,
+      )
+    },
   })
 }

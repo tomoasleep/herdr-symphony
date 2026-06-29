@@ -181,7 +181,13 @@ export class SymphonyService {
       }
       const promise = this.dispatch(issue)
       this.pendingDispatches.add(promise)
-      void promise.finally(() => this.pendingDispatches.delete(promise))
+      void promise
+        .catch((error) => {
+          this.debugLog(
+            `dispatch unhandled error issue=${issue.identifier} error=${formatError(error)}`,
+          )
+        })
+        .finally(() => this.pendingDispatches.delete(promise))
     }
   }
 

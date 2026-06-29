@@ -6,6 +6,7 @@ import type { Issue, ServiceConfig } from "./domain/types"
 import { isActiveState } from "./orchestrator/scheduling"
 import type { Runner, RunnerOptions, RunnerResult } from "./runner/types"
 import { SymphonyService } from "./service"
+import type { Storage } from "./storage/types"
 import type { IssueTrackerClient } from "./tracker/types"
 import type { WorkspaceResult } from "./workspace/workspace-manager"
 
@@ -251,6 +252,67 @@ describe("SymphonyService", () => {
     await service.waitForDispatches()
 
     expect(logs.some((l) => l.includes("idle"))).toBe(true)
+    service.shutdown()
+  })
+
+  test("dispatch の catch ブロックで二次エラーが起きても unhandled rejection にならない", async () => {
+    const issue = makeIssue()
+    const tracker = makeMockTrackerClient([issue])
+    const runner = makeMockRunner()
+    const config = makeConfig()
+
+    const logs: string[] = []
+    const storage: Storage = {
+      completed: {
+        save() {},
+        loadRecent() {
+          return []
+        },
+        loadCount() {
+          return 0
+        },
+        deleteOlderThan() {},
+      },
+      logs: {
+        append() {
+          throw new Error("log storage failure")
+        },
+        loadRecent() {
+          return []
+        },
+        loadGlobalRecent() {
+          return []
+        },
+        pruneOlderThan() {},
+      },
+      state: {
+        save() {},
+        delete() {},
+        loadByCategory() {
+          return []
+        },
+        deleteAllInCategory() {},
+      },
+      close() {},
+    }
+
+    const service = new SymphonyService(config, "Fix the bug.", {
+      tracker,
+      runner,
+      storage,
+      writeLog: (line) => logs.push(line),
+      ensureWorkspace: async () => {
+        throw new Error("workspace creation failed")
+      },
+      claimIssue: () => true,
+      releaseIssue: () => {},
+    })
+
+    await service.refresh()
+    await service.waitForDispatches()
+    await new Promise((resolve) => setTimeout(resolve, 10))
+
+    expect(logs.some((l) => l.includes("dispatch unhandled error"))).toBe(true)
     service.shutdown()
   })
 })

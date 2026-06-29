@@ -153,4 +153,80 @@ describe("startHerdrSymphony", () => {
     expect(logs.some((l) => l.includes("start TEST-1"))).toBe(true)
     expect(logs.some((l) => l.includes("done TEST-1"))).toBe(true)
   })
+
+  test("ポーリング中に refresh が reject してもプロセスが継続しエラーを記録する", async () => {
+    const tmpDir = join(tmpdir(), `hs-app-poll-${Date.now()}`)
+    tmpDirs.push(tmpDir)
+    await mkdir(join(tmpDir, "Ready"), { recursive: true })
+    await writeFile(
+      join(tmpDir, "WORKFLOW.md"),
+      `---\ntracker:\n  kind: file\n  file:\n    base_dir: ${tmpDir}\nwork:\n  active_states: [Ready]\n  running_state: "In progress"\n  success_state: "Done"\n---\nFix the issue\n`,
+    )
+
+    let refreshCount = 0
+    const tracker = makeMockTracker([])
+    tracker.fetchCandidateIssues = async () => {
+      refreshCount++
+      if (refreshCount > 1) {
+        throw new Error("gh timeout on poll")
+      }
+      return []
+    }
+
+    const scheduledCallbacks: Array<() => void> = []
+    const errorCalls: unknown[][] = []
+    const originalError = console.error
+    console.error = (...args: unknown[]) => {
+      errorCalls.push(args)
+    }
+
+    try {
+      await startHerdrSymphony(
+        join(tmpDir, "WORKFLOW.md"),
+        { storageConfig: { databasePath: join(tmpDir, "test.db") } },
+        {
+          createService: (config, template, options, input) => {
+            return new SymphonyService(config, template, {
+              ...options,
+              ...input,
+              storage: input.storage ?? undefined,
+              tracker,
+              runner: makeMockRunner(),
+              ensureWorkspace: async () => ({
+                key: "test-1",
+                branch: null,
+                path: tmpDir,
+                repositoryRoot: tmpDir,
+                createdNow: true,
+              }),
+              claimIssue: () => true,
+              releaseIssue: () => {},
+            })
+          },
+          schedule: (callback, intervalMs) => {
+            if (intervalMs !== 3_600_000) {
+              scheduledCallbacks.push(callback)
+            }
+            return () => {}
+          },
+        },
+      )
+
+      expect(scheduledCallbacks.length).toBe(1)
+      const tick = scheduledCallbacks[0]!
+
+      tick()
+      await new Promise((resolve) => setTimeout(resolve, 10))
+
+      expect(errorCalls.length).toBe(1)
+      expect(String(errorCalls[0])).toContain("gh timeout on poll")
+
+      errorCalls.length = 0
+      tick()
+      await new Promise((resolve) => setTimeout(resolve, 10))
+      expect(errorCalls.length).toBe(1)
+    } finally {
+      console.error = originalError
+    }
+  })
 })

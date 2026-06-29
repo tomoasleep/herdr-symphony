@@ -117,7 +117,11 @@ export async function startHerdrSymphony(
   for (const runtime of runtimes) {
     runtime.stopPolling = schedule(() => {
       if (!stopped) {
-        void runtime.service.refresh()
+        void runtime.service.refresh().catch((error) => {
+          console.error(
+            `polling refresh failed for ${runtime.workflowName}: ${error instanceof Error ? error.message : String(error)}`,
+          )
+        })
       }
     }, runtime.config.polling.intervalMs)
   }
