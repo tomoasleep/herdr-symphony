@@ -9,6 +9,7 @@ type GraphqlPayload = {
   data?: {
     repositoryOwner?: { projectV2?: unknown } | null
     viewer?: { login?: string | null } | null
+    nodes?: Array<unknown | null> | null
   } | null
   errors?: unknown[]
 }
@@ -39,7 +40,7 @@ type ViewerPayload = {
 
 type GraphqlRunner = (
   query: string,
-  variables: Record<string, string | number>,
+  variables: Record<string, string | number | string[]>,
 ) => Promise<GraphqlPayload>
 
 type ProjectItemNode = {
@@ -83,6 +84,7 @@ type ProjectItemNode = {
       field?: { name?: string }
     }>
   }
+  project?: { url: string }
 }
 
 type ProjectPage = {
@@ -125,7 +127,7 @@ const PROJECT_ITEMS_QUERY = `query($owner:String!,$number:Int!,$after:String){
     ... on User {
       projectV2(number:$number){
         url
-        items(first:50,after:$after){
+        items(first:20,after:$after){
           pageInfo{hasNextPage endCursor}
           nodes{
             id
@@ -174,7 +176,7 @@ const PROJECT_ITEMS_QUERY = `query($owner:String!,$number:Int!,$after:String){
     ... on Organization {
       projectV2(number:$number){
         url
-        items(first:50,after:$after){
+        items(first:20,after:$after){
           pageInfo{hasNextPage endCursor}
           nodes{
             id
@@ -300,6 +302,54 @@ const ISSUE_NODE_QUERY = `query($id:ID!){
   }
 }`
 
+const ITEMS_BY_IDS_QUERY = `query($ids:[ID!]!){
+  nodes(ids:$ids){
+    __typename
+    ... on ProjectV2Item{
+      id
+      databaseId
+      content{
+        __typename
+        ... on DraftIssue{
+          id
+          title
+          body
+        }
+        ... on Issue{
+          id
+          number
+          title
+          body
+          state
+          url
+          createdAt
+          updatedAt
+          repository{nameWithOwner}
+          labels(first:50){nodes{name}}
+          blockedBy(first:50){nodes{id number title state repository{nameWithOwner}}}
+        }
+      }
+      fieldValues(first:20){
+        nodes{
+          ... on ProjectV2ItemFieldSingleSelectValue{
+            name
+            field{... on ProjectV2SingleSelectField{name}}
+          }
+          ... on ProjectV2ItemFieldTextValue{
+            text
+            field{... on ProjectV2FieldCommon{name}}
+          }
+          ... on ProjectV2ItemFieldDateValue{
+            date
+            field{... on ProjectV2FieldCommon{name}}
+          }
+        }
+      }
+      project{url}
+    }
+  }
+}`
+
 export class GitHubProjectClient implements IssueTrackerClient {
   private resolvedOwner: string | null = null
   private readonly runQuery: GraphqlRunner
@@ -362,10 +412,22 @@ export class GitHubProjectClient implements IssueTrackerClient {
       return []
     }
 
-    const idSet = new Set(ids)
     this.debugLog(`tracker fetchIssueStatesByIds start ids=${ids.length}`)
-    const all = await this.fetchAllItems()
-    return all.filter((item) => idSet.has(item.id))
+    const payload = await this.runQuery(ITEMS_BY_IDS_QUERY, { ids })
+    const rawNodes =
+      (payload as { data?: { nodes?: Array<ProjectItemNode | null> | null } | null }).data?.nodes ??
+      []
+    const issues: Issue[] = []
+    for (const node of rawNodes) {
+      if (!node || typeof node !== "object" || !("id" in node)) {
+        continue
+      }
+      const projectUrl = node.project?.url ?? ""
+      issues.push(normalizeProjectItem(node, projectUrl))
+    }
+
+    this.debugLog(`tracker fetchIssueStatesByIds done count=${issues.length}`)
+    return issues
   }
 
   async moveIssueToState(issueId: string, state: string): Promise<void> {
@@ -631,7 +693,7 @@ function normalizePriority(value: string | null): number | null {
 
 async function runGhGraphqlOnce(
   query: string,
-  variables: Record<string, string | number>,
+  variables: Record<string, string | number | string[]>,
   writeLog?: (line: string) => void,
 ): Promise<GraphqlPayload> {
   const args = ["api", "graphql", "-f", `query=${query}`]
@@ -639,7 +701,13 @@ async function runGhGraphqlOnce(
     if (typeof value === "string" && value.length === 0) {
       continue
     }
-    args.push("-F", `${key}=${value}`)
+    if (Array.isArray(value)) {
+      for (const item of value) {
+        args.push("-F", `${key}=${item}`)
+      }
+    } else {
+      args.push("-F", `${key}=${value}`)
+    }
   }
 
   writeLog?.(
@@ -687,7 +755,7 @@ async function runGhGraphqlOnce(
 
 async function runGhGraphql(
   query: string,
-  variables: Record<string, string | number>,
+  variables: Record<string, string | number | string[]>,
   writeLog?: (line: string) => void,
 ): Promise<GraphqlPayload> {
   return withRetry(() => runGhGraphqlOnce(query, variables, writeLog), {

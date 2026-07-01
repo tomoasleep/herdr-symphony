@@ -260,7 +260,7 @@ test("organization owner でも project items を取得できる", async () => {
 })
 
 test("moveIssueToState は Status option を解決して project item を更新する", async () => {
-  const calls: Array<{ query: string; variables: Record<string, string | number> }> = []
+  const calls: Array<{ query: string; variables: Record<string, string | number | string[]> }> = []
   const client = new GitHubProjectClient(
     {
       kind: "github_project",
@@ -392,7 +392,7 @@ test("moveIssueToState は Status option が見つからないと失敗する", 
 })
 
 test("updateItemDescription は Issue を更新する", async () => {
-  const calls: Array<{ query: string; variables: Record<string, string | number> }> = []
+  const calls: Array<{ query: string; variables: Record<string, string | number | string[]> }> = []
   const client = new GitHubProjectClient(
     {
       kind: "github_project",
@@ -461,7 +461,7 @@ test("updateItemDescription は Issue を更新する", async () => {
 })
 
 test("updateItemDescription は DraftIssue を更新する", async () => {
-  const calls: Array<{ query: string; variables: Record<string, string | number> }> = []
+  const calls: Array<{ query: string; variables: Record<string, string | number | string[]> }> = []
   const client = new GitHubProjectClient(
     {
       kind: "github_project",
@@ -530,7 +530,7 @@ test("updateItemDescription は DraftIssue を更新する", async () => {
 })
 
 test("fetchIssueDescription は Issue の最新 body を取得する", async () => {
-  const calls: Array<{ query: string; variables: Record<string, string | number> }> = []
+  const calls: Array<{ query: string; variables: Record<string, string | number | string[]> }> = []
   const client = new GitHubProjectClient(
     {
       kind: "github_project",
@@ -579,7 +579,110 @@ test("fetchIssueDescription は Issue の最新 body を取得する", async () 
   expect(calls[0]?.variables).toEqual({ id: "I_123" })
 })
 
-test("fetchIssueDescription は DraftIssue の最新 body を fetchIssueStatesByIds 経由で取得する", async () => {
+test("fetchIssueStatesByIds は nodes(ids:) クエリで指定 ID だけ取得する", async () => {
+  const calls: Array<{ query: string; variables: Record<string, string | number | string[]> }> = []
+  const client = new GitHubProjectClient(
+    {
+      kind: "github_project",
+      github_project: { owner: "tomoasleep", number: 4 },
+      file: null,
+      schedule: null,
+    },
+    async (query, variables) => {
+      calls.push({ query, variables })
+
+      if (query.includes("nodes(ids:")) {
+        return {
+          data: {
+            nodes: [
+              {
+                id: "PVTI_a",
+                databaseId: 1,
+                content: { __typename: "DraftIssue", id: "DI_a", title: "A", body: null },
+                fieldValues: { nodes: [{ field: { name: "Status" }, name: "In progress" }] },
+                project: { url: "https://github.com/users/tomoasleep/projects/4" },
+              },
+              {
+                id: "PVTI_b",
+                databaseId: 2,
+                content: { __typename: "DraftIssue", id: "DI_b", title: "B", body: null },
+                fieldValues: { nodes: [{ field: { name: "Status" }, name: "Done" }] },
+                project: { url: "https://github.com/users/tomoasleep/projects/4" },
+              },
+            ],
+          },
+        }
+      }
+
+      throw new Error(`unexpected_query:${query}`)
+    },
+  )
+
+  const issues = await client.fetchIssueStatesByIds(["PVTI_a", "PVTI_b"])
+
+  expect(calls).toHaveLength(1)
+  expect(calls[0]?.query).toContain("nodes(ids:")
+  expect(calls[0]?.variables).toEqual({ ids: ["PVTI_a", "PVTI_b"] } as Record<
+    string,
+    string | number | string[]
+  >)
+  expect(issues.map((i) => i.id)).toEqual(["PVTI_a", "PVTI_b"])
+  expect(issues[0]?.state).toBe("In progress")
+  expect(issues[0]?.url).toBe("https://github.com/users/tomoasleep/projects/4?pane=issue&itemId=1")
+})
+
+test("fetchIssueStatesByIds は nodes 戻り値の null をスキップする", async () => {
+  const client = new GitHubProjectClient(
+    {
+      kind: "github_project",
+      github_project: { owner: "tomoasleep", number: 4 },
+      file: null,
+      schedule: null,
+    },
+    async (query) => {
+      if (query.includes("nodes(ids:")) {
+        return {
+          data: {
+            nodes: [
+              null,
+              {
+                id: "PVTI_b",
+                databaseId: 2,
+                content: { __typename: "DraftIssue", id: "DI_b", title: "B", body: null },
+                fieldValues: { nodes: [{ field: { name: "Status" }, name: "Done" }] },
+                project: { url: "https://github.com/users/tomoasleep/projects/4" },
+              },
+            ],
+          },
+        }
+      }
+
+      throw new Error(`unexpected_query:${query}`)
+    },
+  )
+
+  const issues = await client.fetchIssueStatesByIds(["PVTI_missing", "PVTI_b"])
+  expect(issues.map((i) => i.id)).toEqual(["PVTI_b"])
+})
+
+test("fetchIssueStatesByIds は空配列の場合 GraphQL を呼ばない", async () => {
+  const client = new GitHubProjectClient(
+    {
+      kind: "github_project",
+      github_project: { owner: "tomoasleep", number: 4 },
+      file: null,
+      schedule: null,
+    },
+    async () => {
+      throw new Error("should_not_call_graphql")
+    },
+  )
+
+  const issues = await client.fetchIssueStatesByIds([])
+  expect(issues).toEqual([])
+})
+
+test("fetchIssueDescription は DraftIssue の最新 body を nodes クエリ経由で取得する", async () => {
   const client = new GitHubProjectClient(
     {
       kind: "github_project",
@@ -592,33 +695,25 @@ test("fetchIssueDescription は DraftIssue の最新 body を fetchIssueStatesBy
         return { data: { viewer: { login: "tomoasleep" } } }
       }
 
-      if (query.includes("projectV2")) {
+      if (query.includes("nodes(ids:")) {
         return {
           data: {
-            repositoryOwner: {
-              __typename: "User",
-              projectV2: {
-                url: "https://github.com/users/tomoasleep/projects/4",
-                items: {
-                  pageInfo: { hasNextPage: false, endCursor: null },
-                  nodes: [
-                    {
-                      id: "PVTI_123",
-                      databaseId: 77,
-                      content: {
-                        __typename: "DraftIssue",
-                        id: "DI_123",
-                        title: "Draft Task",
-                        body: "Updated draft body",
-                      },
-                      fieldValues: {
-                        nodes: [{ field: { name: "Status" }, name: "Backlog" }],
-                      },
-                    },
-                  ],
+            nodes: [
+              {
+                id: "PVTI_123",
+                databaseId: 77,
+                content: {
+                  __typename: "DraftIssue",
+                  id: "DI_123",
+                  title: "Draft Task",
+                  body: "Updated draft body",
                 },
+                fieldValues: {
+                  nodes: [{ field: { name: "Status" }, name: "Backlog" }],
+                },
+                project: { url: "https://github.com/users/tomoasleep/projects/4" },
               },
-            },
+            ],
           },
         }
       }
