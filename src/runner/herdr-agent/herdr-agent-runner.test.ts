@@ -1,6 +1,10 @@
 import { describe, expect, test } from "bun:test"
+import { mkdirSync, rmSync } from "node:fs"
+import { tmpdir } from "node:os"
+import { join } from "node:path"
 import type { Issue, ServiceConfig } from "../../domain/types"
 import type { HerdrAgentInfo, HerdrClient, HerdrWorkspaceInfo } from "../../herdr/herdr-client"
+import { writeReport } from "../../report/write-report"
 import { HerdrAgentRunner } from "./herdr-agent-runner"
 import type { ReportContext, ReportResolver } from "./report"
 
@@ -69,6 +73,7 @@ function makeMockHerdrClient(opts: {
   agentStarted?: HerdrAgentInfo
   getAgentResult?: HerdrAgentInfo | null | (HerdrAgentInfo | null)[]
   readText?: string
+  onSendKeys?: (target: string, keys: string[]) => void
 }): HerdrClient & {
   startAgentArgs: { name: string; argv: string[] } | null
   sentInputs: { target: string; text: string }[]
@@ -118,6 +123,7 @@ function makeMockHerdrClient(opts: {
     },
     async sendKeys(target, ...keys) {
       sentKeys.push({ target, keys })
+      opts.onSendKeys?.(target, keys)
     },
     async closePane() {},
     get startAgentArgs() {
@@ -138,6 +144,15 @@ function makeMockHerdrClient(opts: {
     sentKeys: { target: string; keys: string[] }[]
     getAgentCallCount: number
   }
+}
+
+function makeReportPath(): { dir: string; path: string } {
+  const dir = join(
+    tmpdir(),
+    `hs-runner-report-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+  )
+  mkdirSync(dir, { recursive: true })
+  return { dir, path: join(dir, "report.json") }
 }
 
 describe("HerdrAgentRunner", () => {
@@ -470,7 +485,7 @@ describe("HerdrAgentRunner", () => {
     expect(result.status).toBe("timeout")
   })
 
-  test("agent が idle に戻った場合は succeeded になる", async () => {
+  test("opencode agent が idle に戻った場合は succeeded になる", async () => {
     const client = makeMockHerdrClient({
       getAgentResult: [
         { name: "TEST-1", state: "working", paneId: "w1:p1", workspaceId: "w1" },
@@ -486,13 +501,175 @@ describe("HerdrAgentRunner", () => {
 
     const result = await runner.runIssue(makeIssue(), {
       content: "Fix the bug",
-      agentKind: "claude",
+      agentKind: "opencode",
       attempt: null,
       workspacePath: "/repo/worktree",
     })
 
     expect(result.status).toBe("succeeded")
     expect(result.responseText).toBe("Done.")
+  })
+
+  test("claude は done report がある場合に succeeded になる", async () => {
+    const report = makeReportPath()
+    try {
+      writeReport(report.path, "done", "実装と検証が完了しました")
+      const client = makeMockHerdrClient({
+        getAgentResult: [
+          { name: "TEST-1", state: "working", paneId: "w1:p1", workspaceId: "w1" },
+          { name: "TEST-1", state: "idle", paneId: "w1:p1", workspaceId: "w1" },
+        ],
+      })
+      const runner = new HerdrAgentRunner(makeConfig(), {
+        herdrClient: client,
+        pollIntervalMs: 10,
+        reportResolver: nullReportResolver(),
+      })
+
+      const result = await runner.runIssue(makeIssue(), {
+        content: "Fix the bug",
+        agentKind: "claude",
+        attempt: null,
+        workspacePath: "/repo/worktree",
+        reportPath: report.path,
+      })
+
+      expect(result.status).toBe("succeeded")
+      expect(result.responseText).toBe("実装と検証が完了しました")
+    } finally {
+      rmSync(report.dir, { recursive: true, force: true })
+    }
+  })
+
+  test("claude は failed report がある場合に failed になる", async () => {
+    const report = makeReportPath()
+    try {
+      writeReport(report.path, "failed", "テストが失敗しました")
+      const client = makeMockHerdrClient({
+        getAgentResult: [
+          { name: "TEST-1", state: "working", paneId: "w1:p1", workspaceId: "w1" },
+          { name: "TEST-1", state: "idle", paneId: "w1:p1", workspaceId: "w1" },
+        ],
+      })
+      const runner = new HerdrAgentRunner(makeConfig(), {
+        herdrClient: client,
+        pollIntervalMs: 10,
+        reportResolver: nullReportResolver(),
+      })
+
+      const result = await runner.runIssue(makeIssue(), {
+        content: "Fix the bug",
+        agentKind: "claude",
+        attempt: null,
+        workspacePath: "/repo/worktree",
+        reportPath: report.path,
+      })
+
+      expect(result.status).toBe("failed")
+      expect(result.error).toBe("テストが失敗しました")
+    } finally {
+      rmSync(report.dir, { recursive: true, force: true })
+    }
+  })
+
+  test("claude は pending report では完了しない", async () => {
+    const report = makeReportPath()
+    try {
+      writeReport(report.path, "pending", "background task 待ち")
+      const client = makeMockHerdrClient({
+        getAgentResult: [
+          { name: "TEST-1", state: "working", paneId: "w1:p1", workspaceId: "w1" },
+          { name: "TEST-1", state: "idle", paneId: "w1:p1", workspaceId: "w1" },
+        ],
+      })
+      const runner = new HerdrAgentRunner(makeConfig(), {
+        herdrClient: client,
+        pollIntervalMs: 10,
+        reportResolver: nullReportResolver(),
+      })
+
+      const result = await runner.runIssue(makeIssue(), {
+        content: "Fix the bug",
+        agentKind: "claude",
+        attempt: null,
+        workspacePath: "/repo/worktree",
+        timeoutMs: 50,
+        reportPath: report.path,
+      })
+
+      expect(result.status).toBe("timeout")
+      expect(client.sentInputs).toHaveLength(0)
+    } finally {
+      rmSync(report.dir, { recursive: true, force: true })
+    }
+  })
+
+  test("claude は idle で report がない場合にリマインドして Enter を送る", async () => {
+    const report = makeReportPath()
+    try {
+      const client = makeMockHerdrClient({
+        getAgentResult: [
+          { name: "TEST-1", state: "working", paneId: "w1:p1", workspaceId: "w1" },
+          { name: "TEST-1", state: "idle", paneId: "w1:p1", workspaceId: "w1" },
+          { name: "TEST-1", state: "working", paneId: "w1:p1", workspaceId: "w1" },
+          { name: "TEST-1", state: "idle", paneId: "w1:p1", workspaceId: "w1" },
+        ],
+        onSendKeys: () => writeReport(report.path, "done", "リマインド後に完了"),
+      })
+      const runner = new HerdrAgentRunner(makeConfig(), {
+        herdrClient: client,
+        pollIntervalMs: 10,
+        reportResolver: nullReportResolver(),
+      })
+
+      const result = await runner.runIssue(makeIssue(), {
+        content: "Fix the bug",
+        agentKind: "claude",
+        attempt: null,
+        workspacePath: "/repo/worktree",
+        reportPath: report.path,
+      })
+
+      expect(result.status).toBe("succeeded")
+      expect(client.sentInputs[0]?.text).toContain("herdr-symphony report --status done")
+      expect(client.sentKeys[0]).toEqual({ target: "w1:p1", keys: ["Enter"] })
+    } finally {
+      rmSync(report.dir, { recursive: true, force: true })
+    }
+  })
+
+  test("claude は agent が null でも report がない場合にリマインドして Enter を送る", async () => {
+    const report = makeReportPath()
+    try {
+      const client = makeMockHerdrClient({
+        getAgentResult: [
+          { name: "TEST-1", state: "working", paneId: "w1:p1", workspaceId: "w1" },
+          null,
+          { name: "TEST-1", state: "working", paneId: "w1:p1", workspaceId: "w1" },
+          { name: "TEST-1", state: "idle", paneId: "w1:p1", workspaceId: "w1" },
+        ],
+        onSendKeys: () => writeReport(report.path, "done", "null 後のリマインドで完了"),
+      })
+      const runner = new HerdrAgentRunner(makeConfig(), {
+        herdrClient: client,
+        pollIntervalMs: 10,
+        reportResolver: nullReportResolver(),
+      })
+
+      const result = await runner.runIssue(makeIssue(), {
+        content: "Fix the bug",
+        agentKind: "claude",
+        attempt: null,
+        workspacePath: "/repo/worktree",
+        reportPath: report.path,
+      })
+
+      expect(result.status).toBe("succeeded")
+      expect(client.sentInputs[0]?.text).toContain("herdr-symphony report --status done")
+      expect(client.sentKeys[0]).toEqual({ target: "w1:p1", keys: ["Enter"] })
+    } finally {
+      rmSync(report.dir, { recursive: true, force: true })
+    }
   })
 
   test("model 未指定時は --model を付けない", async () => {

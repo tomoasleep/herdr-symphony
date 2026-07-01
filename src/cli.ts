@@ -1,5 +1,6 @@
 import path from "node:path"
 import { type StartOptions, startHerdrSymphony } from "./app"
+import { type ReportStatus, writeReport } from "./report/write-report"
 import { formatError } from "./utils/error"
 import { loadWorkflow } from "./workflow/load-workflow"
 
@@ -19,6 +20,24 @@ export async function runCli(argv: string[], deps: CliDependencies = {}): Promis
   const parsed = parseArgs(argv)
   if (parsed.help) {
     write(`${usage()}\n`)
+    return 0
+  }
+
+  if (parsed.report) {
+    if (!parsed.reportSummary) {
+      write("--summary is required\n")
+      return 1
+    }
+    if (!parsed.reportStatus) {
+      write("--status must be one of: done / pending / failed\n")
+      return 1
+    }
+    const reportPath = env.HERDR_SYMPHONY_REPORT_PATH
+    if (!reportPath) {
+      write("HERDR_SYMPHONY_REPORT_PATH is required\n")
+      return 1
+    }
+    writeReport(reportPath, parsed.reportStatus, parsed.reportSummary)
     return 0
   }
 
@@ -63,6 +82,9 @@ export async function runCli(argv: string[], deps: CliDependencies = {}): Promis
 type ParsedArgs = {
   help: boolean
   validate: boolean
+  report: boolean
+  reportStatus: ReportStatus | null
+  reportSummary: string | null
   workflowPaths: string[]
   positionalPaths: string[]
 }
@@ -70,6 +92,9 @@ type ParsedArgs = {
 function parseArgs(argv: string[]): ParsedArgs {
   let help = false
   let validate = false
+  let report = false
+  let reportStatus: ReportStatus | null = null
+  let reportSummary: string | null = null
   const workflowPaths: string[] = []
   const positionalPaths: string[] = []
 
@@ -86,6 +111,39 @@ function parseArgs(argv: string[]): ParsedArgs {
 
     if (arg === "validate") {
       validate = true
+      continue
+    }
+
+    if (arg === "report") {
+      report = true
+      continue
+    }
+
+    if (arg === "--status") {
+      const status = argv[index + 1]
+      if (status === "done" || status === "pending" || status === "failed") {
+        reportStatus = status
+      }
+      index += 1
+      continue
+    }
+
+    if (arg.startsWith("--status=")) {
+      const status = arg.slice("--status=".length)
+      if (status === "done" || status === "pending" || status === "failed") {
+        reportStatus = status
+      }
+      continue
+    }
+
+    if (arg === "--summary") {
+      reportSummary = argv[index + 1] ?? null
+      index += 1
+      continue
+    }
+
+    if (arg.startsWith("--summary=")) {
+      reportSummary = arg.slice("--summary=".length)
       continue
     }
 
@@ -110,7 +168,7 @@ function parseArgs(argv: string[]): ParsedArgs {
     positionalPaths.push(arg)
   }
 
-  return { help, validate, workflowPaths, positionalPaths }
+  return { help, validate, report, reportStatus, reportSummary, workflowPaths, positionalPaths }
 }
 
 function resolveWorkflowPaths(
@@ -141,6 +199,7 @@ function usage(): string {
     "",
     "Commands:",
     "  validate               Validate workflow configuration",
+    "  report                 Write Claude completion report",
     "",
     "Arguments:",
     "  workflow               Path to workflow file (can specify multiple)",

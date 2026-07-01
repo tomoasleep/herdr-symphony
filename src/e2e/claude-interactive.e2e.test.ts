@@ -12,8 +12,10 @@ const { register } = createSessionManager()
 
 const HERDR_AVAILABLE = spawnSync("herdr", ["--version"], { stdio: "ignore" }).status === 0
 const CLAUDE_AVAILABLE = spawnSync("claude", ["--version"], { stdio: "ignore" }).status === 0
+const NESTED_HERDR = Boolean(process.env.HERDR_SOCKET_PATH)
+const RUN_NESTED_E2E = process.env.HERDR_SYMPHONY_RUN_NESTED_E2E === "1"
 
-test.skipIf(!HERDR_AVAILABLE || !CLAUDE_AVAILABLE)(
+test.skipIf(!HERDR_AVAILABLE || !CLAUDE_AVAILABLE || (NESTED_HERDR && !RUN_NESTED_E2E))(
   "e2e: claude 対話モード — herdr agent send で prompt が送られ succeeded になる",
   async () => {
     const projectRoot = path.resolve(import.meta.dir, "../..")
@@ -66,4 +68,57 @@ test.skipIf(!HERDR_AVAILABLE || !CLAUDE_AVAILABLE)(
     }
   },
   120_000,
+)
+
+test.skipIf(!HERDR_AVAILABLE || !CLAUDE_AVAILABLE || (NESTED_HERDR && !RUN_NESTED_E2E))(
+  "e2e: claude report 未送信の idle でリマインドされ、report 後に succeeded になる",
+  async () => {
+    const projectRoot = path.resolve(import.meta.dir, "../..")
+    const fixturePath = path.join(import.meta.dir, "../test-utils/e2e-fixture-claude.ts")
+
+    const herdr = await createHerdrIsolation("e2e-claude-reminder")
+    const isolatedEnv = { ...process.env, ...herdr.env, HERDR_SYMPHONY_E2E_REMINDER: "1" }
+
+    spawnSync("herdr", ["server", "stop"], { env: isolatedEnv, stdio: "ignore" })
+
+    try {
+      const herdrSession = register(
+        await launchTerminal({
+          command: "herdr",
+          args: [],
+          cwd: projectRoot,
+          cols: 160,
+          rows: 40,
+          env: isolatedEnv,
+          waitForDataTimeout: 30_000,
+        }),
+      )
+
+      await herdrSession.waitForText(/spaces|agents/i, { timeout: 15_000 })
+
+      const fixtureSession = register(
+        await launchTerminal({
+          command: process.execPath,
+          args: ["run", fixturePath],
+          cwd: projectRoot,
+          cols: 200,
+          rows: 36,
+          env: isolatedEnv,
+        }),
+      )
+
+      await fixtureSession.waitForText("status=succeeded", { timeout: 120_000 })
+
+      const output = await captureOutput(fixtureSession)
+      expect(output).toContain("claude reminder sent")
+      expect(output).toContain("status=succeeded")
+    } finally {
+      spawnSync("herdr", ["server", "stop"], {
+        env: isolatedEnv,
+        stdio: "ignore",
+      })
+      await herdr.cleanup()
+    }
+  },
+  150_000,
 )

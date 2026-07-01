@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test"
 import { rmSync } from "node:fs"
+import { mkdir } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import type { Issue, ServiceConfig } from "./domain/types"
@@ -83,6 +84,27 @@ function makeMockRunner(result: Partial<RunnerResult> = {}): Runner {
       }
     },
     async cancelRun() {},
+  }
+}
+
+function makeCapturingRunner(result: Partial<RunnerResult> = {}): Runner & {
+  options: RunnerOptions | null
+} {
+  let options: RunnerOptions | null = null
+  return {
+    async runIssue(_issue, receivedOptions: RunnerOptions): Promise<RunnerResult> {
+      options = receivedOptions
+      return {
+        status: "succeeded",
+        error: null,
+        responseText: "Task done",
+        ...result,
+      }
+    },
+    async cancelRun() {},
+    get options() {
+      return options
+    },
   }
 }
 
@@ -252,6 +274,65 @@ describe("SymphonyService", () => {
     await service.waitForDispatches()
 
     expect(logs.some((l) => l.includes("idle"))).toBe(true)
+    service.shutdown()
+  })
+
+  test("claude の場合は reportPath と report 指示を runner に渡す", async () => {
+    const tmpDir = join(tmpdir(), `hs-service-claude-${Date.now()}`)
+    tmpDirs.push(tmpDir)
+    await mkdir(tmpDir, { recursive: true })
+    const issue = makeIssue()
+    const tracker = makeMockTrackerClient([issue])
+    const runner = makeCapturingRunner()
+    const config = makeConfig({
+      herdrAgent: {
+        ...makeConfig().work.herdrAgent,
+        agent: "claude",
+      },
+    })
+
+    const service = new SymphonyService(config, "prompt", {
+      tracker,
+      runner,
+      writeLog: () => {},
+      ensureWorkspace: makeMockWorkspace(tmpDir),
+      claimIssue: () => true,
+      releaseIssue: () => {},
+    })
+
+    await service.refresh()
+    await service.waitForDispatches()
+
+    expect(runner.options?.reportPath).toBe(join(tmpDir, ".herdr-symphony-report.json"))
+    expect(runner.options?.content).toContain("herdr-symphony report --status done")
+    expect(runner.options?.content).toContain("herdr-symphony report --status pending")
+    expect(runner.options?.content).toContain("herdr-symphony report --status failed")
+    service.shutdown()
+  })
+
+  test("opencode の場合は reportPath と report 指示を渡さない", async () => {
+    const tmpDir = join(tmpdir(), `hs-service-opencode-${Date.now()}`)
+    tmpDirs.push(tmpDir)
+    await mkdir(tmpDir, { recursive: true })
+    const issue = makeIssue()
+    const tracker = makeMockTrackerClient([issue])
+    const runner = makeCapturingRunner()
+    const config = makeConfig()
+
+    const service = new SymphonyService(config, "prompt", {
+      tracker,
+      runner,
+      writeLog: () => {},
+      ensureWorkspace: makeMockWorkspace(tmpDir),
+      claimIssue: () => true,
+      releaseIssue: () => {},
+    })
+
+    await service.refresh()
+    await service.waitForDispatches()
+
+    expect(runner.options?.reportPath).toBeUndefined()
+    expect(runner.options?.content).toBe("prompt")
     service.shutdown()
   })
 

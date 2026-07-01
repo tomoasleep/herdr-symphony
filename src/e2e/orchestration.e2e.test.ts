@@ -11,8 +11,10 @@ import {
 const { register } = createSessionManager()
 
 const HERDR_AVAILABLE = spawnSync("herdr", ["--version"], { stdio: "ignore" }).status === 0
+const NESTED_HERDR = Boolean(process.env.HERDR_SOCKET_PATH)
+const RUN_NESTED_E2E = process.env.HERDR_SYMPHONY_RUN_NESTED_E2E === "1"
 
-test.skipIf(!HERDR_AVAILABLE)(
+test.skipIf(!HERDR_AVAILABLE || (NESTED_HERDR && !RUN_NESTED_E2E))(
   "e2e: herdr TUI + service log — agent が herdr 上で実行されて succeeded になる",
   async () => {
     const projectRoot = path.resolve(import.meta.dir, "../..")

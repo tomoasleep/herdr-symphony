@@ -1,3 +1,5 @@
+import { rm } from "node:fs/promises"
+import { join } from "node:path"
 import type { Issue, ResolvedIssueRuntimeConfig, ServiceConfig } from "./domain/types"
 import { OrchestratorState } from "./orchestrator/orchestrator"
 import { createRunner } from "./runner/create-runner"
@@ -12,6 +14,23 @@ import { resolveIssueRuntimeConfig } from "./workflow/render-frontmatter"
 import { renderPrompt } from "./workflow/render-prompt"
 import type { WorkspaceResult } from "./workspace/workspace-manager"
 import { ensureWorkspace, runHook } from "./workspace/workspace-manager"
+
+const CLAUDE_REPORT_INSTRUCTION = [
+  "",
+  "## 完了報告",
+  "",
+  "タスクが完了したら、以下のコマンドを実行してください。",
+  "",
+  '    herdr-symphony report --status done --summary "やった作業の要約"',
+  "",
+  "background task / subagent / task の完了待ちなら、以下のコマンドを実行してください。",
+  "",
+  '    herdr-symphony report --status pending --summary "待機中の内容"',
+  "",
+  "失敗した場合は、以下のコマンドを実行してください。",
+  "",
+  '    herdr-symphony report --status failed --summary "失敗理由"',
+].join("\n")
 
 type ServiceDependencies = {
   tracker?: IssueTrackerClient
@@ -253,7 +272,13 @@ export class SymphonyService {
       }
 
       try {
-        const content = await this.renderPromptFn(this.template, runtimeConfig.issue, null)
+        let content = await this.renderPromptFn(this.template, runtimeConfig.issue, null)
+        let reportPath: string | undefined
+        if (runtimeConfig.runner.agent === "claude") {
+          reportPath = join(workspace.path, ".herdr-symphony-report.json")
+          await rm(reportPath, { force: true })
+          content = `${content}${CLAUDE_REPORT_INSTRUCTION}`
+        }
         const runnerTimeoutMs = runtimeConfig.runner.turnTimeoutMs
         const runnerAgent = runtimeConfig.runner.opencode.agent
         const runnerModel =
@@ -281,6 +306,7 @@ export class SymphonyService {
           onBlocked: runnerOnBlocked,
           timeoutMs: runnerTimeoutMs,
           workflowName: this.workflowName,
+          reportPath,
           onEvent: (event) => {
             this.state.markEvent(issue.id)
             const message = "message" in event ? event.message : event.event

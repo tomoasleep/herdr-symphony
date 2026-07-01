@@ -1,6 +1,7 @@
 import type { Issue, ServiceConfig } from "../../domain/types"
 import type { HerdrAgentState, HerdrClient } from "../../herdr/herdr-client"
 import { createHerdrClient } from "../../herdr/herdr-client"
+import { readReport } from "../../report/write-report"
 import { sanitizeWorkspaceKey } from "../../utils/normalize"
 import type { Runner, RunnerEvent, RunnerOptions, RunnerResult } from "../types"
 import type { ReportResolver } from "./report"
@@ -30,6 +31,8 @@ export function buildAgentName(
 
 const DEFAULT_TIMEOUT_MS = 86_400_000
 const DEFAULT_POLL_INTERVAL_MS = 2_000
+const CLAUDE_REPORT_REMINDER =
+  'タスクは完了しましたか？完了した場合は `herdr-symphony report --status done --summary "やった作業の要約"` を実行してください。まだ background task / subagent / task の完了待ちなら `herdr-symphony report --status pending --summary "待機中の内容"` を実行してください。失敗した場合は `herdr-symphony report --status failed --summary "失敗理由"` を実行してください。'
 
 export class HerdrAgentRunner implements Runner {
   private readonly client: HerdrClient
@@ -65,6 +68,7 @@ export class HerdrAgentRunner implements Runner {
         workspaceId: workspace.id,
         cwd: options.workspacePath,
         argv,
+        env: options.reportPath ? { HERDR_SYMPHONY_REPORT_PATH: options.reportPath } : undefined,
       })
 
       const target = agent.paneId ?? agentName
@@ -80,6 +84,8 @@ export class HerdrAgentRunner implements Runner {
         target,
         timeoutMs,
         options.onBlocked ?? null,
+        options.agentKind,
+        options.reportPath,
       )
 
       if (waitState === null) {
@@ -103,6 +109,24 @@ export class HerdrAgentRunner implements Runner {
         timestamp: new Date().toISOString(),
         state: waitState,
       })
+
+      if (options.reportPath) {
+        const report = readReport(options.reportPath)
+        if (report?.status === "failed") {
+          return {
+            status: "failed",
+            error: report.summary || "reported as failed",
+            responseText: null,
+          }
+        }
+        if (report?.status === "done" && report.summary) {
+          return {
+            status: "succeeded",
+            error: null,
+            responseText: report.summary,
+          }
+        }
+      }
 
       const resolved = await this.reportResolver.resolve({
         workspacePath: options.workspacePath,
@@ -137,6 +161,8 @@ export class HerdrAgentRunner implements Runner {
     target: string,
     timeoutMs: number,
     onBlocked: "continue" | "fail" | null,
+    agentKind: "opencode" | "claude",
+    reportPath: string | undefined,
   ): Promise<HerdrAgentState | null> {
     const deadline = Date.now() + timeoutMs
     let sawActive = false
@@ -147,6 +173,20 @@ export class HerdrAgentRunner implements Runner {
 
       if (info === null) {
         if (sawActive) {
+          if (agentKind === "claude" && reportPath) {
+            const report = readReport(reportPath)
+            if (report?.status === "done" || report?.status === "failed") {
+              return "done"
+            }
+            if (report?.status === "pending") {
+              sawActive = false
+              continue
+            }
+            await this.client.sendInput(target, CLAUDE_REPORT_REMINDER)
+            await this.client.sendKeys(target, "Enter")
+            sawActive = false
+            continue
+          }
           return "done"
         }
         continue
@@ -166,6 +206,20 @@ export class HerdrAgentRunner implements Runner {
 
       if (info.state === "idle") {
         if (sawActive) {
+          if (agentKind === "claude" && reportPath) {
+            const report = readReport(reportPath)
+            if (report?.status === "done" || report?.status === "failed") {
+              return "idle"
+            }
+            if (report?.status === "pending") {
+              sawActive = false
+              continue
+            }
+            await this.client.sendInput(target, CLAUDE_REPORT_REMINDER)
+            await this.client.sendKeys(target, "Enter")
+            sawActive = false
+            continue
+          }
           return "idle"
         }
       }

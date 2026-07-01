@@ -136,6 +136,16 @@ work:
 | `workspace_label` | string (Liquid) | issue.identifier | Herdr workspace の label |
 | `turn_timeout_ms` | number | null (無制限) | Agent 完了待ちタイムアウト |
 
+Claude は Herdr の `idle` だけでは完了扱いにしません。Claude / subagent は以下で状態を報告します。
+
+```bash
+herdr-symphony report --status done --summary "実装とテストが完了しました"
+herdr-symphony report --status pending --summary "background task の完了待ちです"
+herdr-symphony report --status failed --summary "テストが失敗しました"
+```
+
+`done` は成功、`failed` は失敗として完了します。`pending` は待機継続です。Claude が `idle` に戻っても report がない場合、herdr-symphony は Claude に report を促すリマインドを送ります。
+
 ### work.workspace
 
 ```yaml
@@ -163,7 +173,7 @@ workspace:
 4. `herdr workspace create` で Herdr workspace を作成
 5. `herdr agent start` で `opencode run` を Herdr pane 内で起動
    - agent name は `{issue.identifier}-{workflowName}-{timestamp}`（複数 workflow や再実行での name 衝突を回避）
-6. `herdr agent wait --status done` で完了を検知
+6. Agent 完了を検知（opencode は Herdr の状態、claude は `herdr-symphony report`）
 7. セッション履歴から Agent の最終報告を取得（opencode は `opencode export`、claude は `~/.claude/projects` の JSONL。取得失敗時は pane 読み取りにフォールバック）
 8. tracker の Status を success/failure state へ更新
 9. reporter で結果を記録

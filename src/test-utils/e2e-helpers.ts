@@ -74,6 +74,9 @@ export async function createHerdrIsolation(prefix: string): Promise<HerdrIsolati
       "[keys]",
       'prefix = "ctrl+b"',
       "",
+      "[experimental]",
+      "allow_nested = true",
+      "",
     ].join("\n"),
   )
 

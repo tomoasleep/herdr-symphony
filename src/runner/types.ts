@@ -22,6 +22,7 @@ export type RunnerOptions = {
   onBlocked?: "continue" | "fail" | null
   timeoutMs?: number | null
   workflowName?: string
+  reportPath?: string
   onEvent?: (event: RunnerEvent) => void
 }
 
