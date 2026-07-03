@@ -3,12 +3,16 @@ import { mkdir, rm, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { LLMock } from "@copilotkit/aimock"
+import type { AgmsgClient } from "../agmsg/agmsg-client"
+import { formatAgmsgMessage } from "../agmsg/agmsg-message"
 import type { Issue, ResolvedIssueRuntimeConfig, ServiceConfig } from "../domain/types"
 import type { HerdrAgentInfo, HerdrClient, StartAgentOptions } from "../herdr/herdr-client"
 import { createHerdrClient } from "../herdr/herdr-client"
 import { HerdrAgentRunner } from "../runner/herdr-agent/herdr-agent-runner"
 import { SymphonyService } from "../service"
 import type { WorkspaceResult } from "../workspace/workspace-manager"
+
+const ISSUE_ID = "test-issue-claude"
 
 async function main(): Promise<void> {
   const reminderMode = process.env.HERDR_SYMPHONY_E2E_REMINDER === "1"
@@ -23,7 +27,7 @@ async function main(): Promise<void> {
   await rm(trackerDir, { recursive: true, force: true })
   await mkdir(join(trackerDir, "Ready"), { recursive: true })
   await writeFile(
-    join(trackerDir, "Ready", "test-issue-claude.md"),
+    join(trackerDir, "Ready", `${ISSUE_ID}.md`),
     [
       "---",
       `identifier: ${issueIdentifier}`,
@@ -50,9 +54,12 @@ async function main(): Promise<void> {
   }
   const wrappedClient = wrapHerdrClient(baseClient, envVars, reminderMode)
   const herdrClient = wrapForTrustDialog(wrappedClient)
+  const agmsgClient = makeMockAgmsgClient(reminderMode)
   const runner = new HerdrAgentRunner(config, {
     herdrClient,
+    agmsgClient,
     pollIntervalMs: 3_000,
+    now: () => 1_719_662_400_000,
   })
 
   const service = new SymphonyService(config, "Test prompt for {{ issue.identifier }}", {
@@ -100,41 +107,82 @@ async function main(): Promise<void> {
   }
 }
 
+function makeMockAgmsgClient(reminderMode: boolean): AgmsgClient {
+  let reportReady = !reminderMode
+  let taskAckReady = false
+  let runId = ""
+  let toAgent = ""
+  return {
+    async join() {},
+    async setDelivery() {},
+    async send(_team, _from, _to, body) {
+      if (body.includes("herdr-symphony.task")) {
+        const parsed = JSON.parse(body) as { runId?: string; toAgent?: string }
+        runId = parsed.runId ?? ""
+        toAgent = parsed.toAgent ?? ""
+        taskAckReady = true
+      }
+      if (body.includes("herdr-symphony.reminder")) {
+        reportReady = true
+        console.log("agmsg reminder sent")
+      }
+    },
+    async inbox() {
+      if (taskAckReady) {
+        taskAckReady = false
+        const ackBody = formatAgmsgMessage({
+          kind: "herdr-symphony.ack",
+          issueId: ISSUE_ID,
+          runId,
+          toAgent: "herdr-symphony",
+          ackOf: "task",
+        })
+        return `1 new message(s):\n\n [2026-07-03T12:00:00Z] ${toAgent}: ${ackBody}`
+      }
+      if (!reportReady) {
+        return "0 new message(s):\n"
+      }
+      const reportBody = formatAgmsgMessage({
+        kind: "herdr-symphony.report",
+        issueId: ISSUE_ID,
+        runId,
+        toAgent: "herdr-symphony",
+        status: "done",
+        summary: "Task completed successfully.",
+      })
+      return `1 new message(s):\n\n [2026-07-03T12:00:00Z] AGENT: ${reportBody}`
+    },
+  }
+}
+
 function wrapHerdrClient(
   client: HerdrClient,
   env: Record<string, string>,
   reminderMode: boolean,
 ): HerdrClient & { startedPaneId: string | null } {
   let paneId: string | null = null
-  let reportPath: string | null = null
-  let reminderSent = false
   let getAgentCalls = 0
   return {
     ...client,
     startAgent: async (name, opts) => {
-      reportPath = opts.env?.HERDR_SYMPHONY_REPORT_PATH ?? null
-      const agentEnv = { ...opts.env }
-      if (reminderMode) {
-        delete agentEnv.HERDR_SYMPHONY_REPORT_PATH
-      }
-      const info = await client.startAgent(name, { ...opts, env: { ...agentEnv, ...env } })
+      const info = await client.startAgent(name, { ...opts, env: { ...opts.env, ...env } })
       paneId = info.paneId
       return info
     },
     getAgent: async (target) => {
       const info = await client.getAgent(target)
       getAgentCalls += 1
-      if (reminderMode && reportPath) {
-        const base: HerdrAgentInfo = info ?? {
-          name: null,
-          state: "working",
-          paneId,
-          workspaceId: null,
-        }
+      const base: HerdrAgentInfo = info ?? {
+        name: null,
+        state: "working",
+        paneId,
+        workspaceId: null,
+      }
+      if (reminderMode) {
         if (getAgentCalls === 1) {
           return { ...base, state: "working" }
         }
-        if (!reminderSent) {
+        if (getAgentCalls === 2) {
           return { ...base, state: "idle" }
         }
         if (getAgentCalls === 3) {
@@ -142,42 +190,15 @@ function wrapHerdrClient(
         }
         return { ...base, state: "idle" }
       }
-      if (!reminderMode && reportPath) {
-        const base: HerdrAgentInfo = info ?? {
-          name: null,
-          state: "working",
-          paneId,
-          workspaceId: null,
-        }
-        if (getAgentCalls === 1) {
-          return { ...base, state: "working" }
-        }
-        await writeFile(reportPath, reportJson("done", "Task completed successfully."))
-        return { ...base, state: "idle" }
+      if (getAgentCalls === 1) {
+        return { ...base, state: "working" }
       }
-      return info
-    },
-    sendInput: async (target, text) => {
-      await client.sendInput(target, text)
-      if (reminderMode && text.includes("herdr-symphony report --status done")) {
-        reminderSent = true
-        console.log("claude reminder sent")
-      }
-    },
-    sendKeys: async (target, ...keys) => {
-      await client.sendKeys(target, ...keys)
-      if (reminderMode && reminderSent && keys.includes("Enter") && reportPath) {
-        await writeFile(reportPath, reportJson("done", "Task completed after reminder."))
-      }
+      return { ...base, state: "idle" }
     },
     get startedPaneId(): string | null {
       return paneId
     },
   }
-}
-
-function reportJson(status: "done" | "pending" | "failed", summary: string): string {
-  return JSON.stringify({ status, summary, timestamp: new Date().toISOString() })
 }
 
 function wrapForTrustDialog(client: HerdrClient): HerdrClient {

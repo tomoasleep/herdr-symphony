@@ -22,7 +22,13 @@ export type RunnerOptions = {
   onBlocked?: "continue" | "fail" | null
   timeoutMs?: number | null
   workflowName?: string
-  reportPath?: string
+  agmsg?: {
+    team: string
+    orchestratorAgent: string
+    handshakeTimeoutMs?: number
+    ackResendIntervalMs?: number
+    reminderAckDeadlineMs?: number
+  }
   onEvent?: (event: RunnerEvent) => void
 }
 

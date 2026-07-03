@@ -1,10 +1,8 @@
 import { describe, expect, test } from "bun:test"
-import { mkdirSync, rmSync } from "node:fs"
-import { tmpdir } from "node:os"
-import { join } from "node:path"
+import type { AgmsgClient } from "../../agmsg/agmsg-client"
+import { formatAgmsgMessage } from "../../agmsg/agmsg-message"
 import type { Issue, ServiceConfig } from "../../domain/types"
 import type { HerdrAgentInfo, HerdrClient, HerdrWorkspaceInfo } from "../../herdr/herdr-client"
-import { writeReport } from "../../report/write-report"
 import { HerdrAgentRunner } from "./herdr-agent-runner"
 import type { ReportContext, ReportResolver } from "./report"
 
@@ -146,13 +144,92 @@ function makeMockHerdrClient(opts: {
   }
 }
 
-function makeReportPath(): { dir: string; path: string } {
-  const dir = join(
-    tmpdir(),
-    `hs-runner-report-${Date.now()}-${Math.random().toString(36).slice(2)}`,
-  )
-  mkdirSync(dir, { recursive: true })
-  return { dir, path: join(dir, "report.json") }
+function makeMockAgmsgClient(opts: {
+  inboxReport?: { status: "done" | "pending" | "failed"; summary: string; issueId?: string } | null
+  inboxResponses?: string[]
+  noTaskAck?: boolean
+  onSend?: (team: string, from: string, to: string, body: string) => void
+}): AgmsgClient & {
+  joinCalls: { team: string; agent: string; type: string; projectPath: string }[]
+  deliveryCalls: { mode: string; type: string; projectPath: string }[]
+  sendCalls: { team: string; from: string; to: string; body: string }[]
+  setInboxResponse: (response: string | null) => void
+} {
+  const joinCalls: { team: string; agent: string; type: string; projectPath: string }[] = []
+  const deliveryCalls: { mode: string; type: string; projectPath: string }[] = []
+  const sendCalls: { team: string; from: string; to: string; body: string }[] = []
+  let inboxResponse: string | null = null
+  const taskAck = formatAgmsgMessage({
+    kind: "herdr-symphony.ack",
+    issueId: "issue-1",
+    runId: "TEST-1-ly02lc00",
+    toAgent: "herdr-symphony",
+    ackOf: "task",
+  })
+  const inboxResponses = [...(opts.inboxResponses ?? [])]
+  if (!opts.noTaskAck && opts.inboxResponses === undefined) {
+    inboxResponses.push(`1 new message(s):\n\n [ts] AGENT: ${taskAck}`)
+  }
+
+  function buildInboxOutput(report: {
+    status: "done" | "pending" | "failed"
+    summary: string
+    issueId?: string
+  }): string {
+    const body = formatAgmsgMessage({
+      kind: "herdr-symphony.report",
+      issueId: report.issueId ?? "issue-1",
+      runId: "TEST-1-ly02lc00",
+      toAgent: "herdr-symphony",
+      status: report.status,
+      summary: report.summary,
+    })
+    return `1 new message(s):\n\n [2026-07-03T12:00:00Z] AGENT: ${body}`
+  }
+
+  if (opts.inboxReport !== undefined && opts.inboxReport !== null) {
+    if (opts.inboxResponses === undefined) {
+      inboxResponses.push(buildInboxOutput(opts.inboxReport))
+    } else {
+      inboxResponse = buildInboxOutput(opts.inboxReport)
+    }
+  }
+
+  return {
+    async join(team, agent, type, projectPath) {
+      joinCalls.push({ team, agent, type, projectPath })
+    },
+    async setDelivery(mode, type, projectPath) {
+      deliveryCalls.push({ mode, type, projectPath })
+    },
+    async send(team, from, to, body) {
+      sendCalls.push({ team, from, to, body })
+      opts.onSend?.(team, from, to, body)
+    },
+    async inbox() {
+      if (inboxResponses.length > 0) {
+        return inboxResponses.shift() ?? "0 new message(s):\n"
+      }
+      return inboxResponse ?? "0 new message(s):\n"
+    },
+    get joinCalls() {
+      return joinCalls
+    },
+    get deliveryCalls() {
+      return deliveryCalls
+    },
+    get sendCalls() {
+      return sendCalls
+    },
+    setInboxResponse(response: string | null) {
+      inboxResponse = response
+    },
+  } as AgmsgClient & {
+    joinCalls: { team: string; agent: string; type: string; projectPath: string }[]
+    deliveryCalls: { mode: string; type: string; projectPath: string }[]
+    sendCalls: { team: string; from: string; to: string; body: string }[]
+    setInboxResponse: (response: string | null) => void
+  }
 }
 
 describe("HerdrAgentRunner", () => {
@@ -511,165 +588,379 @@ describe("HerdrAgentRunner", () => {
   })
 
   test("claude は done report がある場合に succeeded になる", async () => {
-    const report = makeReportPath()
-    try {
-      writeReport(report.path, "done", "実装と検証が完了しました")
-      const client = makeMockHerdrClient({
-        getAgentResult: [
-          { name: "TEST-1", state: "working", paneId: "w1:p1", workspaceId: "w1" },
-          { name: "TEST-1", state: "idle", paneId: "w1:p1", workspaceId: "w1" },
-        ],
-      })
-      const runner = new HerdrAgentRunner(makeConfig(), {
-        herdrClient: client,
-        pollIntervalMs: 10,
-        reportResolver: nullReportResolver(),
-      })
+    const agmsg = makeMockAgmsgClient({
+      inboxReport: { status: "done", summary: "実装と検証が完了しました" },
+    })
+    const client = makeMockHerdrClient({
+      getAgentResult: [
+        { name: "TEST-1", state: "working", paneId: "w1:p1", workspaceId: "w1" },
+        { name: "TEST-1", state: "idle", paneId: "w1:p1", workspaceId: "w1" },
+      ],
+    })
+    const runner = new HerdrAgentRunner(makeConfig(), {
+      herdrClient: client,
+      agmsgClient: agmsg,
+      pollIntervalMs: 10,
+      reportResolver: nullReportResolver(),
+      now: () => 1_719_662_400_000,
+    })
 
-      const result = await runner.runIssue(makeIssue(), {
-        content: "Fix the bug",
-        agentKind: "claude",
-        attempt: null,
-        workspacePath: "/repo/worktree",
-        reportPath: report.path,
-      })
+    const result = await runner.runIssue(makeIssue(), {
+      content: "Fix the bug",
+      agentKind: "claude",
+      attempt: null,
+      workspacePath: "/repo/worktree",
+      agmsg: { team: "herdr-symphony", orchestratorAgent: "herdr-symphony" },
+    })
 
-      expect(result.status).toBe("succeeded")
-      expect(result.responseText).toBe("実装と検証が完了しました")
-    } finally {
-      rmSync(report.dir, { recursive: true, force: true })
-    }
+    expect(result.status).toBe("succeeded")
+    expect(result.responseText).toBe("実装と検証が完了しました")
   })
 
   test("claude は failed report がある場合に failed になる", async () => {
-    const report = makeReportPath()
-    try {
-      writeReport(report.path, "failed", "テストが失敗しました")
-      const client = makeMockHerdrClient({
-        getAgentResult: [
-          { name: "TEST-1", state: "working", paneId: "w1:p1", workspaceId: "w1" },
-          { name: "TEST-1", state: "idle", paneId: "w1:p1", workspaceId: "w1" },
-        ],
-      })
-      const runner = new HerdrAgentRunner(makeConfig(), {
-        herdrClient: client,
-        pollIntervalMs: 10,
-        reportResolver: nullReportResolver(),
-      })
+    const agmsg = makeMockAgmsgClient({
+      inboxReport: { status: "failed", summary: "テストが失敗しました" },
+    })
+    const client = makeMockHerdrClient({
+      getAgentResult: [
+        { name: "TEST-1", state: "working", paneId: "w1:p1", workspaceId: "w1" },
+        { name: "TEST-1", state: "idle", paneId: "w1:p1", workspaceId: "w1" },
+      ],
+    })
+    const runner = new HerdrAgentRunner(makeConfig(), {
+      herdrClient: client,
+      agmsgClient: agmsg,
+      pollIntervalMs: 10,
+      reportResolver: nullReportResolver(),
+      now: () => 1_719_662_400_000,
+    })
 
-      const result = await runner.runIssue(makeIssue(), {
-        content: "Fix the bug",
-        agentKind: "claude",
-        attempt: null,
-        workspacePath: "/repo/worktree",
-        reportPath: report.path,
-      })
+    const result = await runner.runIssue(makeIssue(), {
+      content: "Fix the bug",
+      agentKind: "claude",
+      attempt: null,
+      workspacePath: "/repo/worktree",
+      agmsg: { team: "herdr-symphony", orchestratorAgent: "herdr-symphony" },
+    })
 
-      expect(result.status).toBe("failed")
-      expect(result.error).toBe("テストが失敗しました")
-    } finally {
-      rmSync(report.dir, { recursive: true, force: true })
-    }
+    expect(result.status).toBe("failed")
+    expect(result.error).toBe("テストが失敗しました")
   })
 
   test("claude は pending report では完了しない", async () => {
-    const report = makeReportPath()
-    try {
-      writeReport(report.path, "pending", "background task 待ち")
-      const client = makeMockHerdrClient({
-        getAgentResult: [
-          { name: "TEST-1", state: "working", paneId: "w1:p1", workspaceId: "w1" },
-          { name: "TEST-1", state: "idle", paneId: "w1:p1", workspaceId: "w1" },
-        ],
-      })
-      const runner = new HerdrAgentRunner(makeConfig(), {
-        herdrClient: client,
-        pollIntervalMs: 10,
-        reportResolver: nullReportResolver(),
-      })
+    const ack = formatAgmsgMessage({
+      kind: "herdr-symphony.ack",
+      issueId: "issue-1",
+      runId: "TEST-1-ly02lc00",
+      toAgent: "herdr-symphony",
+      ackOf: "task",
+    })
+    const pending = formatAgmsgMessage({
+      kind: "herdr-symphony.report",
+      issueId: "issue-1",
+      runId: "TEST-1-ly02lc00",
+      toAgent: "herdr-symphony",
+      status: "pending",
+      summary: "background task 待ち",
+    })
+    const done = formatAgmsgMessage({
+      kind: "herdr-symphony.report",
+      issueId: "issue-1",
+      runId: "TEST-1-ly02lc00",
+      toAgent: "herdr-symphony",
+      status: "done",
+      summary: "完了",
+    })
+    const agmsg = makeMockAgmsgClient({
+      inboxResponses: [
+        `1 new message(s):\n\n [ts] AGENT: ${ack}`,
+        `2 new message(s):\n\n [ts] AGENT: ${pending}\n [ts] AGENT: ${done}`,
+      ],
+    })
+    const client = makeMockHerdrClient({
+      getAgentResult: [
+        { name: "TEST-1", state: "working", paneId: "w1:p1", workspaceId: "w1" },
+        { name: "TEST-1", state: "idle", paneId: "w1:p1", workspaceId: "w1" },
+      ],
+    })
+    const runner = new HerdrAgentRunner(makeConfig(), {
+      herdrClient: client,
+      agmsgClient: agmsg,
+      pollIntervalMs: 1,
+      reportResolver: nullReportResolver(),
+      now: () => 1_719_662_400_000,
+    })
 
-      const result = await runner.runIssue(makeIssue(), {
-        content: "Fix the bug",
-        agentKind: "claude",
-        attempt: null,
-        workspacePath: "/repo/worktree",
-        timeoutMs: 50,
-        reportPath: report.path,
-      })
+    const result = await runner.runIssue(makeIssue(), {
+      content: "Fix the bug",
+      agentKind: "claude",
+      attempt: null,
+      workspacePath: "/repo/worktree",
+      timeoutMs: 200,
+      agmsg: { team: "herdr-symphony", orchestratorAgent: "herdr-symphony" },
+    })
 
-      expect(result.status).toBe("timeout")
-      expect(client.sentInputs).toHaveLength(0)
-    } finally {
-      rmSync(report.dir, { recursive: true, force: true })
-    }
+    expect(result.status).toBe("succeeded")
+    expect(result.responseText).toBe("完了")
+    expect(agmsg.sendCalls).toHaveLength(1)
+    expect(agmsg.sendCalls[0]?.body).toContain("herdr-symphony.task")
   })
 
-  test("claude は idle で report がない場合にリマインドして Enter を送る", async () => {
-    const report = makeReportPath()
-    try {
-      const client = makeMockHerdrClient({
-        getAgentResult: [
-          { name: "TEST-1", state: "working", paneId: "w1:p1", workspaceId: "w1" },
-          { name: "TEST-1", state: "idle", paneId: "w1:p1", workspaceId: "w1" },
-          { name: "TEST-1", state: "working", paneId: "w1:p1", workspaceId: "w1" },
-          { name: "TEST-1", state: "idle", paneId: "w1:p1", workspaceId: "w1" },
-        ],
-        onSendKeys: () => writeReport(report.path, "done", "リマインド後に完了"),
-      })
-      const runner = new HerdrAgentRunner(makeConfig(), {
-        herdrClient: client,
-        pollIntervalMs: 10,
-        reportResolver: nullReportResolver(),
-      })
+  test("claude は idle で report がない場合に agmsg で reminder を送る", async () => {
+    let reminderSent = false
+    const agmsg = makeMockAgmsgClient({
+      inboxReport: null,
+      onSend: (_team, _from, _to, body) => {
+        if (!reminderSent && body.includes("herdr-symphony.reminder")) {
+          reminderSent = true
+          agmsg.setInboxResponse(
+            `1 new message(s):\n\n [ts] AGENT: ${formatAgmsgMessage({
+              kind: "herdr-symphony.report",
+              issueId: "issue-1",
+              runId: "TEST-1-ly02lc00",
+              toAgent: "herdr-symphony",
+              status: "done",
+              summary: "リマインド後に完了",
+            })}`,
+          )
+        }
+      },
+    })
+    const client = makeMockHerdrClient({
+      getAgentResult: [
+        { name: "TEST-1", state: "working", paneId: "w1:p1", workspaceId: "w1" },
+        { name: "TEST-1", state: "idle", paneId: "w1:p1", workspaceId: "w1" },
+        { name: "TEST-1", state: "working", paneId: "w1:p1", workspaceId: "w1" },
+        { name: "TEST-1", state: "idle", paneId: "w1:p1", workspaceId: "w1" },
+      ],
+    })
+    const runner = new HerdrAgentRunner(makeConfig(), {
+      herdrClient: client,
+      agmsgClient: agmsg,
+      pollIntervalMs: 10,
+      reportResolver: nullReportResolver(),
+      now: () => 1_719_662_400_000,
+    })
 
-      const result = await runner.runIssue(makeIssue(), {
-        content: "Fix the bug",
-        agentKind: "claude",
-        attempt: null,
-        workspacePath: "/repo/worktree",
-        reportPath: report.path,
-      })
+    const result = await runner.runIssue(makeIssue(), {
+      content: "Fix the bug",
+      agentKind: "claude",
+      attempt: null,
+      workspacePath: "/repo/worktree",
+      agmsg: { team: "herdr-symphony", orchestratorAgent: "herdr-symphony" },
+    })
 
-      expect(result.status).toBe("succeeded")
-      expect(client.sentInputs[0]?.text).toContain("herdr-symphony report --status done")
-      expect(client.sentKeys[0]).toEqual({ target: "w1:p1", keys: ["Enter"] })
-    } finally {
-      rmSync(report.dir, { recursive: true, force: true })
-    }
+    expect(result.status).toBe("succeeded")
+    expect(agmsg.sendCalls.length).toBeGreaterThanOrEqual(1)
+    expect(agmsg.sendCalls.some((call) => call.body.includes("herdr-symphony.reminder"))).toBe(true)
+    expect(client.sentInputs).toHaveLength(0)
+    expect(client.sentKeys).toHaveLength(0)
   })
 
-  test("claude は agent が null でも report がない場合にリマインドして Enter を送る", async () => {
-    const report = makeReportPath()
-    try {
-      const client = makeMockHerdrClient({
-        getAgentResult: [
-          { name: "TEST-1", state: "working", paneId: "w1:p1", workspaceId: "w1" },
-          null,
-          { name: "TEST-1", state: "working", paneId: "w1:p1", workspaceId: "w1" },
-          { name: "TEST-1", state: "idle", paneId: "w1:p1", workspaceId: "w1" },
-        ],
-        onSendKeys: () => writeReport(report.path, "done", "null 後のリマインドで完了"),
-      })
-      const runner = new HerdrAgentRunner(makeConfig(), {
-        herdrClient: client,
-        pollIntervalMs: 10,
-        reportResolver: nullReportResolver(),
-      })
+  test("claude は agent が null でも sawActive 後なら inbox 確認と reminder 送信を行う", async () => {
+    let reminderSent = false
+    const agmsg = makeMockAgmsgClient({
+      inboxReport: null,
+      onSend: (_team, _from, _to, body) => {
+        if (!reminderSent && body.includes("herdr-symphony.reminder")) {
+          reminderSent = true
+          agmsg.setInboxResponse(
+            `1 new message(s):\n\n [ts] AGENT: ${formatAgmsgMessage({
+              kind: "herdr-symphony.report",
+              issueId: "issue-1",
+              runId: "TEST-1-ly02lc00",
+              toAgent: "herdr-symphony",
+              status: "done",
+              summary: "null 後のリマインドで完了",
+            })}`,
+          )
+        }
+      },
+    })
+    const client = makeMockHerdrClient({
+      getAgentResult: [
+        { name: "TEST-1", state: "working", paneId: "w1:p1", workspaceId: "w1" },
+        null,
+        { name: "TEST-1", state: "working", paneId: "w1:p1", workspaceId: "w1" },
+        { name: "TEST-1", state: "idle", paneId: "w1:p1", workspaceId: "w1" },
+      ],
+    })
+    const runner = new HerdrAgentRunner(makeConfig(), {
+      herdrClient: client,
+      agmsgClient: agmsg,
+      pollIntervalMs: 10,
+      reportResolver: nullReportResolver(),
+      now: () => 1_719_662_400_000,
+    })
 
-      const result = await runner.runIssue(makeIssue(), {
-        content: "Fix the bug",
-        agentKind: "claude",
-        attempt: null,
-        workspacePath: "/repo/worktree",
-        reportPath: report.path,
-      })
+    const result = await runner.runIssue(makeIssue(), {
+      content: "Fix the bug",
+      agentKind: "claude",
+      attempt: null,
+      workspacePath: "/repo/worktree",
+      agmsg: { team: "herdr-symphony", orchestratorAgent: "herdr-symphony" },
+    })
 
-      expect(result.status).toBe("succeeded")
-      expect(client.sentInputs[0]?.text).toContain("herdr-symphony report --status done")
-      expect(client.sentKeys[0]).toEqual({ target: "w1:p1", keys: ["Enter"] })
-    } finally {
-      rmSync(report.dir, { recursive: true, force: true })
-    }
+    expect(result.status).toBe("succeeded")
+    expect(agmsg.sendCalls.length).toBeGreaterThanOrEqual(1)
+  })
+
+  test("claude 起動前に orchestrator と Claude agent が join される", async () => {
+    const agmsg = makeMockAgmsgClient({ inboxReport: null })
+    const client = makeMockHerdrClient({})
+    const runner = new HerdrAgentRunner(makeConfig(), {
+      herdrClient: client,
+      agmsgClient: agmsg,
+      pollIntervalMs: 10,
+      reportResolver: nullReportResolver(),
+      now: () => 1_719_662_400_000,
+    })
+
+    await runner.runIssue(makeIssue(), {
+      content: "Fix the bug",
+      agentKind: "claude",
+      attempt: null,
+      workspacePath: "/repo/worktree",
+      timeoutMs: 50,
+      agmsg: { team: "herdr-symphony", orchestratorAgent: "herdr-symphony" },
+    })
+
+    const agents = agmsg.joinCalls.map((c) => c.agent)
+    expect(agents).toContain("herdr-symphony")
+    expect(agents).toContain("TEST-1-ly02lc00")
+    expect(agmsg.joinCalls.every((c) => c.team === "herdr-symphony-TEST-1-ly02lc00")).toBe(true)
+  })
+
+  test("Claude delivery が monitor に設定される", async () => {
+    const agmsg = makeMockAgmsgClient({ inboxReport: null })
+    const client = makeMockHerdrClient({})
+    const runner = new HerdrAgentRunner(makeConfig(), {
+      herdrClient: client,
+      agmsgClient: agmsg,
+      pollIntervalMs: 10,
+      reportResolver: nullReportResolver(),
+      now: () => 1_719_662_400_000,
+    })
+
+    await runner.runIssue(makeIssue(), {
+      content: "Fix the bug",
+      agentKind: "claude",
+      attempt: null,
+      workspacePath: "/repo/worktree",
+      timeoutMs: 50,
+      agmsg: { team: "herdr-symphony", orchestratorAgent: "herdr-symphony" },
+    })
+
+    expect(agmsg.deliveryCalls).toHaveLength(1)
+    expect(agmsg.deliveryCalls[0]?.mode).toBe("monitor")
+    expect(agmsg.deliveryCalls[0]?.type).toBe("claude-code")
+  })
+
+  test("Claude の argv には bootstrap prompt が渡り実タスクは agmsg task で送られる", async () => {
+    const ack = formatAgmsgMessage({
+      kind: "herdr-symphony.ack",
+      issueId: "issue-1",
+      runId: "TEST-1-ly02lc00",
+      toAgent: "herdr-symphony",
+      ackOf: "task",
+    })
+    const agmsg = makeMockAgmsgClient({
+      inboxResponses: [`1 new message(s):\n\n [ts] AGENT: ${ack}`],
+    })
+    const client = makeMockHerdrClient({})
+    const runner = new HerdrAgentRunner(makeConfig(), {
+      herdrClient: client,
+      agmsgClient: agmsg,
+      pollIntervalMs: 10,
+      reportResolver: nullReportResolver(),
+      now: () => 1_719_662_400_000,
+    })
+
+    await runner.runIssue(makeIssue({ id: "issue-1" }), {
+      content: "Fix the bug",
+      agentKind: "claude",
+      attempt: null,
+      workspacePath: "/repo/worktree",
+      timeoutMs: 50,
+      agmsg: {
+        team: "herdr-symphony-TEST-1-ly02lc00",
+        orchestratorAgent: "herdr-symphony",
+      },
+    })
+
+    const args = client.startAgentArgs
+    expect(args?.argv[args.argv.length - 1]).toContain("実タスクは agmsg で届きます")
+    expect(args?.argv[args.argv.length - 1]).toContain("actas-claim.sh")
+    expect(args?.argv[args.argv.length - 1]).not.toBe("Fix the bug")
+    expect(agmsg.sendCalls[0]?.team).toBe("herdr-symphony-TEST-1-ly02lc00")
+    expect(agmsg.sendCalls[0]?.to).toBe("TEST-1-ly02lc00")
+    expect(JSON.parse(agmsg.sendCalls[0]?.body ?? "{}")).toMatchObject({
+      kind: "herdr-symphony.task",
+      runId: "TEST-1-ly02lc00",
+      toAgent: "TEST-1-ly02lc00",
+      issueId: "issue-1",
+      prompt: "Fix the bug",
+    })
+  })
+
+  test("Claude は task ack が返らない場合に task を再送し handshake timeout で failed になる", async () => {
+    const agmsg = makeMockAgmsgClient({ inboxResponses: [], noTaskAck: true })
+    const client = makeMockHerdrClient({})
+    const runner = new HerdrAgentRunner(makeConfig(), {
+      herdrClient: client,
+      agmsgClient: agmsg,
+      pollIntervalMs: 10,
+      reportResolver: nullReportResolver(),
+      now: () => 1_719_662_400_000,
+    })
+
+    const result = await runner.runIssue(makeIssue({ id: "issue-1" }), {
+      content: "Fix the bug",
+      agentKind: "claude",
+      attempt: null,
+      workspacePath: "/repo/worktree",
+      timeoutMs: 500,
+      agmsg: {
+        team: "herdr-symphony-TEST-1-ly02lc00",
+        orchestratorAgent: "herdr-symphony",
+        handshakeTimeoutMs: 30,
+        ackResendIntervalMs: 10,
+      },
+    })
+
+    expect(result.status).toBe("failed")
+    expect(result.error).toContain("agmsg delivery handshake timed out")
+    expect(agmsg.sendCalls.length).toBeGreaterThanOrEqual(2)
+  })
+
+  test("opencode は agmsg を使わず従来通り", async () => {
+    const agmsg = makeMockAgmsgClient({ inboxReport: null })
+    const client = makeMockHerdrClient({
+      getAgentResult: [
+        { name: "TEST-1", state: "working", paneId: "w1:p1", workspaceId: "w1" },
+        { name: "TEST-1", state: "idle", paneId: "w1:p1", workspaceId: "w1" },
+      ],
+      readText: "Done.",
+    })
+    const runner = new HerdrAgentRunner(makeConfig(), {
+      herdrClient: client,
+      agmsgClient: agmsg,
+      pollIntervalMs: 10,
+      reportResolver: nullReportResolver(),
+    })
+
+    const result = await runner.runIssue(makeIssue(), {
+      content: "Fix the bug",
+      agentKind: "opencode",
+      attempt: null,
+      workspacePath: "/repo/worktree",
+      agmsg: { team: "herdr-symphony", orchestratorAgent: "herdr-symphony" },
+    })
+
+    expect(result.status).toBe("succeeded")
+    expect(agmsg.joinCalls).toHaveLength(0)
+    expect(agmsg.deliveryCalls).toHaveLength(0)
+    expect(agmsg.sendCalls).toHaveLength(0)
   })
 
   test("model 未指定時は --model を付けない", async () => {

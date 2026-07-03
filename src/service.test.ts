@@ -277,7 +277,7 @@ describe("SymphonyService", () => {
     service.shutdown()
   })
 
-  test("claude の場合は reportPath と report 指示を runner に渡す", async () => {
+  test("claude の場合は agmsg option を runner に渡す", async () => {
     const tmpDir = join(tmpdir(), `hs-service-claude-${Date.now()}`)
     tmpDirs.push(tmpDir)
     await mkdir(tmpDir, { recursive: true })
@@ -303,14 +303,14 @@ describe("SymphonyService", () => {
     await service.refresh()
     await service.waitForDispatches()
 
-    expect(runner.options?.reportPath).toBe(join(tmpDir, ".herdr-symphony-report.json"))
-    expect(runner.options?.content).toContain("herdr-symphony report --status done")
-    expect(runner.options?.content).toContain("herdr-symphony report --status pending")
-    expect(runner.options?.content).toContain("herdr-symphony report --status failed")
+    expect(runner.options?.agmsg).toEqual({
+      team: "herdr-symphony",
+      orchestratorAgent: "herdr-symphony",
+    })
     service.shutdown()
   })
 
-  test("opencode の場合は reportPath と report 指示を渡さない", async () => {
+  test("opencode の場合は agmsg option を渡さない", async () => {
     const tmpDir = join(tmpdir(), `hs-service-opencode-${Date.now()}`)
     tmpDirs.push(tmpDir)
     await mkdir(tmpDir, { recursive: true })
@@ -331,7 +331,7 @@ describe("SymphonyService", () => {
     await service.refresh()
     await service.waitForDispatches()
 
-    expect(runner.options?.reportPath).toBeUndefined()
+    expect(runner.options?.agmsg).toBeUndefined()
     expect(runner.options?.content).toBe("prompt")
     service.shutdown()
   })

@@ -136,15 +136,17 @@ work:
 | `workspace_label` | string (Liquid) | issue.identifier | Herdr workspace の label |
 | `turn_timeout_ms` | number | null (無制限) | Agent 完了待ちタイムアウト |
 
-Claude は Herdr の `idle` だけでは完了扱いにしません。Claude / subagent は以下で状態を報告します。
+Claude は Herdr の `idle` だけでは完了扱いにしません。Claude には argv で bootstrap prompt だけを渡し、実タスクは [agmsg](https://github.com/fujibee/agmsg) 経由の `herdr-symphony.task` JSON メッセージとして送信します。
 
-```bash
-herdr-symphony report --status done --summary "実装とテストが完了しました"
-herdr-symphony report --status pending --summary "background task の完了待ちです"
-herdr-symphony report --status failed --summary "テストが失敗しました"
+```json
+{"kind":"herdr-symphony.task","runId":"<agentName>","toAgent":"<agentName>","issueId":"<issueId>","prompt":"..."}
 ```
 
-`done` は成功、`failed` は失敗として完了します。`pending` は待機継続です。Claude が `idle` に戻っても report がない場合、herdr-symphony は Claude に report を促すリマインドを送ります。
+Claude は task を受け取ると `herdr-symphony.ack` (`ackOf=task`) を返します。ack が 180 秒以内に返らない場合は、agmsg monitor 配信未確立として失敗扱いにします。
+
+完了時は Claude が `herdr-symphony.report` を送ります。`done` は成功、`failed` は失敗として完了します。`pending` は待機継続です。Claude が `idle` に戻っても report がない場合、herdr-symphony は agmsg で Claude に report を促すリマインドを送り、Claude は `ackOf=reminder` を返します。
+
+agmsg が必要です（`~/.agents/skills/agmsg/scripts/send.sh` が存在すること）。未インストール時は Claude runner が明確なエラーを返します。
 
 ### work.workspace
 
@@ -171,11 +173,12 @@ workspace:
 2. orchestrator が dispatchable な Issue を選出
 3. `gwq add` で worktree を作成
 4. `herdr workspace create` で Herdr workspace を作成
-5. `herdr agent start` で `opencode run` を Herdr pane 内で起動
+5. `herdr agent start` で `opencode run` または Claude bootstrap prompt を Herdr pane 内で起動
    - agent name は `{issue.identifier}-{workflowName}-{timestamp}`（複数 workflow や再実行での name 衝突を回避）
-6. Agent 完了を検知（opencode は Herdr の状態、claude は `herdr-symphony report`）
-7. セッション履歴から Agent の最終報告を取得（opencode は `opencode export`、claude は `~/.claude/projects` の JSONL。取得失敗時は pane 読み取りにフォールバック）
-8. tracker の Status を success/failure state へ更新
-9. reporter で結果を記録
+6. Claude の場合は agmsg で `herdr-symphony.task` を送り、`ackOf=task` を待つ
+7. Agent 完了を検知（opencode は Herdr の状態、claude は agmsg の `herdr-symphony.report`）
+8. セッション履歴から Agent の最終報告を取得（opencode は `opencode export`、claude は agmsg report。取得失敗時は pane 読み取りにフォールバック）
+9. tracker の Status を success/failure state へ更新
+10. reporter で結果を記録
 
 Agent の実行状況は Herdr のサイドバーで確認できる。

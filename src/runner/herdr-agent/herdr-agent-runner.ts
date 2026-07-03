@@ -1,7 +1,10 @@
+import type { AgmsgClient } from "../../agmsg/agmsg-client"
+import { createAgmsgClient, getAgmsgScriptsDir, isAgmsgAvailable } from "../../agmsg/agmsg-client"
+import type { AgentReportMessage } from "../../agmsg/agmsg-message"
+import { formatAgmsgMessage, parseInboxForMessages } from "../../agmsg/agmsg-message"
 import type { Issue, ServiceConfig } from "../../domain/types"
 import type { HerdrAgentState, HerdrClient } from "../../herdr/herdr-client"
 import { createHerdrClient } from "../../herdr/herdr-client"
-import { readReport } from "../../report/write-report"
 import { sanitizeWorkspaceKey } from "../../utils/normalize"
 import type { Runner, RunnerEvent, RunnerOptions, RunnerResult } from "../types"
 import type { ReportResolver } from "./report"
@@ -9,6 +12,7 @@ import { createReportResolver } from "./report"
 
 export type HerdrAgentRunnerDeps = {
   herdrClient?: HerdrClient
+  agmsgClient?: AgmsgClient
   pollIntervalMs?: number
   reportResolver?: ReportResolver
   logger?: (msg: string) => void
@@ -31,11 +35,87 @@ export function buildAgentName(
 
 const DEFAULT_TIMEOUT_MS = 86_400_000
 const DEFAULT_POLL_INTERVAL_MS = 2_000
-const CLAUDE_REPORT_REMINDER =
-  'タスクは完了しましたか？完了した場合は `herdr-symphony report --status done --summary "やった作業の要約"` を実行してください。まだ background task / subagent / task の完了待ちなら `herdr-symphony report --status pending --summary "待機中の内容"` を実行してください。失敗した場合は `herdr-symphony report --status failed --summary "失敗理由"` を実行してください。'
+const DEFAULT_HANDSHAKE_TIMEOUT_MS = 180_000
+const DEFAULT_ACK_RESEND_INTERVAL_MS = 5_000
+const DEFAULT_REMINDER_ACK_DEADLINE_MS = 30_000
+
+type AgmsgWaitContext = {
+  client: AgmsgClient
+  team: string
+  orchestratorAgent: string
+  agentName: string
+  issueId: string
+  runId: string
+  reminderAckDeadlineMs: number
+}
+
+type WaitResult = {
+  state: HerdrAgentState | null
+  report: AgentReportMessage | null
+}
+
+function buildClaudeBootstrapPrompt(team: string, agentName: string, issueId: string): string {
+  const scriptsDir = getAgmsgScriptsDir()
+  const sendScript = `${scriptsDir}/send.sh`
+  const actasScript = `${scriptsDir}/actas-claim.sh`
+  const reportBody = (status: string, summary: string) =>
+    JSON.stringify({
+      kind: "herdr-symphony.report",
+      runId: agentName,
+      toAgent: "herdr-symphony",
+      issueId,
+      status,
+      summary,
+    })
+  const ackBody = (ackOf: "task" | "reminder") =>
+    JSON.stringify({
+      kind: "herdr-symphony.ack",
+      runId: agentName,
+      toAgent: "herdr-symphony",
+      issueId,
+      ackOf,
+    })
+  return [
+    "あなたは herdr-symphony の agent です。",
+    "実タスクは agmsg で届きます。",
+    `最初に ${actasScript} "$PWD" claude-code "${agentName}" "$CLAUDE_CODE_SESSION_ID" を実行して、この agent identity を claim してください。`,
+    "claim に失敗した場合は task ack を返さず、作業を開始しないでください。",
+    `team は ${team}、あなたの agent 名と runId は ${agentName}、issueId は ${issueId} です。`,
+    "herdr-symphony.task を受け取ったら、runId と toAgent が自分宛てか確認してください。違う場合は無視してください。",
+    `task を受け取ったら、まず ${sendScript} ${team} ${agentName} herdr-symphony '${ackBody("task")}' を実行し、その後 task.prompt を実行してください。`,
+    `reminder を受け取ったら、まず ${sendScript} ${team} ${agentName} herdr-symphony '${ackBody("reminder")}' を実行してください。`,
+    "完了時は、ユーザーへの完了報告と同等の内容を summary に入れて report してください。",
+    `done: ${sendScript} ${team} ${agentName} herdr-symphony '${reportBody("done", "対応内容: ...。検証: ...。補足: ...。")}'`,
+    `pending: ${sendScript} ${team} ${agentName} herdr-symphony '${reportBody("pending", "待機中の内容")}'`,
+    `failed: ${sendScript} ${team} ${agentName} herdr-symphony '${reportBody("failed", "失敗理由")}'`,
+  ].join("\n")
+}
+
+function formatReminderBody(issueId: string, runId: string, toAgent: string): string {
+  return formatAgmsgMessage({
+    kind: "herdr-symphony.reminder",
+    issueId,
+    runId,
+    toAgent,
+    message:
+      "タスクは完了しましたか？完了した場合は done、待機中なら pending、失敗なら failed を agmsg で報告してください。",
+  })
+}
+
+function formatTaskBody(issueId: string, runId: string, toAgent: string, prompt: string): string {
+  return formatAgmsgMessage({
+    kind: "herdr-symphony.task",
+    issueId,
+    runId,
+    toAgent,
+    prompt,
+  })
+}
 
 export class HerdrAgentRunner implements Runner {
   private readonly client: HerdrClient
+  private readonly agmsgClient: AgmsgClient
+  private readonly customAgmsgClient: boolean
   private readonly pollIntervalMs: number
   private readonly reportResolver: ReportResolver
   private readonly logger: (msg: string) => void
@@ -46,6 +126,8 @@ export class HerdrAgentRunner implements Runner {
     deps: HerdrAgentRunnerDeps = {},
   ) {
     this.client = deps.herdrClient ?? createHerdrClient()
+    this.customAgmsgClient = deps.agmsgClient !== undefined
+    this.agmsgClient = deps.agmsgClient ?? createAgmsgClient()
     this.pollIntervalMs = deps.pollIntervalMs ?? DEFAULT_POLL_INTERVAL_MS
     this.logger = deps.logger ?? (() => {})
     this.reportResolver = deps.reportResolver ?? createReportResolver({ logger: deps.logger })
@@ -61,14 +143,46 @@ export class HerdrAgentRunner implements Runner {
       const startedAt = new Date().toISOString()
       const workspace = await this.client.ensureWorkspace(options.workspacePath, label)
 
-      const argv = this.buildAgentArgv(options)
       const agentName = buildAgentName(issue.identifier, options.workflowName, this.now())
+
+      let content = options.content
+      let agmsgContext: AgmsgWaitContext | null = null
+      let handshakeTimeoutMs = DEFAULT_HANDSHAKE_TIMEOUT_MS
+      let ackResendIntervalMs = DEFAULT_ACK_RESEND_INTERVAL_MS
+
+      if (options.agmsg && options.agentKind === "claude") {
+        if (!this.customAgmsgClient && !isAgmsgAvailable()) {
+          throw new Error(`agmsg is not installed: ${getAgmsgScriptsDir()}/send.sh not found`)
+        }
+        const agentTeamSuffix = sanitizeWorkspaceKey(agentName)
+        const team = options.agmsg.team.endsWith(agentTeamSuffix)
+          ? options.agmsg.team
+          : `${options.agmsg.team}-${agentTeamSuffix}`
+        const orchestratorAgent = options.agmsg.orchestratorAgent
+        await this.agmsgClient.join(team, orchestratorAgent, "opencode", options.workspacePath)
+        await this.agmsgClient.join(team, agentName, "claude-code", options.workspacePath)
+        await this.agmsgClient.setDelivery("monitor", "claude-code", options.workspacePath)
+        content = buildClaudeBootstrapPrompt(team, agentName, issue.id)
+        handshakeTimeoutMs = options.agmsg.handshakeTimeoutMs ?? DEFAULT_HANDSHAKE_TIMEOUT_MS
+        ackResendIntervalMs = options.agmsg.ackResendIntervalMs ?? DEFAULT_ACK_RESEND_INTERVAL_MS
+        agmsgContext = {
+          client: this.agmsgClient,
+          team,
+          orchestratorAgent,
+          agentName,
+          issueId: issue.id,
+          runId: agentName,
+          reminderAckDeadlineMs:
+            options.agmsg.reminderAckDeadlineMs ?? DEFAULT_REMINDER_ACK_DEADLINE_MS,
+        }
+      }
+
+      const argv = this.buildAgentArgv({ ...options, content })
 
       const agent = await this.client.startAgent(agentName, {
         workspaceId: workspace.id,
         cwd: options.workspacePath,
         argv,
-        env: options.reportPath ? { HERDR_SYMPHONY_REPORT_PATH: options.reportPath } : undefined,
       })
 
       const target = agent.paneId ?? agentName
@@ -80,15 +194,30 @@ export class HerdrAgentRunner implements Runner {
         workspaceId: workspace.id,
       })
 
-      const waitState = await this.waitForAgentCompletion(
+      if (agmsgContext) {
+        const handshake = await this.waitForTaskAck(
+          agmsgContext,
+          options.content,
+          handshakeTimeoutMs,
+          ackResendIntervalMs,
+        )
+        if (!handshake) {
+          return {
+            status: "failed",
+            error: "agmsg delivery handshake timed out",
+            responseText: null,
+          }
+        }
+      }
+
+      const waitResult = await this.waitForAgentCompletion(
         target,
         timeoutMs,
         options.onBlocked ?? null,
-        options.agentKind,
-        options.reportPath,
+        agmsgContext,
       )
 
-      if (waitState === null) {
+      if (waitResult.state === null) {
         return {
           status: "timeout",
           error: `agent timed out after ${timeoutMs}ms`,
@@ -96,7 +225,7 @@ export class HerdrAgentRunner implements Runner {
         }
       }
 
-      if (waitState === "blocked") {
+      if (waitResult.state === "blocked") {
         return {
           status: "failed",
           error: "agent is blocked, needs operator input",
@@ -107,24 +236,21 @@ export class HerdrAgentRunner implements Runner {
       this.emit(options, {
         event: "agent_status",
         timestamp: new Date().toISOString(),
-        state: waitState,
+        state: waitResult.state,
       })
 
-      if (options.reportPath) {
-        const report = readReport(options.reportPath)
-        if (report?.status === "failed") {
-          return {
-            status: "failed",
-            error: report.summary || "reported as failed",
-            responseText: null,
-          }
+      if (waitResult.report?.status === "failed") {
+        return {
+          status: "failed",
+          error: waitResult.report.summary || "reported as failed",
+          responseText: null,
         }
-        if (report?.status === "done" && report.summary) {
-          return {
-            status: "succeeded",
-            error: null,
-            responseText: report.summary,
-          }
+      }
+      if (waitResult.report?.status === "done" && waitResult.report.summary) {
+        return {
+          status: "succeeded",
+          error: null,
+          responseText: waitResult.report.summary,
         }
       }
 
@@ -157,13 +283,54 @@ export class HerdrAgentRunner implements Runner {
     await this.client.closePane(target)
   }
 
+  private async waitForTaskAck(
+    ctx: AgmsgWaitContext,
+    prompt: string,
+    timeoutMs: number,
+    resendIntervalMs: number,
+  ): Promise<boolean> {
+    const deadline = Date.now() + timeoutMs
+    let nextSendAt = 0
+    while (Date.now() < deadline) {
+      const now = Date.now()
+      if (now >= nextSendAt) {
+        await ctx.client.send(
+          ctx.team,
+          ctx.orchestratorAgent,
+          ctx.agentName,
+          formatTaskBody(ctx.issueId, ctx.runId, ctx.agentName, prompt),
+        )
+        nextSendAt = now + resendIntervalMs
+      }
+
+      const messages = parseInboxForMessages(
+        await ctx.client.inbox(ctx.team, ctx.orchestratorAgent),
+        {
+          issueId: ctx.issueId,
+          runId: ctx.runId,
+          toAgent: ctx.orchestratorAgent,
+        },
+      )
+      if (
+        messages.some(
+          (message) => message.kind === "herdr-symphony.ack" && message.ackOf === "task",
+        )
+      ) {
+        return true
+      }
+
+      await new Promise((resolve) => setTimeout(resolve, this.pollIntervalMs))
+    }
+    this.logger(`agmsg delivery handshake timed out agent=${ctx.agentName}`)
+    return false
+  }
+
   private async waitForAgentCompletion(
     target: string,
     timeoutMs: number,
     onBlocked: "continue" | "fail" | null,
-    agentKind: "opencode" | "claude",
-    reportPath: string | undefined,
-  ): Promise<HerdrAgentState | null> {
+    agmsgContext: AgmsgWaitContext | null,
+  ): Promise<WaitResult> {
     const deadline = Date.now() + timeoutMs
     let sawActive = false
 
@@ -173,21 +340,13 @@ export class HerdrAgentRunner implements Runner {
 
       if (info === null) {
         if (sawActive) {
-          if (agentKind === "claude" && reportPath) {
-            const report = readReport(reportPath)
-            if (report?.status === "done" || report?.status === "failed") {
-              return "done"
-            }
-            if (report?.status === "pending") {
-              sawActive = false
-              continue
-            }
-            await this.client.sendInput(target, CLAUDE_REPORT_REMINDER)
-            await this.client.sendKeys(target, "Enter")
+          if (agmsgContext) {
+            const handled = await this.handleAgmsgIdle(agmsgContext)
+            if (handled.state === "done") return { state: "done", report: handled.report }
             sawActive = false
             continue
           }
-          return "done"
+          return { state: "done", report: null }
         }
         continue
       }
@@ -195,36 +354,56 @@ export class HerdrAgentRunner implements Runner {
       if (info.state === "working" || info.state === "blocked") {
         sawActive = true
         if (info.state === "blocked" && onBlocked === "fail") {
-          return "blocked"
+          return { state: "blocked", report: null }
         }
         continue
       }
 
       if (info.state === "done") {
-        return "done"
+        return { state: "done", report: null }
       }
 
       if (info.state === "idle") {
         if (sawActive) {
-          if (agentKind === "claude" && reportPath) {
-            const report = readReport(reportPath)
-            if (report?.status === "done" || report?.status === "failed") {
-              return "idle"
-            }
-            if (report?.status === "pending") {
-              sawActive = false
-              continue
-            }
-            await this.client.sendInput(target, CLAUDE_REPORT_REMINDER)
-            await this.client.sendKeys(target, "Enter")
+          if (agmsgContext) {
+            const handled = await this.handleAgmsgIdle(agmsgContext)
+            if (handled.state === "done") return { state: "done", report: handled.report }
             sawActive = false
             continue
           }
-          return "idle"
+          return { state: "idle", report: null }
         }
       }
     }
-    return null
+    return { state: null, report: null }
+  }
+
+  private async handleAgmsgIdle(
+    ctx: AgmsgWaitContext,
+  ): Promise<
+    { state: "done"; report: AgentReportMessage } | { state: "pending" } | { state: "none" }
+  > {
+    const inbox = await ctx.client.inbox(ctx.team, ctx.orchestratorAgent)
+    const messages = parseInboxForMessages(inbox, {
+      issueId: ctx.issueId,
+      runId: ctx.runId,
+      toAgent: ctx.orchestratorAgent,
+    })
+    const report = messages.findLast((message) => message.kind === "herdr-symphony.report")
+    if (report?.status === "done" || report?.status === "failed") {
+      return { state: "done", report }
+    }
+    if (report?.status === "pending") {
+      return { state: "pending" }
+    }
+    await ctx.client.send(
+      ctx.team,
+      ctx.orchestratorAgent,
+      ctx.agentName,
+      formatReminderBody(ctx.issueId, ctx.runId, ctx.agentName),
+    )
+    this.logger("agmsg reminder sent")
+    return { state: "none" }
   }
 
   private buildAgentArgv(options: RunnerOptions): string[] {

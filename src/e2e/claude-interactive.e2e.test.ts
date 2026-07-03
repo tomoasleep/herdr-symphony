@@ -14,7 +14,6 @@ const HERDR_AVAILABLE = spawnSync("herdr", ["--version"], { stdio: "ignore" }).s
 const CLAUDE_AVAILABLE = spawnSync("claude", ["--version"], { stdio: "ignore" }).status === 0
 const NESTED_HERDR = Boolean(process.env.HERDR_SOCKET_PATH)
 const RUN_NESTED_E2E = process.env.HERDR_SYMPHONY_RUN_NESTED_E2E === "1"
-
 test.skipIf(!HERDR_AVAILABLE || !CLAUDE_AVAILABLE || (NESTED_HERDR && !RUN_NESTED_E2E))(
   "e2e: claude 対話モード — herdr agent send で prompt が送られ succeeded になる",
   async () => {
@@ -110,7 +109,7 @@ test.skipIf(!HERDR_AVAILABLE || !CLAUDE_AVAILABLE || (NESTED_HERDR && !RUN_NESTE
       await fixtureSession.waitForText("status=succeeded", { timeout: 120_000 })
 
       const output = await captureOutput(fixtureSession)
-      expect(output).toContain("claude reminder sent")
+      expect(output).toContain("agmsg reminder sent")
       expect(output).toContain("status=succeeded")
     } finally {
       spawnSync("herdr", ["server", "stop"], {
