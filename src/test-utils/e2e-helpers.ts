@@ -1,7 +1,17 @@
 import { afterEach } from "bun:test"
-import { mkdir, rm, writeFile } from "node:fs/promises"
+import { mkdir, readdir, rm, symlink, writeFile } from "node:fs/promises"
 import { join } from "node:path"
 import type { Session } from "tuistory"
+
+export function stripHerdrEnv(src: NodeJS.ProcessEnv): Record<string, string> {
+  const env: Record<string, string> = {}
+  for (const [key, val] of Object.entries(src)) {
+    if (val !== undefined && !key.startsWith("HERDR_")) {
+      env[key] = val
+    }
+  }
+  return env
+}
 
 export function createSessionManager() {
   const sessions: Session[] = []
@@ -26,6 +36,9 @@ const DYNAMIC_REPLACEMENTS: Array<[RegExp, string]> = [
   [/http:\/\/127\.0\.0\.1:\d+/g, "http://MOCK_URL"],
   [/\/var\/folders\/[\w/-]+/g, "TEMP_DIR"],
   [/\/tmp\/[\w/.-]+/g, "TEMP_DIR"],
+  [/~\/\.ghq\/[\w/.-]+/g, "PROJECT_PATH"],
+  [/\([0-9a-f]{7,}\)(?: \+\d+ -\d+)?(?: \[[$!?]+\])?/g, "(SHA)"],
+  [/v\d+\.\d+\.\d+/g, "VERSION"],
   [/\bw\d+:p\d+\b/g, "PANE_ID"],
   [/\bw\d+:t\d+\b/g, "TAB_ID"],
   [/\bw\d+\b/g, "WORKSPACE_ID"],
@@ -56,13 +69,30 @@ export type HerdrIsolation = {
   cleanup: () => Promise<void>
 }
 
+export async function mirrorXdgExcludingHerdr(realXdg: string, isolatedXdg: string): Promise<void> {
+  await mkdir(isolatedXdg, { recursive: true })
+  let entries: string[] = []
+  try {
+    entries = await readdir(realXdg)
+  } catch {
+    return
+  }
+  for (const entry of entries) {
+    if (entry === "herdr") continue
+    await symlink(join(realXdg, entry), join(isolatedXdg, entry))
+  }
+}
+
 export async function createHerdrIsolation(prefix: string): Promise<HerdrIsolation> {
   const shortId = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`
   const configDir = `/tmp/hdr-${prefix}-${shortId}`
-  await mkdir(configDir, { recursive: true })
-  const configPath = join(configDir, "config.toml")
-  const socketPath = join(configDir, "h.sock")
+  const herdrHome = join(configDir, "herdr")
+  const configPath = join(herdrHome, "config.toml")
+  const socketPath = join(herdrHome, "h.sock")
+  const realXdg = process.env.XDG_CONFIG_HOME ?? join(process.env.HOME ?? "", ".config")
 
+  await mirrorXdgExcludingHerdr(realXdg, configDir)
+  await mkdir(herdrHome, { recursive: true })
   await writeFile(
     configPath,
     [
@@ -82,8 +112,9 @@ export async function createHerdrIsolation(prefix: string): Promise<HerdrIsolati
 
   return {
     env: {
+      ...stripHerdrEnv(process.env),
+      XDG_CONFIG_HOME: configDir,
       HERDR_SOCKET_PATH: socketPath,
-      HERDR_CONFIG_PATH: configPath,
     },
     configDir,
     cleanup: async () => {
