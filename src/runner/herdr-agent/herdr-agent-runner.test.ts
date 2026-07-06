@@ -1227,6 +1227,28 @@ describe("HerdrAgentRunner", () => {
     expect(result.status).toBe("timeout")
   })
 
+  test("working を観測しなくても agent を検出後に null になれば完了とみなす", async () => {
+    const client = makeMockHerdrClient({
+      getAgentResult: [{ name: "TEST-1", state: "idle", paneId: "w1:p1", workspaceId: "w1" }, null],
+      readText: "Done.",
+    })
+    const runner = new HerdrAgentRunner(makeConfig(), {
+      herdrClient: client,
+      pollIntervalMs: 10,
+      reportResolver: nullReportResolver(),
+    })
+
+    const result = await runner.runIssue(makeIssue(), {
+      content: "Fix the bug",
+      agentKind: "claude",
+      attempt: null,
+      workspacePath: "/repo/worktree",
+    })
+
+    expect(result.status).toBe("succeeded")
+    expect(result.responseText).toBe("Done.")
+  })
+
   test("cancelRun が pane を閉じる", async () => {
     const captured = { paneId: null as string | null }
     const client: HerdrClient = {

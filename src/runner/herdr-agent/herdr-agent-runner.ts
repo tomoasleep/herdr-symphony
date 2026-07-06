@@ -333,6 +333,7 @@ export class HerdrAgentRunner implements Runner {
   ): Promise<WaitResult> {
     const deadline = Date.now() + timeoutMs
     let sawActive = false
+    let sawAgent = false
 
     while (Date.now() < deadline) {
       await new Promise((resolve) => setTimeout(resolve, this.pollIntervalMs))
@@ -348,8 +349,13 @@ export class HerdrAgentRunner implements Runner {
           }
           return { state: "done", report: null }
         }
+        if (sawAgent) {
+          return { state: "done", report: null }
+        }
         continue
       }
+
+      sawAgent = true
 
       if (info.state === "working" || info.state === "blocked") {
         sawActive = true

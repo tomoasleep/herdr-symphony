@@ -1,6 +1,6 @@
 import { afterEach } from "bun:test"
-import { mkdir, readdir, rm, symlink, writeFile } from "node:fs/promises"
-import { join } from "node:path"
+import { spawn } from "node:child_process"
+import { rm } from "node:fs/promises"
 import type { Session } from "tuistory"
 
 export function stripHerdrEnv(src: NodeJS.ProcessEnv): Record<string, string> {
@@ -45,6 +45,7 @@ const DYNAMIC_REPLACEMENTS: Array<[RegExp, string]> = [
   [/term_[0-9a-f]+/gi, "TERMINAL_ID"],
   [/-e2e-test-claude-[0-9a-z]+/g, "-e2e-test-claude-TS"],
   [/-e2e-test-[0-9a-z]+/g, "-e2e-test-TS"],
+  [/\btest-claude-[0-9a-z]+/g, "test-claude-ID"],
   [/\bplain-probe-[0-9a-z]+/g, "plain-probe-ID"],
   [/\bprobe-[0-9a-z]+/g, "probe-ID"],
   [/\bplain-[0-9a-z]+/g, "plain-ID"],
@@ -64,61 +65,81 @@ export async function captureOutput(session: Session): Promise<string> {
 }
 
 export type HerdrIsolation = {
-  env: Record<string, string>
-  configDir: string
+  containerId: string
+  sharedDir: string
   cleanup: () => Promise<void>
 }
 
-export async function mirrorXdgExcludingHerdr(realXdg: string, isolatedXdg: string): Promise<void> {
-  await mkdir(isolatedXdg, { recursive: true })
-  let entries: string[] = []
-  try {
-    entries = await readdir(realXdg)
-  } catch {
-    return
-  }
-  for (const entry of entries) {
-    if (entry === "herdr") continue
-    await symlink(join(realXdg, entry), join(isolatedXdg, entry))
-  }
+function runDocker(
+  args: string[],
+  timeoutMs = 30_000,
+): Promise<{ stdout: string; stderr: string; exitCode: number }> {
+  return new Promise((resolve, reject) => {
+    const child = spawn("docker", args, { stdio: ["ignore", "pipe", "pipe"] })
+    let stdout = ""
+    let stderr = ""
+    child.stdout.on("data", (chunk) => {
+      stdout += String(chunk)
+    })
+    child.stderr.on("data", (chunk) => {
+      stderr += String(chunk)
+    })
+    const timer = setTimeout(() => {
+      child.kill("SIGKILL")
+      reject(new Error(`docker ${args.join(" ")} timed out after ${timeoutMs}ms`))
+    }, timeoutMs)
+    child.on("close", (code) => {
+      clearTimeout(timer)
+      resolve({ stdout, stderr, exitCode: code ?? 1 })
+    })
+    child.on("error", reject)
+  })
 }
 
 export async function createHerdrIsolation(prefix: string): Promise<HerdrIsolation> {
   const shortId = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`
-  const configDir = `/tmp/hdr-${prefix}-${shortId}`
-  const herdrHome = join(configDir, "herdr")
-  const configPath = join(herdrHome, "config.toml")
-  const socketPath = join(herdrHome, "h.sock")
-  const realXdg = process.env.XDG_CONFIG_HOME ?? join(process.env.HOME ?? "", ".config")
+  const containerName = `herdr-e2e-${prefix}-${shortId}`
+  const sharedDir = `/tmp/herdr-e2e-${prefix}-${shortId}`
+  const projectRoot = process.cwd()
 
-  await mirrorXdgExcludingHerdr(realXdg, configDir)
-  await mkdir(herdrHome, { recursive: true })
-  await writeFile(
-    configPath,
-    [
-      "onboarding = false",
-      "",
-      "[theme]",
-      'name = "terminal"',
-      "",
-      "[keys]",
-      'prefix = "ctrl+b"',
-      "",
-      "[experimental]",
-      "allow_nested = true",
-      "",
-    ].join("\n"),
-  )
+  const runResult = await runDocker([
+    "run",
+    "-d",
+    "--name",
+    containerName,
+    "--add-host=host.docker.internal:host-gateway",
+    "-v",
+    `${projectRoot}:/workspace`,
+    "-v",
+    `${sharedDir}:/tmp/shared`,
+    "-e",
+    "AGMSG_SCRIPTS_DIR=/opt/agmsg/scripts",
+    "herdr-e2e:latest",
+    "sleep",
+    "infinity",
+  ])
+
+  if (runResult.exitCode !== 0) {
+    throw new Error(`docker run failed: ${runResult.stderr}`)
+  }
+
+  const containerId = runResult.stdout.trim()
 
   return {
-    env: {
-      ...stripHerdrEnv(process.env),
-      XDG_CONFIG_HOME: configDir,
-      HERDR_SOCKET_PATH: socketPath,
-    },
-    configDir,
+    containerId,
+    sharedDir,
     cleanup: async () => {
-      await rm(configDir, { recursive: true, force: true })
+      await runDocker(["stop", containerId], 10_000)
+      await runDocker(["rm", "-f", containerId], 10_000)
+      await rm(sharedDir, { recursive: true, force: true })
     },
   }
+}
+
+export async function execInContainer(
+  containerId: string,
+  command: string[],
+  timeoutMs = 30_000,
+): Promise<{ stdout: string; stderr: string; exitCode: number }> {
+  return runDocker(["exec", containerId, ...command], timeoutMs)
 }

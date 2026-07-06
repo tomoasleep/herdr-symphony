@@ -4,7 +4,8 @@ import { homedir } from "node:os"
 import { join } from "node:path"
 import type { CommandRunner } from "../herdr/herdr-client"
 
-const AGMSG_SCRIPTS_DIR = join(homedir(), ".agents", "skills", "agmsg", "scripts")
+const AGMSG_SCRIPTS_DIR =
+  process.env.AGMSG_SCRIPTS_DIR ?? join(homedir(), ".agents", "skills", "agmsg", "scripts")
 
 export type AgmsgAgentType = "claude-code" | "opencode"
 
