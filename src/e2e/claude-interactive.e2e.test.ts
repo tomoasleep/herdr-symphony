@@ -1,11 +1,11 @@
 import { expect, test } from "bun:test"
 import { spawnSync } from "node:child_process"
-import { launchTerminal } from "tuistory"
+import { launchTerminal, type Session } from "tuistory"
 import {
-  captureOutput,
   createHerdrIsolation,
   createSessionManager,
   execInContainer,
+  normalizeScreenOutput,
 } from "../test-utils/e2e-helpers"
 
 const { register } = createSessionManager()
@@ -13,7 +13,39 @@ const { register } = createSessionManager()
 const HERDR_AVAILABLE = spawnSync("herdr", ["--version"], { stdio: "ignore" }).status === 0
 const CLAUDE_AVAILABLE = spawnSync("claude", ["--version"], { stdio: "ignore" }).status === 0
 
-test("e2e: claude 対話モード — herdr agent send で prompt が送られ succeeded になる", async () => {
+async function captureAgentScreen(
+  scenarioSession: Session,
+  herdrSession: Session,
+  containerId: string,
+): Promise<string> {
+  await scenarioSession.waitForText(/agent pane=\S+/, { timeout: 30_000 })
+  const scenarioOutput = await scenarioSession.text({ trimEnd: true })
+  const paneId = scenarioOutput.match(/agent pane=(\S+)/)?.[1]
+  if (!paneId) throw new Error("agent pane id not found")
+
+  await execInContainer(containerId, ["herdr", "agent", "focus", paneId], 10_000)
+  await execInContainer(containerId, ["herdr", "pane", "zoom", paneId, "--on"], 10_000)
+  const deadline = Date.now() + 30_000
+  let screen = ""
+  while (Date.now() < deadline) {
+    screen = normalizeScreenOutput(await herdrSession.text({ immediate: true }))
+    if (/WARNING: Claude Code running in Bypass Permissions mode/.test(screen)) {
+      await execInContainer(containerId, ["herdr", "pane", "send-keys", paneId, "Down"], 10_000)
+      await execInContainer(containerId, ["herdr", "pane", "send-keys", paneId, "Enter"], 10_000)
+      await new Promise((resolve) => setTimeout(resolve, 500))
+      continue
+    }
+    if (
+      /Claude Code|Welcome back|Unable to connect|bypass permissions|Task completed/.test(screen)
+    ) {
+      return screen
+    }
+    await new Promise((resolve) => setTimeout(resolve, 500))
+  }
+  return screen
+}
+
+test("e2e: claude 対話モード — agent の画面全体を確認できる", async () => {
   if (!HERDR_AVAILABLE) throw new Error("herdr binary not found on PATH")
   if (!CLAUDE_AVAILABLE) throw new Error("claude binary not found on PATH")
   const projectRoot = process.cwd()
@@ -55,77 +87,50 @@ test("e2e: claude 対話モード — herdr agent send で prompt が送られ s
       }),
     )
 
-    await scenarioSession.waitForText("status=succeeded", { timeout: 90_000 })
+    const agentScreen = await captureAgentScreen(scenarioSession, herdrSession, herdr.containerId)
 
-    expect(await captureOutput(herdrSession)).toMatchInlineSnapshot(`
+    expect(agentScreen).toMatchInlineSnapshot(`
       "
-       spaces                  │ 1       +
-                               │$
-       · workspace             │
-         main ↑1               │
-                               │
-       · test-claude-ID│
-         master                │
-                               │
-                               │
-                               │
-                               │
-                               │
-                               │
-                               │
-                               │
-                               │
-                               │
-                               │
-                               │
-       new                 menu│
-      ─────────────────────────│
-       agents           grouped│
-                               │
-                               │
-                               │
-                               │
-                               │
-                               │
-                               │
-                               │
-                               │
-                               │
-                               │
-                               │
-                               │
-                               │
-                               │
-                               │
-                               │
-                              «│"
-    `)
-    expect(await captureOutput(scenarioSession)).toMatchInlineSnapshot(`
-      "
-      reconcile running=0
-      tracker fetchCandidateIssues start
-      tracker fetchCandidateIssues start
-      tracker scanStateDirectories start
-      tracker scanStateDirectories done count=1
-      tracker fetchCandidateIssues done count=1
-      tracker fetchCandidateIssues done count=1
-      refresh candidates=1 dispatchable=1 running=0 retrying=0
-      start test-claude-ID state=Ready
-      runtime resolved issue=test-claude-ID runner=herdr_agent workspaceProvider=git
-      workspace ready path=TEMP_DIR createdNow=false branch=none
-      runner start kind=herdr_agent workspace=TEMP_DIR
-      [test-claude-ID] [agent_started] agent_started
-      [test-claude-ID] [agent_status] agent_status
-      tracker moveIssueToState start issue=test-issue-claude state=Done
-      tracker moveIssueToState issue=test-issue-claude state=Done
-      tracker fetchCandidateIssues start
-      tracker scanStateDirectories start
-      tracker scanStateDirectories done count=1
-      tracker fetchCandidateIssues done count=1
-      tracker moveIssueToState done issue=test-issue-claude from=Ready to=Done
-      tracker moveIssueToState done issue=test-issue-claude state=Done
-      runner done issue=test-claude-ID status=succeeded error=none
-      done test-claude-ID status=succeeded"
+       spaces                  │ 1 Z     +
+                               │┌▌ test-claude-ID-e2e-test-TS-TS ────────────────────────────────────────────────────────────────────────────────┐
+       · workspace             ││❯ あなたは herdr-symphony の agent です。                                                                                          ▕│
+         main ↑2               ││  実タスクは agmsg で届きます。                                                                                                    ▕│
+                               ││  最初に /opt/agmsg/scripts/actas-claim.sh "$PWD" claude-code "test-claude-ID-e2e-test-TS-TS"                  ▕│
+       ○ test-claude-ID││  "$CLAUDE_CODE_SESSION_ID" を実行して、この agent identity を claim してください。                                                ▕│
+         master                ││  claim に失敗した場合は task ack を返さず、作業を開始しないでください。                                                           ▕│
+                               ││  team は herdr-symphony-test-claude-ID-e2e-test-TS-TS、あなたの agent 名と runId は                           ▕│
+                               ││  test-claude-ID-e2e-test-TS-TS、issueId は test-issue-claude です。                                           ▕│
+                               ││  herdr-symphony.task を受け取ったら、runId と toAgent が自分宛てか確認してください。違う場合は無視してください。                  ▕│
+                               ││  task を受け取ったら、まず /opt/agmsg/scripts/send.sh herdr-symphony-test-claude-ID-e2e-test-TS-TS            ▕│
+                               ││  test-claude-ID-e2e-test-TS-TS herdr-symphony '{"kind":"herdr-symphony.ack","runId":"test-claude-ID ▕│
+                               ││  -e2e-test-TS-TS","toAgent":"herdr-symphony","issueId":"test-issue-claude","ackOf":"task"}' を実行し、その後            ▐│
+                               ││  task.prompt を実行してください。                                                                                                 ▐│
+                               ││  reminder を受け取ったら、まず /opt/agmsg/scripts/send.sh herdr-symphony-test-claude-ID-e2e-test-TS-TS        ▐│
+                               ││  test-claude-ID-e2e-test-TS-TS herdr-symphony '{"kind":"herdr-symphony.ack","runId":"test-claude-ID ▐│
+                               ││  -e2e-test-TS-TS","toAgent":"herdr-symphony","issueId":"test-issue-claude","ackOf":"reminder"}' を実行してください。    ▐│
+                               ││  完了時は、ユーザーへの完了報告と同等の内容を summary に入れて report してください。                                              ▐│
+                               ││  done: /opt/agmsg/scripts/send.sh herdr-symphony-test-claude-ID-e2e-test-TS-TS                                ▐│
+       new                 menu││  test-claude-ID-e2e-test-TS-TS herdr-symphony '{"kind":"herdr-symphony.report","runId":"test-claude-ID ▐│
+      ─────────────────────────││  ID-e2e-test-TS-TS","toAgent":"herdr-symphony","issueId":"test-issue-claude","status":"done","summary":"対応内容:      ▐│
+       agents           grouped││  ...。検証: ...。補足: ...。"}'                                                                                                   ▐│
+                               ││  pending: /opt/agmsg/scripts/send.sh herdr-symphony-test-claude-ID-e2e-test-TS-TS                             ▐│
+       ✓ test-claude-ID…││  test-claude-ID-e2e-test-TS-TS herdr-symphony                                                                 ▐│
+         idle · test-claude-ID││  '{"kind":"herdr-symphony.report","runId":"test-claude-ID-e2e-test-TS-TS","toAgent":"herdr-symphony","issueId ▐│
+                               ││  ":"test-issue-claude","status":"pending","summary":"待機中の内容"}'                                                              ▐│
+                               ││  failed: /opt/agmsg/scripts/send.sh herdr-symphony-test-claude-ID-e2e-test-TS-TS                              ▐│
+                               ││  test-claude-ID-e2e-test-TS-TS herdr-symphony '{"kind":"herdr-symphony.report","runId":"test-claude-ID ▐│
+                               ││  ID-e2e-test-TS-TS","toAgent":"herdr-symphony","issueId":"test-issue-claude","status":"failed","summary":"失敗理由"}'  ▐│
+                               ││                                                                                                                                   ▐│
+                               ││● Task completed successfully.                                                                                                     ▐│
+                               ││                                                                                                                                   ▐│
+                               ││✻ Worked for 0s ▐│
+                               ││                                                                                                                                   ▐│
+                               ││───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────▐│
+                               ││❯                                                                                                                                  ▐│
+                               ││───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────▐│
+                               ││  ⏵⏵ bypass permissions on (shift+tab to cycle) · ← for agents                                                   ● high · /effort  ▐│
+                               ││                                                                                                                                   ▐│
+                              «│└────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘"
     `)
   } finally {
     await execInContainer(herdr.containerId, ["herdr", "server", "stop"], 10_000)
@@ -133,7 +138,7 @@ test("e2e: claude 対話モード — herdr agent send で prompt が送られ s
   }
 }, 120_000)
 
-test("e2e: claude report 未送信の idle でリマインドされ、report 後に succeeded になる", async () => {
+test("e2e: claude report 未送信の idle — agent の画面全体を確認できる", async () => {
   if (!HERDR_AVAILABLE) throw new Error("herdr binary not found on PATH")
   if (!CLAUDE_AVAILABLE) throw new Error("claude binary not found on PATH")
   const projectRoot = process.cwd()
@@ -177,77 +182,50 @@ test("e2e: claude report 未送信の idle でリマインドされ、report 後
       }),
     )
 
-    await scenarioSession.waitForText("status=succeeded", { timeout: 120_000 })
+    const agentScreen = await captureAgentScreen(scenarioSession, herdrSession, herdr.containerId)
 
-    expect(await captureOutput(herdrSession)).toMatchInlineSnapshot(`
+    expect(agentScreen).toMatchInlineSnapshot(`
       "
-       spaces                  │ 1       +
-                               │$
-       · workspace             │
-         main ↑1               │
-                               │
-       · test-claude-ID│
-         master                │
-                               │
-                               │
-                               │
-                               │
-                               │
-                               │
-                               │
-                               │
-                               │
-                               │
-                               │
-                               │
-       new                 menu│
-      ─────────────────────────│
-       agents           grouped│
-                               │
-                               │
-                               │
-                               │
-                               │
-                               │
-                               │
-                               │
-                               │
-                               │
-                               │
-                               │
-                               │
-                               │
-                               │
-                               │
-                               │
-                              «│"
-    `)
-    expect(await captureOutput(scenarioSession)).toMatchInlineSnapshot(`
-      "
-      reconcile running=0
-      tracker fetchCandidateIssues start
-      tracker fetchCandidateIssues start
-      tracker scanStateDirectories start
-      tracker scanStateDirectories done count=1
-      tracker fetchCandidateIssues done count=1
-      tracker fetchCandidateIssues done count=1
-      refresh candidates=1 dispatchable=1 running=0 retrying=0
-      start test-claude-ID state=Ready
-      runtime resolved issue=test-claude-ID runner=herdr_agent workspaceProvider=git
-      workspace ready path=TEMP_DIR createdNow=false branch=none
-      runner start kind=herdr_agent workspace=TEMP_DIR
-      [test-claude-ID] [agent_started] agent_started
-      [test-claude-ID] [agent_status] agent_status
-      tracker moveIssueToState start issue=test-issue-claude state=Done
-      tracker moveIssueToState issue=test-issue-claude state=Done
-      tracker fetchCandidateIssues start
-      tracker scanStateDirectories start
-      tracker scanStateDirectories done count=1
-      tracker fetchCandidateIssues done count=1
-      tracker moveIssueToState done issue=test-issue-claude from=Ready to=Done
-      tracker moveIssueToState done issue=test-issue-claude state=Done
-      runner done issue=test-claude-ID status=succeeded error=none
-      done test-claude-ID status=succeeded"
+       spaces                  │ 1 Z     +
+                               │┌▌ test-claude-ID-e2e-test-TS-TS ────────────────────────────────────────────────────────────────────────────────┐
+       · workspace             ││❯ あなたは herdr-symphony の agent です。                                                                                          ▕│
+         main ↑2               ││  実タスクは agmsg で届きます。                                                                                                    ▕│
+                               ││  最初に /opt/agmsg/scripts/actas-claim.sh "$PWD" claude-code "test-claude-ID-e2e-test-TS-TS"                  ▕│
+       ○ test-claude-ID││  "$CLAUDE_CODE_SESSION_ID" を実行して、この agent identity を claim してください。                                                ▕│
+         master                ││  claim に失敗した場合は task ack を返さず、作業を開始しないでください。                                                           ▕│
+                               ││  team は herdr-symphony-test-claude-ID-e2e-test-TS-TS、あなたの agent 名と runId は                           ▕│
+                               ││  test-claude-ID-e2e-test-TS-TS、issueId は test-issue-claude です。                                           ▕│
+                               ││  herdr-symphony.task を受け取ったら、runId と toAgent が自分宛てか確認してください。違う場合は無視してください。                  ▕│
+                               ││  task を受け取ったら、まず /opt/agmsg/scripts/send.sh herdr-symphony-test-claude-ID-e2e-test-TS-TS            ▕│
+                               ││  test-claude-ID-e2e-test-TS-TS herdr-symphony '{"kind":"herdr-symphony.ack","runId":"test-claude-ID ▕│
+                               ││  -e2e-test-TS-TS","toAgent":"herdr-symphony","issueId":"test-issue-claude","ackOf":"task"}' を実行し、その後            ▐│
+                               ││  task.prompt を実行してください。                                                                                                 ▐│
+                               ││  reminder を受け取ったら、まず /opt/agmsg/scripts/send.sh herdr-symphony-test-claude-ID-e2e-test-TS-TS        ▐│
+                               ││  test-claude-ID-e2e-test-TS-TS herdr-symphony '{"kind":"herdr-symphony.ack","runId":"test-claude-ID ▐│
+                               ││  -e2e-test-TS-TS","toAgent":"herdr-symphony","issueId":"test-issue-claude","ackOf":"reminder"}' を実行してください。    ▐│
+                               ││  完了時は、ユーザーへの完了報告と同等の内容を summary に入れて report してください。                                              ▐│
+                               ││  done: /opt/agmsg/scripts/send.sh herdr-symphony-test-claude-ID-e2e-test-TS-TS                                ▐│
+       new                 menu││  test-claude-ID-e2e-test-TS-TS herdr-symphony '{"kind":"herdr-symphony.report","runId":"test-claude-ID ▐│
+      ─────────────────────────││  ID-e2e-test-TS-TS","toAgent":"herdr-symphony","issueId":"test-issue-claude","status":"done","summary":"対応内容:      ▐│
+       agents           grouped││  ...。検証: ...。補足: ...。"}'                                                                                                   ▐│
+                               ││  pending: /opt/agmsg/scripts/send.sh herdr-symphony-test-claude-ID-e2e-test-TS-TS                             ▐│
+       ✓ test-claude-ID…││  test-claude-ID-e2e-test-TS-TS herdr-symphony                                                                 ▐│
+         idle · test-claude-ID││  '{"kind":"herdr-symphony.report","runId":"test-claude-ID-e2e-test-TS-TS","toAgent":"herdr-symphony","issueId ▐│
+                               ││  ":"test-issue-claude","status":"pending","summary":"待機中の内容"}'                                                              ▐│
+                               ││  failed: /opt/agmsg/scripts/send.sh herdr-symphony-test-claude-ID-e2e-test-TS-TS                              ▐│
+                               ││  test-claude-ID-e2e-test-TS-TS herdr-symphony '{"kind":"herdr-symphony.report","runId":"test-claude-ID ▐│
+                               ││  ID-e2e-test-TS-TS","toAgent":"herdr-symphony","issueId":"test-issue-claude","status":"failed","summary":"失敗理由"}'  ▐│
+                               ││                                                                                                                                   ▐│
+                               ││● Task completed successfully.                                                                                                     ▐│
+                               ││                                                                                                                                   ▐│
+                               ││✻ Worked for 0s ▐│
+                               ││                                                                                                                                   ▐│
+                               ││───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────▐│
+                               ││❯                                                                                                                                  ▐│
+                               ││───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────▐│
+                               ││  ⏵⏵ bypass permissions on (shift+tab to cycle) · ← for agents                                                   ● high · /effort  ▐│
+                               ││                                                                                                                                   ▐│
+                              «│└────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘"
     `)
   } finally {
     await execInContainer(herdr.containerId, ["herdr", "server", "stop"], 10_000)

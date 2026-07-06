@@ -45,6 +45,9 @@ const DYNAMIC_REPLACEMENTS: Array<[RegExp, string]> = [
   [/term_[0-9a-f]+/gi, "TERMINAL_ID"],
   [/-e2e-test-claude-[0-9a-z]+/g, "-e2e-test-claude-TS"],
   [/-e2e-test-[0-9a-z]+/g, "-e2e-test-TS"],
+  [/\b[0-9a-z]{3}-e2e-test-TS-TS/g, "ID-e2e-test-TS-TS"],
+  [/✻ \S+ for 0s/g, "✻ Worked for 0s"],
+  [/✻ Worked for 0s\s+▐/g, "✻ Worked for 0s ▐"],
   [/\btest-claude-[0-9a-z]+/g, "test-claude-ID"],
   [/\bplain-probe-[0-9a-z]+/g, "plain-probe-ID"],
   [/\bprobe-[0-9a-z]+/g, "probe-ID"],
@@ -53,6 +56,14 @@ const DYNAMIC_REPLACEMENTS: Array<[RegExp, string]> = [
 
 export function normalizeOutput(text: string): string {
   let result = text.trimEnd()
+  for (const [pattern, replacement] of DYNAMIC_REPLACEMENTS) {
+    result = result.replace(pattern, replacement)
+  }
+  return result
+}
+
+export function normalizeScreenOutput(text: string): string {
+  let result = text
   for (const [pattern, replacement] of DYNAMIC_REPLACEMENTS) {
     result = result.replace(pattern, replacement)
   }

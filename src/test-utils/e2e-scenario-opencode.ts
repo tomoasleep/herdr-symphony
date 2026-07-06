@@ -67,11 +67,6 @@ async function main(): Promise<void> {
     await service.waitForDispatches()
   } finally {
     service.shutdown()
-    try {
-      if (herdrClient.startedPaneId) {
-        await herdrClient.closePane(herdrClient.startedPaneId)
-      }
-    } catch {}
     await mock.stop()
   }
 }

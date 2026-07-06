@@ -27,17 +27,27 @@ RUN npm config set prefix /home/agent/.npm-global \
     && npm install -g @anthropic-ai/claude-code
 ENV PATH="/home/agent/.npm-global/bin:${PATH}"
 
-RUN mv /home/agent/.npm-global/bin/claude /home/agent/.npm-global/bin/claude-real && \
-    printf '%s\n' '#!/usr/bin/env bash' 'exec /home/agent/.npm-global/bin/claude-real --print "$@"' > /home/agent/.npm-global/bin/claude && \
-    chmod +x /home/agent/.npm-global/bin/claude
-
 RUN printf '%s\n' \
     '{"firstStartTime":"2025-01-01T00:00:00.000Z",' \
     '"machineID":"e2e-fixed-machine-id",' \
     '"userID":"e2e-fixed-user-id",' \
+    '"numStartups":10,' \
+    '"installMethod":"npm",' \
+    '"autoUpdates":false,' \
+    '"hasCompletedOnboarding":true,' \
+    '"lastOnboardingVersion":"2.1.201",' \
+    '"hasTrustDialogAccepted":true,' \
+    '"hasTrustDialogHooksAccepted":true,' \
+    '"hasCompletedProjectOnboarding":true,' \
+    '"hasAcknowledgedCostThreshold":true,' \
+    '"bypassPermissionsModeAccepted":true,' \
+    '"dangerouslySkipPermissionsAccepted":true,' \
+    '"theme":"dark",' \
     '"migrationVersion":13,' \
     '"opusProMigrationComplete":true,' \
     '"sonnet1m45MigrationComplete":true,' \
+    '"effortCalloutV2Dismissed":true,' \
+    '"projects":{"/workspace":{"hasTrustDialogAccepted":true,"hasTrustDialogHooksAccepted":true,"hasCompletedProjectOnboarding":true}},' \
     '"seenNotifications":{},' \
     '"changelogLastFetched":0}' > /home/agent/.claude.json
 

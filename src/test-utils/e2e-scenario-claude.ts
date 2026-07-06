@@ -1,4 +1,5 @@
-import { tmpdir } from "node:os"
+import { readFileSync, writeFileSync } from "node:fs"
+import { homedir, tmpdir } from "node:os"
 import { LLMock } from "@copilotkit/aimock"
 import { formatAgmsgMessage } from "../agmsg/agmsg-message"
 import type { Issue, ResolvedIssueRuntimeConfig } from "../domain/types"
@@ -17,6 +18,22 @@ import {
 
 const ISSUE_ID = "test-issue-claude"
 const FIXED_NOW = 1_719_662_400_000
+
+function trustClaudeWorkspace(workspacePath: string): void {
+  const configPath = `${homedir()}/.claude.json`
+  const config = JSON.parse(readFileSync(configPath, "utf8")) as Record<string, unknown>
+  const projects =
+    typeof config.projects === "object" && config.projects !== null
+      ? (config.projects as Record<string, unknown>)
+      : {}
+  projects[workspacePath] = {
+    hasTrustDialogAccepted: true,
+    hasTrustDialogHooksAccepted: true,
+    hasCompletedProjectOnboarding: true,
+  }
+  config.projects = projects
+  writeFileSync(configPath, `${JSON.stringify(config)}\n`)
+}
 
 function buildClaudeMockResponse(
   issueId: string,
@@ -91,15 +108,18 @@ async function main(): Promise<void> {
   }
   const trackerDir = await prepareTrackerDir(tmpdir(), issue)
   const workspacePath = await prepareWorkspace(tmpdir(), `claude-${runId}`)
+  trustClaudeWorkspace(workspacePath)
 
   const config = makeClaudeServiceConfig(trackerDir)
   const mockUrl = mock.url
   const envVars = {
     ANTHROPIC_BASE_URL: mockUrl,
     ANTHROPIC_AUTH_TOKEN: "mock-token",
-    CI: "true",
   }
-  const herdrClient = wrapHerdrClientWithEnv(createHerdrClient(), envVars)
+  const herdrClient = wrapHerdrClientWithEnv(createHerdrClient(), envVars, (info) => {
+    if (info.name) console.log(`agent name=${info.name}`)
+    if (info.paneId) console.log(`agent pane=${info.paneId}`)
+  })
   const runner = new HerdrAgentRunner(config, {
     herdrClient,
     pollIntervalMs: 3_000,
@@ -139,11 +159,6 @@ async function main(): Promise<void> {
     await service.waitForDispatches()
   } finally {
     service.shutdown()
-    try {
-      if (herdrClient.startedPaneId) {
-        await herdrClient.closePane(herdrClient.startedPaneId)
-      }
-    } catch {}
     await mock.stop()
   }
 }
