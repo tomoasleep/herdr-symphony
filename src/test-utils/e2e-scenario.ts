@@ -123,7 +123,7 @@ async function runOpencode(config: ScenarioConfig, controller: AbortController):
         kind: "herdr_agent",
         agent: "opencode",
         opencode: { model: "mock/agent-model", agent: null },
-        claude: { model: null, permissionMode: null },
+        claude: { model: null, permissionMode: null, messenger: "agmsg" },
         workspaceLabel: null,
         turnTimeoutMs: 60_000,
         onBlocked: null,
@@ -151,7 +151,8 @@ async function runClaude(config: ScenarioConfig, controller: AbortController): P
   const workspacePath = await prepareWorkspace(tmpdir(), `claude-${SCENARIO_NOW.toString(36)}`)
   trustClaudeWorkspace(workspacePath)
 
-  const serviceConfig = makeClaudeServiceConfig(trackerDir)
+  const messenger = config.messenger ?? "agmsg"
+  const serviceConfig = makeClaudeServiceConfig(trackerDir, { messenger })
   const envVars = {
     ANTHROPIC_BASE_URL: mock.url,
     ANTHROPIC_AUTH_TOKEN: "mock-token",
@@ -183,7 +184,7 @@ async function runClaude(config: ScenarioConfig, controller: AbortController): P
         kind: "herdr_agent",
         agent: "claude",
         opencode: { model: null, agent: null },
-        claude: { model: null, permissionMode: "bypassPermissions" },
+        claude: { model: null, permissionMode: "bypassPermissions", messenger },
         workspaceLabel: null,
         turnTimeoutMs: 120_000,
         onBlocked: null,

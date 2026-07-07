@@ -133,10 +133,15 @@ work:
 | `opencode.agent` | string (Liquid) | null | `opencode run --agent` |
 | `claude.model` | string (Liquid) | null | `claude --model` |
 | `claude.permission_mode` | string (Liquid) | null | `claude --permission-mode` (`bypassPermissions` の場合は `--dangerously-skip-permissions` も付与) |
+| `claude.messenger` | `"agmsg"` \| `"report_file"` | `"agmsg"` | Claude との完了判定通信方式 |
 | `workspace_label` | string (Liquid) | issue.identifier | Herdr workspace の label |
 | `turn_timeout_ms` | number | null (無制限) | Agent 完了待ちタイムアウト |
 
-Claude は Herdr の `idle` だけでは完了扱いにしません。Claude には argv で bootstrap prompt だけを渡し、実タスクは [agmsg](https://github.com/fujibee/agmsg) 経由の `herdr-symphony.task` JSON メッセージとして送信します。
+Claude は Herdr の `idle` だけでは完了扱いにしません。`claude.messenger` 設定で完了判定通信方式を選べます。
+
+#### `agmsg` (デフォルト)
+
+[agmsg](https://github.com/fujibee/agmsg) 経由で `herdr-symphony.task` JSON メッセージを送信します。agmsg が必要です（`~/.agents/skills/agmsg/scripts/send.sh` が存在すること）。未インストール時は Claude runner が明確なエラーを返します。
 
 ```json
 {"kind":"herdr-symphony.task","runId":"<agentName>","toAgent":"<agentName>","issueId":"<issueId>","prompt":"..."}
@@ -147,6 +152,10 @@ Claude は task を受け取ると `herdr-symphony.ack` (`ackOf=task`) を返し
 完了時は Claude が `herdr-symphony.report` を送ります。`done` は成功、`failed` は失敗として完了します。`pending` は待機継続です。Claude が `idle` に戻っても report がない場合、herdr-symphony は agmsg で Claude に report を促すリマインドを送り、Claude は `ackOf=reminder` を返します。
 
 agmsg が必要です（`~/.agents/skills/agmsg/scripts/send.sh` が存在すること）。未インストール時は Claude runner が明確なエラーを返します。
+
+#### `report_file`
+
+ファイルベースの report 機構。プロンプト末尾に `herdr-symphony report --status ... --summary ...` の実行指示を追加し、`HERDR_SYMPHONY_REPORT_PATH` 環境変数で report file パスを Claude に注入します。Claude が `.herdr-symphony-report.json` に `done` / `pending` / `failed` を書き、runner が report file をポーリングして完了判定します。report 未送信のまま idle になった場合は、`herdr agent send` と `pane send-keys Enter` で Claude pane に直接リマインドを送ります。
 
 ### work.workspace
 

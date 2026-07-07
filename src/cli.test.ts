@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test"
-import { rmSync } from "node:fs"
+import { readFileSync, rmSync } from "node:fs"
 import { mkdir, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
@@ -95,5 +95,56 @@ describe("runCli", () => {
     })
     expect(code).toBe(0)
     expect(receivedPaths).toEqual(["/test/WORKFLOW.md"])
+  })
+
+  test("report command が HERDR_SYMPHONY_REPORT_PATH に done report を書く", async () => {
+    const tmpDir = join(tmpdir(), `hs-cli-report-${Date.now()}`)
+    tmpDirs.push(tmpDir)
+    await mkdir(tmpDir, { recursive: true })
+    const reportPath = join(tmpDir, "report.json")
+    const { output } = makeDeps()
+
+    const code = await runCli(["report", "--status", "done", "--summary", "作業完了"], {
+      cwd: tmpDir,
+      env: { HERDR_SYMPHONY_REPORT_PATH: reportPath },
+      start: async () => {},
+      write: (chunk) => output.push(chunk),
+    })
+
+    expect(code).toBe(0)
+    expect(JSON.parse(readFileSync(reportPath, "utf8"))).toMatchObject({
+      status: "done",
+      summary: "作業完了",
+    })
+  })
+
+  test("report command は summary を必須にする", async () => {
+    const { deps, output } = makeDeps()
+
+    const code = await runCli(["report", "--status", "done"], deps)
+
+    expect(code).toBe(1)
+    expect(output.join("")).toContain("--summary")
+  })
+
+  test("report command は HERDR_SYMPHONY_REPORT_PATH を必須にする", async () => {
+    const { deps, output } = makeDeps()
+
+    const code = await runCli(["report", "--status", "done", "--summary", "作業完了"], deps)
+
+    expect(code).toBe(1)
+    expect(output.join("")).toContain("HERDR_SYMPHONY_REPORT_PATH")
+  })
+
+  test("report command は status を検証する", async () => {
+    const { deps, output } = makeDeps()
+
+    const code = await runCli(["report", "--status", "failure", "--summary", "失敗"], {
+      ...deps,
+      env: { HERDR_SYMPHONY_REPORT_PATH: "/tmp/report.json" },
+    })
+
+    expect(code).toBe(1)
+    expect(output.join("")).toContain("done / pending / failed")
   })
 })

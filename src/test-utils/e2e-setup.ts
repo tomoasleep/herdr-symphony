@@ -59,7 +59,7 @@ export function makeOpencodeServiceConfig(trackerDir: string): ServiceConfig {
       herdrAgent: {
         agent: "opencode",
         opencode: { model: "mock/agent-model", agent: null },
-        claude: { model: null, permissionMode: null },
+        claude: { model: null, permissionMode: null, messenger: "agmsg" },
         workspaceLabel: null,
         turnTimeoutMs: 60_000,
         onBlocked: null,
@@ -79,7 +79,11 @@ export function makeOpencodeServiceConfig(trackerDir: string): ServiceConfig {
   }
 }
 
-export function makeClaudeServiceConfig(trackerDir: string): ServiceConfig {
+export function makeClaudeServiceConfig(
+  trackerDir: string,
+  opts: { messenger?: "agmsg" | "report_file" } = {},
+): ServiceConfig {
+  const messenger = opts.messenger ?? "agmsg"
   return {
     tracker: {
       kind: "file",
@@ -105,7 +109,7 @@ export function makeClaudeServiceConfig(trackerDir: string): ServiceConfig {
       herdrAgent: {
         agent: "claude",
         opencode: { model: null, agent: null },
-        claude: { model: null, permissionMode: null },
+        claude: { model: null, permissionMode: null, messenger },
         workspaceLabel: null,
         turnTimeoutMs: 120_000,
         onBlocked: null,

@@ -120,6 +120,7 @@ const HerdrAgentOpencodeSchema = z.object({
 const HerdrAgentClaudeSchema = z.object({
   model: z.string().optional().nullable(),
   permission_mode: z.string().optional().nullable(),
+  messenger: z.enum(["agmsg", "report_file"]).optional().nullable(),
 })
 
 const HerdrAgentSchema = z.object({
@@ -234,6 +235,7 @@ export function resolveConfigFromSchema(input: unknown): ServiceConfig {
           model:
             typeof herdrAgentRaw?.claude?.model === "string" ? herdrAgentRaw.claude.model : null,
           permissionMode: normalizeOptionalString(herdrAgentRaw?.claude?.permission_mode),
+          messenger: herdrAgentRaw?.claude?.messenger ?? "agmsg",
         },
         workspaceLabel: normalizeOptionalString(herdrAgentRaw?.workspace_label),
         turnTimeoutMs,

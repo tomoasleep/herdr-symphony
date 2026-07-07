@@ -33,7 +33,7 @@ function makeConfig(overrides: Partial<ServiceConfig["work"]> = {}): ServiceConf
       herdrAgent: {
         agent: "opencode",
         opencode: { model: null, agent: null },
-        claude: { model: null, permissionMode: null },
+        claude: { model: null, permissionMode: null, messenger: "agmsg" },
         workspaceLabel: null,
         turnTimeoutMs: 3_600_000,
         onBlocked: null,
@@ -333,6 +333,78 @@ describe("SymphonyService", () => {
 
     expect(runner.options?.agmsg).toBeUndefined()
     expect(runner.options?.content).toBe("prompt")
+    service.shutdown()
+  })
+
+  test("claude.messenger: report_file の場合は reportPath を渡し agmsg を渡さない", async () => {
+    const tmpDir = join(tmpdir(), `hs-service-report-${Date.now()}`)
+    tmpDirs.push(tmpDir)
+    await mkdir(tmpDir, { recursive: true })
+    const issue = makeIssue()
+    const tracker = makeMockTrackerClient([issue])
+    const runner = makeCapturingRunner()
+    const config = makeConfig({
+      herdrAgent: {
+        ...makeConfig().work.herdrAgent,
+        agent: "claude",
+        claude: {
+          model: null,
+          permissionMode: null,
+          messenger: "report_file",
+        },
+      },
+    })
+
+    const service = new SymphonyService(config, "Fix the bug.", {
+      tracker,
+      runner,
+      writeLog: () => {},
+      ensureWorkspace: makeMockWorkspace(tmpDir),
+      claimIssue: () => true,
+      releaseIssue: () => {},
+    })
+
+    await service.refresh()
+    await service.waitForDispatches()
+
+    expect(runner.options?.agmsg).toBeUndefined()
+    expect(runner.options?.reportPath).toBe(join(tmpDir, ".herdr-symphony-report.json"))
+    expect(runner.options?.content).toContain("herdr-symphony report --status done")
+    service.shutdown()
+  })
+
+  test("claude.messenger: agmsg (default) の場合は agmsg を渡し reportPath を渡さない", async () => {
+    const tmpDir = join(tmpdir(), `hs-service-agmsg-${Date.now()}`)
+    tmpDirs.push(tmpDir)
+    await mkdir(tmpDir, { recursive: true })
+    const issue = makeIssue()
+    const tracker = makeMockTrackerClient([issue])
+    const runner = makeCapturingRunner()
+    const config = makeConfig({
+      herdrAgent: {
+        ...makeConfig().work.herdrAgent,
+        agent: "claude",
+      },
+    })
+
+    const service = new SymphonyService(config, "Fix the bug.", {
+      tracker,
+      runner,
+      writeLog: () => {},
+      ensureWorkspace: makeMockWorkspace(tmpDir),
+      claimIssue: () => true,
+      releaseIssue: () => {},
+    })
+
+    await service.refresh()
+    await service.waitForDispatches()
+
+    expect(runner.options?.agmsg).toEqual({
+      team: "herdr-symphony",
+      orchestratorAgent: "herdr-symphony",
+    })
+    expect(runner.options?.reportPath).toBeUndefined()
+    expect(runner.options?.content).toBe("Fix the bug.")
     service.shutdown()
   })
 

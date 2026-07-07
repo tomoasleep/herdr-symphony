@@ -5,6 +5,7 @@ import { formatAgmsgMessage, parseInboxForMessages } from "../../agmsg/agmsg-mes
 import type { Issue, ServiceConfig } from "../../domain/types"
 import type { HerdrAgentState, HerdrClient } from "../../herdr/herdr-client"
 import { createHerdrClient } from "../../herdr/herdr-client"
+import { readReport } from "../../report/write-report"
 import { sanitizeAgentName, sanitizeWorkspaceKey } from "../../utils/normalize"
 import type { Runner, RunnerEvent, RunnerOptions, RunnerResult } from "../types"
 import type { ReportResolver } from "./report"
@@ -38,6 +39,9 @@ const DEFAULT_POLL_INTERVAL_MS = 2_000
 const DEFAULT_HANDSHAKE_TIMEOUT_MS = 180_000
 const DEFAULT_ACK_RESEND_INTERVAL_MS = 5_000
 const DEFAULT_REMINDER_ACK_DEADLINE_MS = 30_000
+
+const CLAUDE_REPORT_REMINDER =
+  'タスクは完了しましたか？完了した場合は `herdr-symphony report --status done --summary "やった作業の要約"` を実行してください。まだ background task / subagent / task の完了待ちなら `herdr-symphony report --status pending --summary "待機中の内容"` を実行してください。失敗した場合は `herdr-symphony report --status failed --summary "失敗理由"` を実行してください。'
 
 type AgmsgWaitContext = {
   client: AgmsgClient
@@ -180,10 +184,13 @@ export class HerdrAgentRunner implements Runner {
 
       const argv = this.buildAgentArgv({ ...options, content })
 
+      const effectiveReportPath = options.agentKind === "claude" ? options.reportPath : undefined
+
       const agent = await this.client.startAgent(agentName, {
         workspaceId: workspace.id,
         cwd: options.workspacePath,
         argv,
+        env: effectiveReportPath ? { HERDR_SYMPHONY_REPORT_PATH: effectiveReportPath } : undefined,
       })
 
       const target = agent.paneId ?? agentName
@@ -216,6 +223,7 @@ export class HerdrAgentRunner implements Runner {
         timeoutMs,
         options.onBlocked ?? null,
         agmsgContext,
+        effectiveReportPath,
       )
 
       if (waitResult.state === null) {
@@ -252,6 +260,24 @@ export class HerdrAgentRunner implements Runner {
           status: "succeeded",
           error: null,
           responseText: waitResult.report.summary,
+        }
+      }
+
+      if (effectiveReportPath) {
+        const report = readReport(effectiveReportPath)
+        if (report?.status === "failed") {
+          return {
+            status: "failed",
+            error: report.summary || "reported as failed",
+            responseText: null,
+          }
+        }
+        if (report?.status === "done" && report.summary) {
+          return {
+            status: "succeeded",
+            error: null,
+            responseText: report.summary,
+          }
         }
       }
 
@@ -331,6 +357,7 @@ export class HerdrAgentRunner implements Runner {
     timeoutMs: number,
     onBlocked: "continue" | "fail" | null,
     agmsgContext: AgmsgWaitContext | null,
+    reportPath: string | undefined,
   ): Promise<WaitResult> {
     const deadline = Date.now() + timeoutMs
     let sawActive = false
@@ -348,9 +375,20 @@ export class HerdrAgentRunner implements Runner {
             sawActive = false
             continue
           }
+          if (reportPath) {
+            const handled = this.handleReportFileIdle(target, reportPath)
+            if (handled === "done") return { state: "done", report: null }
+            sawActive = false
+            continue
+          }
           return { state: "done", report: null }
         }
         if (sawAgent) {
+          if (reportPath) {
+            const handled = this.handleReportFileIdle(target, reportPath)
+            if (handled === "done") return { state: "done", report: null }
+            continue
+          }
           return { state: "done", report: null }
         }
         continue
@@ -378,7 +416,17 @@ export class HerdrAgentRunner implements Runner {
             sawActive = false
             continue
           }
+          if (reportPath) {
+            const handled = this.handleReportFileIdle(target, reportPath)
+            if (handled === "done") return { state: "done", report: null }
+            sawActive = false
+            continue
+          }
           return { state: "idle", report: null }
+        }
+        if (reportPath && sawAgent) {
+          const handled = this.handleReportFileIdle(target, reportPath)
+          if (handled === "done") return { state: "done", report: null }
         }
       }
     }
@@ -411,6 +459,20 @@ export class HerdrAgentRunner implements Runner {
     )
     this.logger("agmsg reminder sent")
     return { state: "none" }
+  }
+
+  private handleReportFileIdle(target: string, reportPath: string): "done" | "pending" | "none" {
+    const report = readReport(reportPath)
+    if (report?.status === "done" || report?.status === "failed") {
+      return "done"
+    }
+    if (report?.status === "pending") {
+      return "pending"
+    }
+    void this.client.sendInput(target, CLAUDE_REPORT_REMINDER)
+    void this.client.sendKeys(target, "Enter")
+    this.logger("report-file reminder sent")
+    return "none"
   }
 
   private buildAgentArgv(options: RunnerOptions): string[] {

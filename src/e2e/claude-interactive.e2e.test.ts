@@ -10,6 +10,7 @@ import {
 import {
   buildClaudeAgmsgContext,
   claudeAckThenReportToolCall,
+  claudeReportFileToolCall,
   type MockResponse,
   plainResponse,
   writeScenarioConfig,
@@ -31,6 +32,16 @@ function claudeMockResponses(identifier: string): MockResponse[] {
       status: "done",
       summary: "Task completed successfully.",
       sleepMs: 10,
+    }),
+    plainResponse("Task completed successfully."),
+  ]
+}
+
+function claudeReportFileMockResponses(): MockResponse[] {
+  return [
+    claudeReportFileToolCall({
+      status: "done",
+      summary: "Task completed successfully.",
     }),
     plainResponse("Task completed successfully."),
   ]
@@ -279,3 +290,111 @@ test("e2e: claude report 未送信の idle — agent の画面全体を確認で
     await herdr.cleanup()
   }
 }, 150_000)
+
+test("e2e: claude report_file モード — herdr-symphony report で完了報告する", async () => {
+  if (!HERDR_AVAILABLE) throw new Error("herdr binary not found on PATH")
+  if (!CLAUDE_AVAILABLE) throw new Error("claude binary not found on PATH")
+  const projectRoot = process.cwd()
+
+  const herdr = await createHerdrIsolation("e2e-claude-report-file")
+
+  await execInContainer(herdr.containerId, ["herdr", "server", "stop"], 10_000).catch(() => {})
+
+  try {
+    const herdrSession = register(
+      await launchTerminal({
+        command: "docker",
+        args: ["exec", "-it", herdr.containerId, "herdr"],
+        cwd: projectRoot,
+        cols: 160,
+        rows: 40,
+        env: {},
+        waitForDataTimeout: 30_000,
+      }),
+    )
+
+    await herdrSession.waitForText(/spaces|agents/i, { timeout: 15_000 })
+
+    const identifier = `test-claude-${newRunId()}`
+    const { containerPath } = await writeScenarioConfig(herdr.sharedDir, {
+      kind: "claude",
+      messenger: "report_file",
+      issue: {
+        id: "test-issue-claude",
+        identifier,
+        title: "E2E Claude Test Issue",
+        body: "This is a test issue for herdr-symphony claude e2e.",
+      },
+      mockResponses: claudeReportFileMockResponses(),
+    })
+
+    const scenarioSession = register(
+      await launchTerminal({
+        command: "docker",
+        args: [
+          "exec",
+          "-it",
+          "-e",
+          `SCENARIO_CONFIG_PATH=${containerPath}`,
+          herdr.containerId,
+          "bun",
+          "run",
+          "/workspace/src/test-utils/e2e-scenario.ts",
+        ],
+        cwd: projectRoot,
+        cols: 200,
+        rows: 36,
+        env: {},
+      }),
+    )
+
+    const agentScreen = await captureAgentScreen(scenarioSession, herdrSession, herdr.containerId)
+
+    expect(agentScreen).toMatchInlineSnapshot(`
+      "
+       spaces                  │ 1 Z     +
+                               │┌▌ test-claude-ID-e2e-test-TS-TS ────────────────────────────────────────────────────────────────────────────────┐
+       · workspace             ││╭─── Claude Code VERSION ────────────────────────────────────────────────────────────────────────────────────────────────────────╮ │
+         main                  │││                                                    │ What's new                                                                 │ │
+                               │││                    Welcome back!                   │ Added a "Dynamic workflow size" setting in \`/config\` for controlling how … │ │
+       ○ test-claude-ID│││                                                    │ Added \`workflow.run_id\` and \`workflow.name\` OpenTelemetry attributes to t… │ │
+         master                │││                       ▐▛███▜▌                      │ Fixed a crash in the inline Ctrl+R history search when accepting or cance… │ │
+                               │││                      ▝▜█████▛▘                     │ /release-notes for more                                                    │ │
+                               │││                        ▘▘ ▝▝                       │                                                                            │ │
+                               │││                                                    │                                                                            │ │
+                               │││      Opus 4.8 (1M context) · API Usage Billing     │                                                                            │ │
+                               │││  TEMP_DIR │                                                                            │ │
+                               ││╰─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯ │
+                               ││                                                                                                                                    │
+                               ││                                                                                                                                    │
+                               ││❯ Test prompt for test-claude-ID                                                                                          │
+                               ││  ## 完了報告                                                                                                                       │
+                               ││                                                                                                                                    │
+                               ││  タスクが完了したら、以下のコマンドを実行してください。                                                                            │
+       new                 menu││                                                                                                                                    │
+      ─────────────────────────││      herdr-symphony report --status done --summary "やった作業の要約"                                                              │
+       agents           grouped││                                                                                                                                    │
+                               ││  background task / subagent / task の完了待ちなら、以下のコマンドを実行してください。                                              │
+       ✓ test-claude-ID…││                                                                                                                                    │
+         idle · test-claude-ID││      herdr-symphony report --status pending --summary "待機中の内容"                                                               │
+                               ││                                                                                                                                    │
+                               ││  失敗した場合は、以下のコマンドを実行してください。                                                                                │
+                               ││                                                                                                                                    │
+                               ││      herdr-symphony report --status failed --summary "失敗理由"                                                                    │
+                               ││                                                                                                                                    │
+                               ││● Task completed successfully.                                                                                                      │
+                               ││                                                                                                                                    │
+                               ││✻ Worked for 0s │
+                               ││                                                                                                                                    │
+                               ││─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────── │
+                               ││❯                                                                                                                                   │
+                               ││─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────── │
+                               ││  ⏵⏵ bypass permissions on (shift+tab to cycle) · ← for agents                                                   ● high · /effort   │
+                               ││                                                                                                                                    │
+                              «│└────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘"
+    `)
+  } finally {
+    await execInContainer(herdr.containerId, ["herdr", "server", "stop"], 10_000)
+    await herdr.cleanup()
+  }
+}, 120_000)

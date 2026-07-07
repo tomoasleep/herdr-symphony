@@ -211,6 +211,48 @@ test("herdr_agent.on_blocked 未指定時は null になる", () => {
   expect(config.work.herdrAgent.onBlocked).toBeNull()
 })
 
+test("claude.messenger: report_file を解決できる", () => {
+  const config = resolveConfig({
+    tracker: { kind: "file", file: { base_dir: "/issues" } },
+    work: {
+      runner: "herdr_agent",
+      herdr_agent: {
+        agent: "claude",
+        claude: {
+          messenger: "report_file",
+        },
+      },
+    },
+  })
+
+  expect(config.work.herdrAgent.claude.messenger).toBe("report_file")
+})
+
+test("claude.messenger 未指定時は agmsg になる", () => {
+  const config = resolveConfig({
+    tracker: { kind: "file", file: { base_dir: "/issues" } },
+  })
+
+  expect(config.work.herdrAgent.claude.messenger).toBe("agmsg")
+})
+
+test("claude.messenger に不正値を指定するとエラー", () => {
+  expect(() =>
+    resolveConfig({
+      tracker: { kind: "file", file: { base_dir: "/issues" } },
+      work: {
+        runner: "herdr_agent",
+        herdr_agent: {
+          agent: "claude",
+          claude: {
+            messenger: "unknown",
+          },
+        },
+      },
+    }),
+  ).toThrow()
+})
+
 test("agent 同時実行数と backoff を解決できる", () => {
   const config = resolveConfig({
     tracker: { kind: "file", file: { base_dir: "/issues" } },

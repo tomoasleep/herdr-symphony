@@ -1,3 +1,5 @@
+import { rm } from "node:fs/promises"
+import { join } from "node:path"
 import type { Issue, ResolvedIssueRuntimeConfig, ServiceConfig } from "./domain/types"
 import { OrchestratorState } from "./orchestrator/orchestrator"
 import { createRunner } from "./runner/create-runner"
@@ -12,6 +14,23 @@ import { resolveIssueRuntimeConfig } from "./workflow/render-frontmatter"
 import { renderPrompt } from "./workflow/render-prompt"
 import type { WorkspaceResult } from "./workspace/workspace-manager"
 import { ensureWorkspace, runHook } from "./workspace/workspace-manager"
+
+const CLAUDE_REPORT_INSTRUCTION = [
+  "",
+  "## 完了報告",
+  "",
+  "タスクが完了したら、以下のコマンドを実行してください。",
+  "",
+  '    herdr-symphony report --status done --summary "やった作業の要約"',
+  "",
+  "background task / subagent / task の完了待ちなら、以下のコマンドを実行してください。",
+  "",
+  '    herdr-symphony report --status pending --summary "待機中の内容"',
+  "",
+  "失敗した場合は、以下のコマンドを実行してください。",
+  "",
+  '    herdr-symphony report --status failed --summary "失敗理由"',
+].join("\n")
 
 type ServiceDependencies = {
   tracker?: IssueTrackerClient
@@ -254,13 +273,26 @@ export class SymphonyService {
 
       try {
         const content = await this.renderPromptFn(this.template, runtimeConfig.issue, null)
-        const agmsg =
-          runtimeConfig.runner.agent === "claude"
-            ? {
-                team: "herdr-symphony",
-                orchestratorAgent: "herdr-symphony",
-              }
-            : undefined
+        let agmsg:
+          | {
+              team: string
+              orchestratorAgent: string
+            }
+          | undefined
+        let reportPath: string | undefined
+        let finalContent = content
+
+        if (runtimeConfig.runner.agent === "claude") {
+          const messenger = runtimeConfig.runner.claude.messenger
+          if (messenger === "report_file") {
+            reportPath = join(workspace.path, ".herdr-symphony-report.json")
+            await rm(reportPath, { force: true })
+            finalContent = `${content}${CLAUDE_REPORT_INSTRUCTION}`
+          } else {
+            agmsg = { team: "herdr-symphony", orchestratorAgent: "herdr-symphony" }
+          }
+        }
+
         const runnerTimeoutMs = runtimeConfig.runner.turnTimeoutMs
         const runnerAgent = runtimeConfig.runner.opencode.agent
         const runnerModel =
@@ -278,7 +310,7 @@ export class SymphonyService {
             (runnerModel ? ` model=${runnerModel}` : ""),
         )
         const result = await this.runner.runIssue(runtimeConfig.issue, {
-          content,
+          content: finalContent,
           attempt: null,
           workspacePath: workspace.path,
           agentKind: runtimeConfig.runner.agent,
@@ -289,6 +321,7 @@ export class SymphonyService {
           timeoutMs: runnerTimeoutMs,
           workflowName: this.workflowName,
           agmsg,
+          reportPath,
           onEvent: (event) => {
             this.state.markEvent(issue.id)
             const message = "message" in event ? event.message : event.event

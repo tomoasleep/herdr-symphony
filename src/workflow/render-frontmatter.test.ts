@@ -37,7 +37,7 @@ function makeWorkConfig(overrides: Partial<WorkConfig> = {}): WorkConfig {
     herdrAgent: {
       agent: "opencode",
       opencode: { model: null, agent: null },
-      claude: { model: null, permissionMode: null },
+      claude: { model: null, permissionMode: null, messenger: "agmsg" },
       workspaceLabel: null,
       turnTimeoutMs: 3_600_000,
       onBlocked: null,
@@ -73,7 +73,7 @@ test("opencode model/agent を Liquid で解決できる", async () => {
         model: '{{ issue.fields["Model"] | default: "openai/gpt-5.4" }}',
         agent: '{{ issue.fields["Agent"] | default: "build" }}',
       },
-      claude: { model: null, permissionMode: null },
+      claude: { model: null, permissionMode: null, messenger: "agmsg" },
       workspaceLabel: null,
       turnTimeoutMs: 3_600_000,
       onBlocked: null,
@@ -133,7 +133,7 @@ test("workspaceLabel を Liquid で解決できる", async () => {
     herdrAgent: {
       agent: "opencode",
       opencode: { model: null, agent: null },
-      claude: { model: null, permissionMode: null },
+      claude: { model: null, permissionMode: null, messenger: "agmsg" },
       workspaceLabel: '{{ issue.identifier | replace: "/", "_" }}',
       turnTimeoutMs: null,
       onBlocked: null,
@@ -152,6 +152,7 @@ test("claude permissionMode を Liquid で解決できる", async () => {
       claude: {
         model: null,
         permissionMode: '{{ issue.fields["PermissionMode"] | default: "acceptEdits" }}',
+        messenger: "agmsg",
       },
       workspaceLabel: null,
       turnTimeoutMs: null,
@@ -168,7 +169,7 @@ test("claude permissionMode が null のときは null になる", async () => {
     herdrAgent: {
       agent: "claude",
       opencode: { model: null, agent: null },
-      claude: { model: null, permissionMode: null },
+      claude: { model: null, permissionMode: null, messenger: "agmsg" },
       workspaceLabel: null,
       turnTimeoutMs: null,
       onBlocked: null,
@@ -179,12 +180,28 @@ test("claude permissionMode が null のときは null になる", async () => {
   expect(result.runner.claude.permissionMode).toBeNull()
 })
 
+test("claude messenger が runner に引き継がれる", async () => {
+  const config = makeWorkConfig({
+    herdrAgent: {
+      agent: "claude",
+      opencode: { model: null, agent: null },
+      claude: { model: null, permissionMode: null, messenger: "report_file" },
+      workspaceLabel: null,
+      turnTimeoutMs: null,
+      onBlocked: null,
+    },
+  })
+  const result = await resolveIssueRuntimeConfig(makeIssue(), config, null)
+
+  expect(result.runner.claude.messenger).toBe("report_file")
+})
+
 test("turnTimeoutMs が引き継がれる", async () => {
   const config = makeWorkConfig({
     herdrAgent: {
       agent: "opencode",
       opencode: { model: null, agent: null },
-      claude: { model: null, permissionMode: null },
+      claude: { model: null, permissionMode: null, messenger: "agmsg" },
       workspaceLabel: null,
       turnTimeoutMs: 1_800_000,
       onBlocked: null,
@@ -200,7 +217,7 @@ test("onBlocked が runner に引き継がれる", async () => {
     herdrAgent: {
       agent: "opencode",
       opencode: { model: null, agent: null },
-      claude: { model: null, permissionMode: null },
+      claude: { model: null, permissionMode: null, messenger: "agmsg" },
       workspaceLabel: null,
       turnTimeoutMs: 3_600_000,
       onBlocked: "fail",

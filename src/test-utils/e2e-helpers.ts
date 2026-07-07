@@ -54,6 +54,7 @@ const DYNAMIC_REPLACEMENTS: Array<[RegExp, string]> = [
   [/\b[0-9a-z]{3}-e2e-test-TS-TS/g, "ID-e2e-test-TS-TS"],
   [/✻ \S+ for 0s/g, "✻ Worked for 0s"],
   [/✻ Worked for 0s\s+▐/g, "✻ Worked for 0s ▐"],
+  [/✻ Worked for 0s\s+│/g, "✻ Worked for 0s │"],
   [/\btest-claude-[0-9a-z]+/g, "test-claude-ID"],
   [/\bplain-probe-[0-9a-z]+/g, "plain-probe-ID"],
   [/\bprobe-[0-9a-z]+/g, "probe-ID"],

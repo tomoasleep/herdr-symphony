@@ -46,6 +46,7 @@ export const mockResponseSchema = z.discriminatedUnion("kind", [
 
 export const scenarioConfigSchema = z.object({
   kind: z.enum(["opencode", "claude"]),
+  messenger: z.enum(["agmsg", "report_file"]).optional(),
   issue: z.object({
     id: z.string(),
     identifier: z.string(),
@@ -131,6 +132,25 @@ export function claudeAckThenReportToolCall(
   const report = buildSendCommand(ctx, reportBody(ctx, opts.status, opts.summary))
   const sleep = opts.sleepMs ? ` && sleep ${opts.sleepMs}` : ""
   return bashToolCall(`${ack} && ${report}${sleep}`)
+}
+
+export function claudeReportFileToolCall(opts: {
+  status: AgentReportStatus
+  summary: string
+}): MockResponse {
+  const quotedSummary = shellQuote(opts.summary)
+  return {
+    kind: "respond",
+    content: "Writing report file.",
+    toolCalls: [
+      {
+        name: "Bash",
+        arguments: {
+          command: `herdr-symphony report --status ${opts.status} --summary ${quotedSummary}`,
+        },
+      },
+    ],
+  }
 }
 
 export function plainResponse(content: string): MockResponse {

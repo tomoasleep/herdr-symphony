@@ -68,9 +68,12 @@ export type HerdrAgentOpencodeConfig = {
   agent: string | null
 }
 
+export type ClaudeMessenger = "agmsg" | "report_file"
+
 export type HerdrAgentClaudeConfig = {
   model: string | null
   permissionMode: string | null
+  messenger: ClaudeMessenger
 }
 
 export type OnBlockedStrategy = "continue" | "fail"
@@ -104,7 +107,7 @@ export type ResolvedHerdrAgentRunnerConfig = {
   kind: "herdr_agent"
   agent: "opencode" | "claude"
   opencode: { model: string | null; agent: string | null }
-  claude: { model: string | null; permissionMode: string | null }
+  claude: { model: string | null; permissionMode: string | null; messenger: ClaudeMessenger }
   workspaceLabel: string | null
   turnTimeoutMs: number | null
   onBlocked: OnBlockedStrategy | null

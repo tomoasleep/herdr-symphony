@@ -1,8 +1,12 @@
-import { describe, expect, test } from "bun:test"
+import { afterEach, describe, expect, test } from "bun:test"
+import { mkdirSync, rmSync } from "node:fs"
+import { tmpdir } from "node:os"
+import { join } from "node:path"
 import type { AgmsgClient } from "../../agmsg/agmsg-client"
 import { formatAgmsgMessage } from "../../agmsg/agmsg-message"
 import type { Issue, ServiceConfig } from "../../domain/types"
 import type { HerdrAgentInfo, HerdrClient, HerdrWorkspaceInfo } from "../../herdr/herdr-client"
+import { writeReport } from "../../report/write-report"
 import { buildAgentName, HerdrAgentRunner } from "./herdr-agent-runner"
 import type { ReportContext, ReportResolver } from "./report"
 
@@ -46,7 +50,7 @@ function makeConfig(overrides: Partial<ServiceConfig["work"]> = {}): ServiceConf
       herdrAgent: {
         agent: "opencode",
         opencode: { model: "openai/gpt-5.4", agent: "build" },
-        claude: { model: null, permissionMode: null },
+        claude: { model: null, permissionMode: null, messenger: "agmsg" },
         workspaceLabel: null,
         turnTimeoutMs: 3_600_000,
         onBlocked: null,
@@ -73,12 +77,12 @@ function makeMockHerdrClient(opts: {
   readText?: string
   onSendKeys?: (target: string, keys: string[]) => void
 }): HerdrClient & {
-  startAgentArgs: { name: string; argv: string[] } | null
+  startAgentArgs: { name: string; argv: string[]; env?: Record<string, string> } | null
   sentInputs: { target: string; text: string }[]
   sentKeys: { target: string; keys: string[] }[]
   getAgentCallCount: number
 } {
-  let startAgentArgs: { name: string; argv: string[] } | null = null
+  let startAgentArgs: { name: string; argv: string[]; env?: Record<string, string> } | null = null
   const sentInputs: { target: string; text: string }[] = []
   const sentKeys: { target: string; keys: string[] }[] = []
   let getAgentCallCount = 0
@@ -87,7 +91,7 @@ function makeMockHerdrClient(opts: {
       return opts.workspace ?? { id: "w1", label: "TEST-1", cwd: "/repo/worktree" }
     },
     async startAgent(name, startOpts) {
-      startAgentArgs = { name, argv: startOpts.argv }
+      startAgentArgs = { name, argv: startOpts.argv, env: startOpts.env }
       return (
         opts.agentStarted ?? {
           name,
@@ -137,7 +141,7 @@ function makeMockHerdrClient(opts: {
       return getAgentCallCount
     },
   } as HerdrClient & {
-    startAgentArgs: { name: string; argv: string[] } | null
+    startAgentArgs: { name: string; argv: string[]; env?: Record<string, string> } | null
     sentInputs: { target: string; text: string }[]
     sentKeys: { target: string; keys: string[] }[]
     getAgentCallCount: number
@@ -1357,5 +1361,228 @@ describe("HerdrAgentRunner", () => {
     await runner.cancelRun("w1:p1")
 
     expect(captured.paneId).toBe("w1:p1")
+  })
+
+  describe("report-file messenger", () => {
+    const tmpDirs: string[] = []
+
+    function cleanup() {
+      for (const dir of tmpDirs) {
+        rmSync(dir, { recursive: true, force: true })
+      }
+      tmpDirs.length = 0
+    }
+
+    function makeReportPath(): string {
+      const dir = join(
+        tmpdir(),
+        `hs-runner-report-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+      )
+      tmpDirs.push(dir)
+      mkdirSync(dir, { recursive: true })
+      return join(dir, "report.json")
+    }
+
+    afterEach(cleanup)
+
+    test("reportPath 指定時は startAgent の env に HERDR_SYMPHONY_REPORT_PATH が含まれる", async () => {
+      const reportPath = makeReportPath()
+      const client = makeMockHerdrClient({})
+      const runner = new HerdrAgentRunner(makeConfig(), {
+        herdrClient: client,
+        pollIntervalMs: 10,
+        reportResolver: nullReportResolver(),
+      })
+
+      await runner.runIssue(makeIssue(), {
+        content: "Fix the bug",
+        agentKind: "claude",
+        attempt: null,
+        workspacePath: "/repo/worktree",
+        reportPath,
+      })
+
+      expect(client.startAgentArgs?.env?.HERDR_SYMPHONY_REPORT_PATH).toBe(reportPath)
+    })
+
+    test("idle 検出時に done report があれば succeeded になる", async () => {
+      const reportPath = makeReportPath()
+      const client = makeMockHerdrClient({
+        getAgentResult: [
+          { name: "TEST-1", state: "working", paneId: "w1:p1", workspaceId: "w1" },
+          { name: "TEST-1", state: "idle", paneId: "w1:p1", workspaceId: "w1" },
+        ],
+      })
+      const runner = new HerdrAgentRunner(makeConfig(), {
+        herdrClient: client,
+        pollIntervalMs: 10,
+        reportResolver: nullReportResolver(),
+      })
+
+      const runPromise = runner.runIssue(makeIssue(), {
+        content: "Fix the bug",
+        agentKind: "claude",
+        attempt: null,
+        workspacePath: "/repo/worktree",
+        reportPath,
+      })
+
+      await new Promise((resolve) => setTimeout(resolve, 30))
+      writeReport(reportPath, "done", "実装完了しました")
+      const result = await runPromise
+
+      expect(result.status).toBe("succeeded")
+      expect(result.responseText).toBe("実装完了しました")
+    })
+
+    test("idle 検出時に failed report があれば failed になる", async () => {
+      const reportPath = makeReportPath()
+      const client = makeMockHerdrClient({
+        getAgentResult: [
+          { name: "TEST-1", state: "working", paneId: "w1:p1", workspaceId: "w1" },
+          { name: "TEST-1", state: "idle", paneId: "w1:p1", workspaceId: "w1" },
+        ],
+      })
+      const runner = new HerdrAgentRunner(makeConfig(), {
+        herdrClient: client,
+        pollIntervalMs: 10,
+        reportResolver: nullReportResolver(),
+      })
+
+      const runPromise = runner.runIssue(makeIssue(), {
+        content: "Fix the bug",
+        agentKind: "claude",
+        attempt: null,
+        workspacePath: "/repo/worktree",
+        reportPath,
+      })
+
+      await new Promise((resolve) => setTimeout(resolve, 30))
+      writeReport(reportPath, "failed", "テストが失敗しました")
+      const result = await runPromise
+
+      expect(result.status).toBe("failed")
+      expect(result.error).toBe("テストが失敗しました")
+    })
+
+    test("idle 検出時に pending report なら待機継続し、次 idle で done を検知する", async () => {
+      const reportPath = makeReportPath()
+      const client = makeMockHerdrClient({
+        getAgentResult: [
+          { name: "TEST-1", state: "working", paneId: "w1:p1", workspaceId: "w1" },
+          { name: "TEST-1", state: "idle", paneId: "w1:p1", workspaceId: "w1" },
+          { name: "TEST-1", state: "working", paneId: "w1:p1", workspaceId: "w1" },
+          { name: "TEST-1", state: "idle", paneId: "w1:p1", workspaceId: "w1" },
+        ],
+      })
+      const runner = new HerdrAgentRunner(makeConfig(), {
+        herdrClient: client,
+        pollIntervalMs: 10,
+        reportResolver: nullReportResolver(),
+      })
+
+      const runPromise = runner.runIssue(makeIssue(), {
+        content: "Fix the bug",
+        agentKind: "claude",
+        attempt: null,
+        workspacePath: "/repo/worktree",
+        reportPath,
+      })
+
+      await new Promise((resolve) => setTimeout(resolve, 30))
+      writeReport(reportPath, "pending", "background task 待ち")
+      await new Promise((resolve) => setTimeout(resolve, 40))
+      writeReport(reportPath, "done", "完了しました")
+      const result = await runPromise
+
+      expect(result.status).toBe("succeeded")
+      expect(result.responseText).toBe("完了しました")
+    })
+
+    test("idle 検出時に report 未送信なら sendInput + sendKeys でリマインドする", async () => {
+      const reportPath = makeReportPath()
+      const client = makeMockHerdrClient({
+        getAgentResult: [
+          { name: "TEST-1", state: "working", paneId: "w1:p1", workspaceId: "w1" },
+          { name: "TEST-1", state: "idle", paneId: "w1:p1", workspaceId: "w1" },
+          { name: "TEST-1", state: "working", paneId: "w1:p1", workspaceId: "w1" },
+          { name: "TEST-1", state: "idle", paneId: "w1:p1", workspaceId: "w1" },
+        ],
+      })
+      const runner = new HerdrAgentRunner(makeConfig(), {
+        herdrClient: client,
+        pollIntervalMs: 10,
+        reportResolver: nullReportResolver(),
+      })
+
+      const runPromise = runner.runIssue(makeIssue(), {
+        content: "Fix the bug",
+        agentKind: "claude",
+        attempt: null,
+        workspacePath: "/repo/worktree",
+        reportPath,
+      })
+
+      await new Promise((resolve) => setTimeout(resolve, 50))
+      writeReport(reportPath, "done", "リマインド後に完了")
+      const result = await runPromise
+
+      expect(result.status).toBe("succeeded")
+      expect(client.sentInputs.length).toBeGreaterThanOrEqual(1)
+      expect(client.sentKeys.length).toBeGreaterThanOrEqual(1)
+    })
+
+    test("reportPath と agmsg 両方未指定時は report resolver にフォールバック", async () => {
+      const client = makeMockHerdrClient({
+        getAgentResult: [
+          { name: "TEST-1", state: "working", paneId: "w1:p1", workspaceId: "w1" },
+          { name: "TEST-1", state: "idle", paneId: "w1:p1", workspaceId: "w1" },
+        ],
+        readText: "Pane content.",
+      })
+      const runner = new HerdrAgentRunner(makeConfig(), {
+        herdrClient: client,
+        pollIntervalMs: 10,
+        reportResolver: nullReportResolver(),
+      })
+
+      const result = await runner.runIssue(makeIssue(), {
+        content: "Fix the bug",
+        agentKind: "claude",
+        attempt: null,
+        workspacePath: "/repo/worktree",
+      })
+
+      expect(result.status).toBe("succeeded")
+      expect(result.responseText).toBe("Pane content.")
+    })
+
+    test("opencode は reportPath を無視する", async () => {
+      const reportPath = makeReportPath()
+      const client = makeMockHerdrClient({
+        getAgentResult: [
+          { name: "TEST-1", state: "working", paneId: "w1:p1", workspaceId: "w1" },
+          { name: "TEST-1", state: "idle", paneId: "w1:p1", workspaceId: "w1" },
+        ],
+        readText: "Done.",
+      })
+      const runner = new HerdrAgentRunner(makeConfig(), {
+        herdrClient: client,
+        pollIntervalMs: 10,
+        reportResolver: nullReportResolver(),
+      })
+
+      const result = await runner.runIssue(makeIssue(), {
+        content: "Fix the bug",
+        agentKind: "opencode",
+        attempt: null,
+        workspacePath: "/repo/worktree",
+        reportPath,
+      })
+
+      expect(result.status).toBe("succeeded")
+      expect(result.responseText).toBe("Done.")
+      expect(client.startAgentArgs?.env?.HERDR_SYMPHONY_REPORT_PATH).toBeUndefined()
+    })
   })
 })

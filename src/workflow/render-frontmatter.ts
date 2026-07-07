@@ -55,7 +55,7 @@ export async function resolveIssueConfig(issue: Issue, attempt: number | null): 
       herdrAgent: {
         agent: "opencode",
         opencode: { model: null, agent: null },
-        claude: { model: null, permissionMode: null },
+        claude: { model: null, permissionMode: null, messenger: "agmsg" },
         workspaceLabel: null,
         turnTimeoutMs: null,
         onBlocked: null,
@@ -136,6 +136,7 @@ export async function resolveIssueRuntimeConfig(
       claude: {
         model: normalizeOverride(rendered.claude.model),
         permissionMode: normalizeOverride(rendered.claude.permissionMode),
+        messenger: work.herdrAgent.claude.messenger,
       },
       workspaceLabel: normalizeOverride(rendered.workspaceLabel),
       turnTimeoutMs: work.herdrAgent.turnTimeoutMs,
