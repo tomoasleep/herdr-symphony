@@ -6,6 +6,14 @@ export function sanitizeWorkspaceKey(identifier: string): string {
   return identifier.replace(/[^A-Za-z0-9._-]/g, "_")
 }
 
+export function sanitizeAgentName(name: string): string {
+  let result = name.replace(/[./\\"[\]]/g, "_").replace(/[^\x20-\x7e]/g, "_")
+  if (result.startsWith("-")) {
+    result = `_${result.slice(1)}`
+  }
+  return result
+}
+
 export function parseList(input: unknown, fallback: string[]): string[] {
   if (Array.isArray(input)) {
     return input.map((item) => String(item).trim()).filter((item) => item.length > 0)

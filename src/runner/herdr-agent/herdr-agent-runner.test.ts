@@ -3,7 +3,7 @@ import type { AgmsgClient } from "../../agmsg/agmsg-client"
 import { formatAgmsgMessage } from "../../agmsg/agmsg-message"
 import type { Issue, ServiceConfig } from "../../domain/types"
 import type { HerdrAgentInfo, HerdrClient, HerdrWorkspaceInfo } from "../../herdr/herdr-client"
-import { HerdrAgentRunner } from "./herdr-agent-runner"
+import { buildAgentName, HerdrAgentRunner } from "./herdr-agent-runner"
 import type { ReportContext, ReportResolver } from "./report"
 
 function nullReportResolver(): ReportResolver {
@@ -233,6 +233,24 @@ function makeMockAgmsgClient(opts: {
 }
 
 describe("HerdrAgentRunner", () => {
+  describe("buildAgentName", () => {
+    test("identifier と workflowName と timestamp を結合する", () => {
+      expect(buildAgentName("TEST-1", "e2e-test-claude.md", 1_719_662_400_000)).toBe(
+        "TEST-1-e2e-test-claude-ly02lc00",
+      )
+    })
+
+    test("workflowName が無い場合は identifier と timestamp だけ", () => {
+      expect(buildAgentName("TEST-1", undefined, 1_719_662_400_000)).toBe("TEST-1-ly02lc00")
+    })
+
+    test("workflowName に拡張子がある場合は除外される", () => {
+      expect(buildAgentName("PROJ-42", "WORKFLOW.exec.md", 1_719_662_400_000)).toBe(
+        "PROJ-42-WORKFLOW.exec-ly02lc00",
+      )
+    })
+  })
+
   test("正常系: workspace 作成 → agent 起動 → done 待機 → 出力取得", async () => {
     const client = makeMockHerdrClient({
       readText: "Implementation complete.",
@@ -829,6 +847,64 @@ describe("HerdrAgentRunner", () => {
     expect(agents).toContain("herdr-symphony")
     expect(agents).toContain("TEST-1-ly02lc00")
     expect(agmsg.joinCalls.every((c) => c.team === "herdr-symphony-TEST-1-ly02lc00")).toBe(true)
+  })
+
+  test("agmsg に渡す agentName は agmsg が弾く文字を sanitize する", async () => {
+    const runId = "tomoasleep_herdr-symphony#1-e2e_test_claude-ly02lc00"
+    const ack = formatAgmsgMessage({
+      kind: "herdr-symphony.ack",
+      issueId: "issue-1",
+      runId,
+      toAgent: "herdr-symphony",
+      ackOf: "task",
+    })
+    const report = formatAgmsgMessage({
+      kind: "herdr-symphony.report",
+      issueId: "issue-1",
+      runId,
+      toAgent: "herdr-symphony",
+      status: "done",
+      summary: "完了しました",
+    })
+    const agmsg = makeMockAgmsgClient({
+      inboxResponses: [
+        `1 new message(s):\n\n [ts] AGENT: ${ack}`,
+        `1 new message(s):\n\n [2026-07-03T12:00:00Z] AGENT: ${report}`,
+      ],
+    })
+    const client = makeMockHerdrClient({
+      getAgentResult: {
+        name: "tomoasleep/herdr-symphony#1",
+        state: "done",
+        paneId: "w1:p1",
+        workspaceId: "w1",
+      },
+    })
+    const runner = new HerdrAgentRunner(makeConfig(), {
+      herdrClient: client,
+      agmsgClient: agmsg,
+      pollIntervalMs: 10,
+      reportResolver: nullReportResolver(),
+      now: () => 1_719_662_400_000,
+    })
+    const issue = makeIssue({ identifier: "tomoasleep/herdr-symphony#1" })
+
+    await runner.runIssue(issue, {
+      content: "Fix the bug",
+      agentKind: "claude",
+      attempt: null,
+      workspacePath: "/repo/worktree",
+      workflowName: "e2e.test.claude.md",
+      timeoutMs: 50,
+      agmsg: { team: "herdr-symphony", orchestratorAgent: "herdr-symphony" },
+    })
+
+    const claudeJoin = agmsg.joinCalls.find((c) => c.type === "claude-code")
+    expect(claudeJoin?.agent).toBe(runId)
+    expect(claudeJoin?.team).toBe(
+      `herdr-symphony-tomoasleep_herdr-symphony_1-e2e_test_claude-ly02lc00`,
+    )
+    expect(client.startAgentArgs?.name).toBe("tomoasleep/herdr-symphony#1-e2e.test.claude-ly02lc00")
   })
 
   test("Claude delivery が monitor に設定される", async () => {

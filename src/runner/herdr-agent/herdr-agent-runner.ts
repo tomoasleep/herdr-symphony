@@ -5,7 +5,7 @@ import { formatAgmsgMessage, parseInboxForMessages } from "../../agmsg/agmsg-mes
 import type { Issue, ServiceConfig } from "../../domain/types"
 import type { HerdrAgentState, HerdrClient } from "../../herdr/herdr-client"
 import { createHerdrClient } from "../../herdr/herdr-client"
-import { sanitizeWorkspaceKey } from "../../utils/normalize"
+import { sanitizeAgentName, sanitizeWorkspaceKey } from "../../utils/normalize"
 import type { Runner, RunnerEvent, RunnerOptions, RunnerResult } from "../types"
 import type { ReportResolver } from "./report"
 import { createReportResolver } from "./report"
@@ -154,24 +154,25 @@ export class HerdrAgentRunner implements Runner {
         if (!this.customAgmsgClient && !isAgmsgAvailable()) {
           throw new Error(`agmsg is not installed: ${getAgmsgScriptsDir()}/send.sh not found`)
         }
-        const agentTeamSuffix = sanitizeWorkspaceKey(agentName)
+        const agmsgAgentName = sanitizeAgentName(agentName)
+        const agentTeamSuffix = sanitizeWorkspaceKey(agmsgAgentName)
         const team = options.agmsg.team.endsWith(agentTeamSuffix)
           ? options.agmsg.team
           : `${options.agmsg.team}-${agentTeamSuffix}`
         const orchestratorAgent = options.agmsg.orchestratorAgent
         await this.agmsgClient.join(team, orchestratorAgent, "opencode", options.workspacePath)
-        await this.agmsgClient.join(team, agentName, "claude-code", options.workspacePath)
+        await this.agmsgClient.join(team, agmsgAgentName, "claude-code", options.workspacePath)
         await this.agmsgClient.setDelivery("monitor", "claude-code", options.workspacePath)
-        content = buildClaudeBootstrapPrompt(team, agentName, issue.id)
+        content = buildClaudeBootstrapPrompt(team, agmsgAgentName, issue.id)
         handshakeTimeoutMs = options.agmsg.handshakeTimeoutMs ?? DEFAULT_HANDSHAKE_TIMEOUT_MS
         ackResendIntervalMs = options.agmsg.ackResendIntervalMs ?? DEFAULT_ACK_RESEND_INTERVAL_MS
         agmsgContext = {
           client: this.agmsgClient,
           team,
           orchestratorAgent,
-          agentName,
+          agentName: agmsgAgentName,
           issueId: issue.id,
-          runId: agentName,
+          runId: agmsgAgentName,
           reminderAckDeadlineMs:
             options.agmsg.reminderAckDeadlineMs ?? DEFAULT_REMINDER_ACK_DEADLINE_MS,
         }
