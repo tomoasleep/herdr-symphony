@@ -7,11 +7,34 @@ import {
   execInContainer,
   normalizeScreenOutput,
 } from "../test-utils/e2e-helpers"
+import {
+  buildClaudeAgmsgContext,
+  claudeAckThenReportToolCall,
+  type MockResponse,
+  plainResponse,
+  writeScenarioConfig,
+} from "../test-utils/e2e-scenario-config"
 
 const { register } = createSessionManager()
 
 const HERDR_AVAILABLE = spawnSync("herdr", ["--version"], { stdio: "ignore" }).status === 0
 const CLAUDE_AVAILABLE = spawnSync("claude", ["--version"], { stdio: "ignore" }).status === 0
+
+function newRunId(): string {
+  return `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`
+}
+
+function claudeMockResponses(identifier: string): MockResponse[] {
+  const ctx = buildClaudeAgmsgContext({ issueId: "test-issue-claude", identifier })
+  return [
+    claudeAckThenReportToolCall(ctx, {
+      status: "done",
+      summary: "Task completed successfully.",
+      sleepMs: 10,
+    }),
+    plainResponse("Task completed successfully."),
+  ]
+}
 
 async function captureAgentScreen(
   scenarioSession: Session,
@@ -67,16 +90,30 @@ test("e2e: claude 対話モード — agent の画面全体を確認できる", 
 
     await herdrSession.waitForText(/spaces|agents/i, { timeout: 15_000 })
 
+    const identifier = `test-claude-${newRunId()}`
+    const { containerPath } = await writeScenarioConfig(herdr.sharedDir, {
+      kind: "claude",
+      issue: {
+        id: "test-issue-claude",
+        identifier,
+        title: "E2E Claude Test Issue",
+        body: "This is a test issue for herdr-symphony claude e2e.",
+      },
+      mockResponses: claudeMockResponses(identifier),
+    })
+
     const scenarioSession = register(
       await launchTerminal({
         command: "docker",
         args: [
           "exec",
           "-it",
+          "-e",
+          `SCENARIO_CONFIG_PATH=${containerPath}`,
           herdr.containerId,
           "bun",
           "run",
-          "/workspace/src/test-utils/e2e-scenario-claude.ts",
+          "/workspace/src/test-utils/e2e-scenario.ts",
         ],
         cwd: projectRoot,
         cols: 200,
@@ -149,7 +186,7 @@ test("e2e: claude report 未送信の idle — agent の画面全体を確認で
     const herdrSession = register(
       await launchTerminal({
         command: "docker",
-        args: ["exec", "-it", "-e", "HERDR_SYMPHONY_E2E_REMINDER=1", herdr.containerId, "herdr"],
+        args: ["exec", "-it", herdr.containerId, "herdr"],
         cwd: projectRoot,
         cols: 160,
         rows: 40,
@@ -160,6 +197,18 @@ test("e2e: claude report 未送信の idle — agent の画面全体を確認で
 
     await herdrSession.waitForText(/spaces|agents/i, { timeout: 15_000 })
 
+    const identifier = `test-claude-${newRunId()}`
+    const { containerPath } = await writeScenarioConfig(herdr.sharedDir, {
+      kind: "claude",
+      issue: {
+        id: "test-issue-claude",
+        identifier,
+        title: "E2E Claude Test Issue",
+        body: "This is a test issue for herdr-symphony claude e2e.",
+      },
+      mockResponses: claudeMockResponses(identifier),
+    })
+
     const scenarioSession = register(
       await launchTerminal({
         command: "docker",
@@ -167,11 +216,11 @@ test("e2e: claude report 未送信の idle — agent の画面全体を確認で
           "exec",
           "-it",
           "-e",
-          "HERDR_SYMPHONY_E2E_REMINDER=1",
+          `SCENARIO_CONFIG_PATH=${containerPath}`,
           herdr.containerId,
           "bun",
           "run",
-          "/workspace/src/test-utils/e2e-scenario-claude.ts",
+          "/workspace/src/test-utils/e2e-scenario.ts",
         ],
         cwd: projectRoot,
         cols: 200,

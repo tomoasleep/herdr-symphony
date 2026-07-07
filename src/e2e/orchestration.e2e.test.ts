@@ -7,6 +7,7 @@ import {
   createSessionManager,
   execInContainer,
 } from "../test-utils/e2e-helpers"
+import { plainResponse, writeScenarioConfig } from "../test-utils/e2e-scenario-config"
 
 const { register } = createSessionManager()
 
@@ -33,16 +34,29 @@ test("e2e: herdr TUI + service log — agent が herdr 上で実行されて suc
 
     await herdrSession.waitForText(/spaces|agents/i, { timeout: 15_000 })
 
+    const { containerPath } = await writeScenarioConfig(herdr.sharedDir, {
+      kind: "opencode",
+      issue: {
+        id: "test-issue-1",
+        identifier: "test/repo#1",
+        title: "E2E Test Issue",
+        body: "This is a test issue for herdr-symphony e2e.",
+      },
+      mockResponses: [plainResponse("Task completed successfully.")],
+    })
+
     const scenarioSession = register(
       await launchTerminal({
         command: "docker",
         args: [
           "exec",
           "-it",
+          "-e",
+          `SCENARIO_CONFIG_PATH=${containerPath}`,
           herdr.containerId,
           "bun",
           "run",
-          "/workspace/src/test-utils/e2e-scenario-opencode.ts",
+          "/workspace/src/test-utils/e2e-scenario.ts",
         ],
         cwd: projectRoot,
         cols: 200,
