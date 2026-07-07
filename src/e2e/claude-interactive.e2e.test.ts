@@ -35,9 +35,7 @@ async function captureAgentScreen(
       await new Promise((resolve) => setTimeout(resolve, 500))
       continue
     }
-    if (
-      /Claude Code|Welcome back|Unable to connect|bypass permissions|Task completed/.test(screen)
-    ) {
+    if (/あなたは herdr-symphony の agent です。|Task completed/.test(screen)) {
       return screen
     }
     await new Promise((resolve) => setTimeout(resolve, 500))
@@ -94,7 +92,7 @@ test("e2e: claude 対話モード — agent の画面全体を確認できる", 
        spaces                  │ 1 Z     +
                                │┌▌ test-claude-ID-e2e-test-TS-TS ────────────────────────────────────────────────────────────────────────────────┐
        · workspace             ││❯ あなたは herdr-symphony の agent です。                                                                                          ▕│
-         main ↑2               ││  実タスクは agmsg で届きます。                                                                                                    ▕│
+         main                  ││  実タスクは agmsg で届きます。                                                                                                    ▕│
                                ││  最初に /opt/agmsg/scripts/actas-claim.sh "$PWD" claude-code "test-claude-ID-e2e-test-TS-TS"                  ▕│
        ○ test-claude-ID││  "$CLAUDE_CODE_SESSION_ID" を実行して、この agent identity を claim してください。                                                ▕│
          master                ││  claim に失敗した場合は task ack を返さず、作業を開始しないでください。                                                           ▕│
@@ -189,7 +187,7 @@ test("e2e: claude report 未送信の idle — agent の画面全体を確認で
        spaces                  │ 1 Z     +
                                │┌▌ test-claude-ID-e2e-test-TS-TS ────────────────────────────────────────────────────────────────────────────────┐
        · workspace             ││❯ あなたは herdr-symphony の agent です。                                                                                          ▕│
-         main ↑2               ││  実タスクは agmsg で届きます。                                                                                                    ▕│
+         main                  ││  実タスクは agmsg で届きます。                                                                                                    ▕│
                                ││  最初に /opt/agmsg/scripts/actas-claim.sh "$PWD" claude-code "test-claude-ID-e2e-test-TS-TS"                  ▕│
        ○ test-claude-ID││  "$CLAUDE_CODE_SESSION_ID" を実行して、この agent identity を claim してください。                                                ▕│
          master                ││  claim に失敗した場合は task ack を返さず、作業を開始しないでください。                                                           ▕│
