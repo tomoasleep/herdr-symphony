@@ -64,6 +64,7 @@ export async function resolveIssueConfig(issue: Issue, attempt: number | null): 
         },
         workspaceLabel: null,
         turnTimeoutMs: null,
+        closePaneAfterDoneMs: null,
         onBlocked: null,
       },
       workspace: {
@@ -148,6 +149,7 @@ export async function resolveIssueRuntimeConfig(
       },
       workspaceLabel: normalizeOverride(rendered.workspaceLabel),
       turnTimeoutMs: work.herdrAgent.turnTimeoutMs,
+      closePaneAfterDoneMs: work.herdrAgent.closePaneAfterDoneMs,
       onBlocked: work.herdrAgent.onBlocked,
     },
   }

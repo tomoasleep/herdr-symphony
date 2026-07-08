@@ -86,6 +86,7 @@ export type HerdrAgentConfig = {
   claude: HerdrAgentClaudeConfig
   workspaceLabel: string | null
   turnTimeoutMs: number | null
+  closePaneAfterDoneMs: number | null
   onBlocked: OnBlockedStrategy | null
 }
 
@@ -118,6 +119,7 @@ export type ResolvedHerdrAgentRunnerConfig = {
   }
   workspaceLabel: string | null
   turnTimeoutMs: number | null
+  closePaneAfterDoneMs: number | null
   onBlocked: OnBlockedStrategy | null
 }
 

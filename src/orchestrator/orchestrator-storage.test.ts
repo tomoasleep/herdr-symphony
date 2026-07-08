@@ -44,6 +44,7 @@ function makeConfig(): ServiceConfig {
         },
         workspaceLabel: null,
         turnTimeoutMs: 3_600_000,
+        closePaneAfterDoneMs: null,
         onBlocked: null,
       },
       workspace: {

@@ -131,6 +131,7 @@ const HerdrAgentSchema = z.object({
   claude: HerdrAgentClaudeSchema.optional(),
   workspace_label: z.string().optional().nullable(),
   turn_timeout_ms: z.union([z.number(), z.string(), z.null()]).optional().nullable(),
+  close_pane_after_done_ms: z.union([z.number(), z.string(), z.null()]).optional().nullable(),
   on_blocked: z.enum(["continue", "fail"]).optional().nullable(),
 })
 
@@ -176,6 +177,12 @@ export function resolveConfigFromSchema(input: unknown): ServiceConfig {
     herdrAgentRaw?.turn_timeout_ms === undefined || herdrAgentRaw?.turn_timeout_ms === null
       ? null
       : Math.max(toInt(herdrAgentRaw.turn_timeout_ms, 3_600_000), 1_000)
+
+  const closePaneAfterDoneMs =
+    herdrAgentRaw?.close_pane_after_done_ms === undefined ||
+    herdrAgentRaw?.close_pane_after_done_ms === null
+      ? null
+      : Math.max(toInt(herdrAgentRaw.close_pane_after_done_ms, 60_000), 1_000)
 
   const config: ServiceConfig = {
     tracker: {
@@ -249,6 +256,7 @@ export function resolveConfigFromSchema(input: unknown): ServiceConfig {
         },
         workspaceLabel: normalizeOptionalString(herdrAgentRaw?.workspace_label),
         turnTimeoutMs,
+        closePaneAfterDoneMs,
         onBlocked: normalizeOnBlocked(herdrAgentRaw?.on_blocked),
       },
       workspace: {

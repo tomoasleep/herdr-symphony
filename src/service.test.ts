@@ -48,6 +48,7 @@ function makeConfig(overrides: Partial<ServiceConfig["work"]> = {}): ServiceConf
         },
         workspaceLabel: null,
         turnTimeoutMs: 3_600_000,
+        closePaneAfterDoneMs: null,
         onBlocked: null,
       },
       workspace: {
@@ -102,6 +103,7 @@ function makeMockRunner(result: Partial<RunnerResult> = {}): Runner {
       }
     },
     async cancelRun() {},
+    async sweep() {},
   }
 }
 
@@ -126,6 +128,7 @@ function makeCapturingRunner(result: Partial<RunnerResult> = {}): Runner & {
       }
     },
     async cancelRun() {},
+    async sweep() {},
     get options() {
       return options
     },

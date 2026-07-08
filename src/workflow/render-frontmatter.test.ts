@@ -46,6 +46,7 @@ function makeWorkConfig(overrides: Partial<WorkConfig> = {}): WorkConfig {
       },
       workspaceLabel: null,
       turnTimeoutMs: 3_600_000,
+      closePaneAfterDoneMs: null,
       onBlocked: null,
     },
     workspace: {
@@ -88,6 +89,7 @@ test("opencode model/agent を Liquid で解決できる", async () => {
       },
       workspaceLabel: null,
       turnTimeoutMs: 3_600_000,
+      closePaneAfterDoneMs: null,
       onBlocked: null,
     },
   })
@@ -154,6 +156,7 @@ test("workspaceLabel を Liquid で解決できる", async () => {
       },
       workspaceLabel: '{{ issue.identifier | replace: "/", "_" }}',
       turnTimeoutMs: null,
+      closePaneAfterDoneMs: null,
       onBlocked: null,
     },
   })
@@ -176,6 +179,7 @@ test("claude permissionMode を Liquid で解決できる", async () => {
       },
       workspaceLabel: null,
       turnTimeoutMs: null,
+      closePaneAfterDoneMs: null,
       onBlocked: null,
     },
   })
@@ -198,6 +202,7 @@ test("claude permissionMode が null のときは null になる", async () => {
       },
       workspaceLabel: null,
       turnTimeoutMs: null,
+      closePaneAfterDoneMs: null,
       onBlocked: null,
     },
   })
@@ -220,6 +225,7 @@ test("claude messenger が runner に引き継がれる", async () => {
       },
       workspaceLabel: null,
       turnTimeoutMs: null,
+      closePaneAfterDoneMs: null,
       onBlocked: null,
     },
   })
@@ -242,12 +248,36 @@ test("turnTimeoutMs が引き継がれる", async () => {
       },
       workspaceLabel: null,
       turnTimeoutMs: 1_800_000,
+      closePaneAfterDoneMs: null,
       onBlocked: null,
     },
   })
   const result = await resolveIssueRuntimeConfig(makeIssue(), config, null)
 
   expect(result.runner.turnTimeoutMs).toBe(1_800_000)
+})
+
+test("closePaneAfterDoneMs が引き継がれる", async () => {
+  const config = makeWorkConfig({
+    herdrAgent: {
+      agent: "opencode",
+      opencode: { model: null, agent: null },
+      claude: {
+        model: null,
+        permissionMode: null,
+        messenger: "agmsg",
+        pendingRemindIntervalMs: 900_000,
+        reminderGracePeriodMs: 180_000,
+      },
+      workspaceLabel: null,
+      turnTimeoutMs: null,
+      closePaneAfterDoneMs: 600_000,
+      onBlocked: null,
+    },
+  })
+  const result = await resolveIssueRuntimeConfig(makeIssue(), config, null)
+
+  expect(result.runner.closePaneAfterDoneMs).toBe(600_000)
 })
 
 test("onBlocked が runner に引き継がれる", async () => {
@@ -264,6 +294,7 @@ test("onBlocked が runner に引き継がれる", async () => {
       },
       workspaceLabel: null,
       turnTimeoutMs: 3_600_000,
+      closePaneAfterDoneMs: null,
       onBlocked: "fail",
     },
   })

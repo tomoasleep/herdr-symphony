@@ -59,6 +59,7 @@ function _makeConfig(baseDir: string): ServiceConfig {
         },
         workspaceLabel: null,
         turnTimeoutMs: 3_600_000,
+        closePaneAfterDoneMs: null,
         onBlocked: null,
       },
       workspace: {
@@ -88,6 +89,7 @@ function makeMockRunner(): Runner {
       }
     },
     async cancelRun() {},
+    async sweep() {},
   }
 }
 

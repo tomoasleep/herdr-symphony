@@ -6,6 +6,7 @@ import type { Issue, ServiceConfig } from "../../domain/types"
 import type { HerdrAgentState, HerdrClient } from "../../herdr/herdr-client"
 import { createHerdrClient } from "../../herdr/herdr-client"
 import { readReport } from "../../report/write-report"
+import { formatError } from "../../utils/error"
 import { sanitizeAgentName, sanitizeWorkspaceKey } from "../../utils/normalize"
 import type {
   Runner,
@@ -74,6 +75,7 @@ type AgentContext = {
   reminderGraceUntil: number
   agmsgContext: AgmsgWaitContext | null
   deadline: number
+  closePaneAfterDoneMs: number | null
   sawActive: boolean
   sawAgent: boolean
   onEvent: ((event: RunnerEvent) => void) | undefined
@@ -146,6 +148,7 @@ export class HerdrAgentRunner implements Runner {
   private readonly logger: (msg: string) => void
   private readonly now: () => number
   private readonly contexts = new Map<string, AgentContext>()
+  private readonly pendingCloses = new Map<string, { target: string; closeAt: number }>()
 
   constructor(
     private readonly config: ServiceConfig,
@@ -257,6 +260,8 @@ export class HerdrAgentRunner implements Runner {
           DEFAULT_REMINDER_GRACE_PERIOD_MS),
       agmsgContext,
       deadline: this.now() + timeoutMs,
+      closePaneAfterDoneMs:
+        options.closePaneAfterDoneMs ?? this.config.work.herdrAgent.closePaneAfterDoneMs ?? null,
       sawActive: false,
       sawAgent: false,
       onEvent: options.onEvent,
@@ -513,8 +518,28 @@ export class HerdrAgentRunner implements Runner {
 
   private done(ctx: AgentContext, result: RunnerResult): RunnerPollResult {
     this.emitStatus(ctx, result.status === "timeout" ? "timeout" : result.status)
+    if (ctx.closePaneAfterDoneMs !== null) {
+      this.pendingCloses.set(ctx.target, {
+        target: ctx.target,
+        closeAt: this.now() + ctx.closePaneAfterDoneMs,
+      })
+    }
     this.contexts.delete(ctx.target)
     return { state: "done", result }
+  }
+
+  async sweep(): Promise<void> {
+    const now = this.now()
+    for (const [target, entry] of this.pendingCloses) {
+      if (now < entry.closeAt) continue
+      this.pendingCloses.delete(target)
+      try {
+        await this.client.closePane(entry.target)
+        this.logger(`swept done pane target=${entry.target}`)
+      } catch (error) {
+        this.logger(`sweep closePane failed target=${entry.target} error=${formatError(error)}`)
+      }
+    }
   }
 
   private async doneFromAgmsgReport(

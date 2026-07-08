@@ -76,6 +76,7 @@ function makeConfig(overrides: Partial<ServiceConfig["work"]> = {}): ServiceConf
         },
         workspaceLabel: null,
         turnTimeoutMs: 3_600_000,
+        closePaneAfterDoneMs: null,
         onBlocked: null,
       },
       workspace: {
@@ -103,11 +104,13 @@ function makeMockHerdrClient(opts: {
   startAgentArgs: { name: string; argv: string[]; env?: Record<string, string> } | null
   sentInputs: { target: string; text: string }[]
   sentKeys: { target: string; keys: string[] }[]
+  closedPanes: string[]
   getAgentCallCount: number
 } {
   let startAgentArgs: { name: string; argv: string[]; env?: Record<string, string> } | null = null
   const sentInputs: { target: string; text: string }[] = []
   const sentKeys: { target: string; keys: string[] }[] = []
+  const closedPanes: string[] = []
   let getAgentCallCount = 0
   return {
     async ensureWorkspace() {
@@ -150,7 +153,9 @@ function makeMockHerdrClient(opts: {
       sentKeys.push({ target, keys })
       opts.onSendKeys?.(target, keys)
     },
-    async closePane() {},
+    async closePane(target: string) {
+      closedPanes.push(target)
+    },
     get startAgentArgs() {
       return startAgentArgs
     },
@@ -160,6 +165,9 @@ function makeMockHerdrClient(opts: {
     get sentKeys() {
       return sentKeys
     },
+    get closedPanes() {
+      return closedPanes
+    },
     get getAgentCallCount() {
       return getAgentCallCount
     },
@@ -167,6 +175,7 @@ function makeMockHerdrClient(opts: {
     startAgentArgs: { name: string; argv: string[]; env?: Record<string, string> } | null
     sentInputs: { target: string; text: string }[]
     sentKeys: { target: string; keys: string[] }[]
+    closedPanes: string[]
     getAgentCallCount: number
   }
 }
@@ -1383,6 +1392,173 @@ describe("HerdrAgentRunner", () => {
     await runner.cancelRun("w1:p1")
 
     expect(captured.paneId).toBe("w1:p1")
+  })
+
+  describe("close pane after done", () => {
+    test("closePaneAfterDoneMs 指定時、完了して時間経過後に pane を閉じる", async () => {
+      const client = makeMockHerdrClient({
+        getAgentResult: [
+          { name: "TEST-1", state: "working", paneId: "w1:p1", workspaceId: "w1" },
+          { name: "TEST-1", state: "done", paneId: "w1:p1", workspaceId: "w1" },
+        ],
+      })
+      let currentTime = 1_000_000
+      const runner = new HerdrAgentRunner(makeConfig(), {
+        herdrClient: client,
+        pollIntervalMs: 0,
+        reportResolver: nullReportResolver(),
+        now: () => currentTime,
+      })
+
+      const result = await runUntilDone(runner, makeIssue(), {
+        content: "Fix the bug",
+        agentKind: "opencode",
+        attempt: null,
+        workspacePath: "/repo/worktree",
+        closePaneAfterDoneMs: 60_000,
+      })
+
+      expect(result.status).toBe("succeeded")
+
+      await runner.sweep()
+      expect(client.closedPanes).toEqual([])
+
+      currentTime += 60_000
+      await runner.sweep()
+      expect(client.closedPanes).toEqual(["w1:p1"])
+    })
+
+    test("時間経過前は pane を閉じない", async () => {
+      const client = makeMockHerdrClient({
+        getAgentResult: [
+          { name: "TEST-1", state: "working", paneId: "w1:p1", workspaceId: "w1" },
+          { name: "TEST-1", state: "done", paneId: "w1:p1", workspaceId: "w1" },
+        ],
+      })
+      let currentTime = 1_000_000
+      const runner = new HerdrAgentRunner(makeConfig(), {
+        herdrClient: client,
+        pollIntervalMs: 0,
+        reportResolver: nullReportResolver(),
+        now: () => currentTime,
+      })
+
+      await runUntilDone(runner, makeIssue(), {
+        content: "Fix the bug",
+        agentKind: "opencode",
+        attempt: null,
+        workspacePath: "/repo/worktree",
+        closePaneAfterDoneMs: 60_000,
+      })
+
+      currentTime += 59_999
+      await runner.sweep()
+      expect(client.closedPanes).toEqual([])
+    })
+
+    test("closePaneAfterDoneMs 未指定時は pane を閉じない", async () => {
+      const client = makeMockHerdrClient({
+        getAgentResult: [
+          { name: "TEST-1", state: "working", paneId: "w1:p1", workspaceId: "w1" },
+          { name: "TEST-1", state: "done", paneId: "w1:p1", workspaceId: "w1" },
+        ],
+      })
+      let currentTime = 1_000_000
+      const runner = new HerdrAgentRunner(makeConfig(), {
+        herdrClient: client,
+        pollIntervalMs: 0,
+        reportResolver: nullReportResolver(),
+        now: () => currentTime,
+      })
+
+      await runUntilDone(runner, makeIssue(), {
+        content: "Fix the bug",
+        agentKind: "opencode",
+        attempt: null,
+        workspacePath: "/repo/worktree",
+      })
+
+      currentTime += 600_000
+      await runner.sweep()
+      expect(client.closedPanes).toEqual([])
+    })
+
+    test("failed で完了しても pane クローズ対象になる", async () => {
+      const client = makeMockHerdrClient({
+        getAgentResult: [
+          { name: "TEST-1", state: "working", paneId: "w1:p1", workspaceId: "w1" },
+          { name: "TEST-1", state: "blocked", paneId: "w1:p1", workspaceId: "w1" },
+        ],
+      })
+      let currentTime = 1_000_000
+      const runner = new HerdrAgentRunner(makeConfig(), {
+        herdrClient: client,
+        pollIntervalMs: 0,
+        reportResolver: nullReportResolver(),
+        now: () => currentTime,
+      })
+
+      const result = await runUntilDone(runner, makeIssue(), {
+        content: "Fix the bug",
+        agentKind: "opencode",
+        attempt: null,
+        workspacePath: "/repo/worktree",
+        onBlocked: "fail",
+        closePaneAfterDoneMs: 60_000,
+      })
+
+      expect(result.status).toBe("failed")
+
+      currentTime += 60_000
+      await runner.sweep()
+      expect(client.closedPanes).toEqual(["w1:p1"])
+    })
+
+    test("既に閉じられた pane の closePane エラーは無視される", async () => {
+      const client: HerdrClient = {
+        async ensureWorkspace() {
+          return { id: "w1", label: "TEST-1", cwd: "/repo/worktree" }
+        },
+        async startAgent() {
+          return { name: "TEST-1", state: "working", paneId: "w1:p1", workspaceId: "w1" }
+        },
+        async waitAgent() {
+          return null
+        },
+        async readAgent() {
+          return "done"
+        },
+        async getAgent() {
+          return { name: "TEST-1", state: "done", paneId: "w1:p1", workspaceId: "w1" }
+        },
+        async sendInput() {},
+        async sendKeys() {},
+        async closePane() {
+          throw new Error("pane not found")
+        },
+      }
+      const logs: string[] = []
+      let currentTime = 1_000_000
+      const runner = new HerdrAgentRunner(makeConfig(), {
+        herdrClient: client,
+        pollIntervalMs: 0,
+        reportResolver: nullReportResolver(),
+        logger: (msg) => logs.push(msg),
+        now: () => currentTime,
+      })
+
+      await runUntilDone(runner, makeIssue(), {
+        content: "Fix the bug",
+        agentKind: "opencode",
+        attempt: null,
+        workspacePath: "/repo/worktree",
+        closePaneAfterDoneMs: 60_000,
+      })
+
+      currentTime += 60_000
+      await expect(runner.sweep()).resolves.toBeUndefined()
+      expect(logs.some((l) => l.includes("sweep closePane failed"))).toBe(true)
+    })
   })
 
   describe("report-file messenger", () => {

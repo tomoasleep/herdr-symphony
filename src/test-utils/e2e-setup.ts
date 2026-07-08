@@ -68,6 +68,7 @@ export function makeOpencodeServiceConfig(trackerDir: string): ServiceConfig {
         },
         workspaceLabel: null,
         turnTimeoutMs: 60_000,
+        closePaneAfterDoneMs: null,
         onBlocked: null,
       },
       workspace: {
@@ -124,6 +125,7 @@ export function makeClaudeServiceConfig(
         },
         workspaceLabel: null,
         turnTimeoutMs: 120_000,
+        closePaneAfterDoneMs: null,
         onBlocked: null,
       },
       workspace: {

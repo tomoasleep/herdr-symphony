@@ -21,6 +21,7 @@ export type RunnerOptions = {
   permissionMode?: string | null
   onBlocked?: "continue" | "fail" | null
   timeoutMs?: number | null
+  closePaneAfterDoneMs?: number | null
   workflowName?: string
   agmsg?: {
     team: string
@@ -46,4 +47,5 @@ export type Runner = {
   startIssue(issue: Issue, options: RunnerOptions): Promise<RunnerHandle>
   pollCompletion(handle: RunnerHandle): Promise<RunnerPollResult>
   cancelRun(target: string): Promise<void>
+  sweep(): Promise<void>
 }

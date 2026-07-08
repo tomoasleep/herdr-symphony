@@ -138,6 +138,7 @@ work:
 | `claude.reminder_grace_period_ms` | number | `180_000` (3分) | `report_file` モードで起動直後の reminder 送信を抑制する時間。`0` で無効化 |
 | `workspace_label` | string (Liquid) | issue.identifier | Herdr workspace の label |
 | `turn_timeout_ms` | number | null (無制限) | Agent 完了待ちタイムアウト |
+| `close_pane_after_done_ms` | number | null (無効) | Agent 完了後に pane を自動クローズするまでの時間（ミリ秒）。succeeded / failed / timeout の全完了ステータスが対象 |
 
 Claude は Herdr の `idle` だけでは完了扱いにしません。`claude.messenger` 設定で完了判定通信方式を選べます。
 

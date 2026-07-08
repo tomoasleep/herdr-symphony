@@ -185,6 +185,11 @@ export class SymphonyService {
       return
     }
 
+    await this.runner.sweep()
+    if (this.stopped) {
+      return
+    }
+
     this.debugLog("tracker fetchCandidateIssues start")
     const candidates = await this.tracker.fetchCandidateIssues(this.config.work.activeStates)
     if (this.stopped) {
@@ -429,6 +434,7 @@ export class SymphonyService {
         permissionMode: runnerPermissionMode,
         onBlocked: runnerOnBlocked,
         timeoutMs: runnerTimeoutMs,
+        closePaneAfterDoneMs: runtimeConfig.runner.closePaneAfterDoneMs,
         workflowName: this.workflowName,
         agmsg,
         reportPath,

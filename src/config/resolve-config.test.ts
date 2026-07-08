@@ -27,6 +27,7 @@ test("デフォルト値を解決できる (gwq provider, herdr_agent runner)", 
   expect(config.work.herdrAgent.opencode.agent).toBeNull()
   expect(config.work.herdrAgent.workspaceLabel).toBeNull()
   expect(config.work.herdrAgent.turnTimeoutMs).toBeNull()
+  expect(config.work.herdrAgent.closePaneAfterDoneMs).toBeNull()
   expect(config.work.workspace).toEqual({
     provider: "gwq",
     reuseExisting: true,
@@ -314,4 +315,49 @@ test("agent 同時実行数と backoff を解決できる", () => {
 
   expect(config.agent.maxConcurrentAgents).toBe(5)
   expect(config.agent.maxRetryBackoffMs).toBe(60_000)
+})
+
+test("herdr_agent.close_pane_after_done_ms を解決できる", () => {
+  const config = resolveConfig({
+    tracker: { kind: "file", file: { base_dir: "/issues" } },
+    work: {
+      runner: "herdr_agent",
+      herdr_agent: {
+        agent: "opencode",
+        close_pane_after_done_ms: 600000,
+      },
+    },
+  })
+
+  expect(config.work.herdrAgent.closePaneAfterDoneMs).toBe(600_000)
+})
+
+test("herdr_agent.close_pane_after_done_ms は文字列も受け付ける", () => {
+  const config = resolveConfig({
+    tracker: { kind: "file", file: { base_dir: "/issues" } },
+    work: {
+      runner: "herdr_agent",
+      herdr_agent: {
+        agent: "opencode",
+        close_pane_after_done_ms: "120000",
+      },
+    },
+  })
+
+  expect(config.work.herdrAgent.closePaneAfterDoneMs).toBe(120_000)
+})
+
+test("herdr_agent.close_pane_after_done_ms に null を指定すると無効になる", () => {
+  const config = resolveConfig({
+    tracker: { kind: "file", file: { base_dir: "/issues" } },
+    work: {
+      runner: "herdr_agent",
+      herdr_agent: {
+        agent: "opencode",
+        close_pane_after_done_ms: null,
+      },
+    },
+  })
+
+  expect(config.work.herdrAgent.closePaneAfterDoneMs).toBeNull()
 })
