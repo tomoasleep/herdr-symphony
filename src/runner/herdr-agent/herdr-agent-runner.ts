@@ -427,6 +427,11 @@ export class HerdrAgentRunner implements Runner {
       }
 
       if (info.state === "done") {
+        if (reportPath) {
+          if (handleReportFileResult(target, reportPath) === "done")
+            return { state: "done", report: null }
+          continue
+        }
         return { state: "done", report: null }
       }
 
