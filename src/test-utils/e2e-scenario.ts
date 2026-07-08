@@ -141,6 +141,10 @@ async function runOpencode(config: ScenarioConfig, controller: AbortController):
     await service.startupCleanup()
     await service.refresh()
     await service.waitForDispatches()
+    while (service.getState().running.size > 0) {
+      await service.reconcileRunning()
+      await new Promise((resolve) => setTimeout(resolve, 3_000))
+    }
   } finally {
     service.shutdown()
     await mock.stop()
@@ -207,6 +211,10 @@ async function runClaude(config: ScenarioConfig, controller: AbortController): P
     await service.startupCleanup()
     await service.refresh()
     await service.waitForDispatches()
+    while (service.getState().running.size > 0) {
+      await service.reconcileRunning()
+      await new Promise((resolve) => setTimeout(resolve, 3_000))
+    }
   } finally {
     service.shutdown()
     try {

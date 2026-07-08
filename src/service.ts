@@ -3,7 +3,7 @@ import { join } from "node:path"
 import type { Issue, ResolvedIssueRuntimeConfig, ServiceConfig } from "./domain/types"
 import { OrchestratorState } from "./orchestrator/orchestrator"
 import { createRunner } from "./runner/create-runner"
-import type { Runner, RunnerResult } from "./runner/types"
+import type { Runner, RunnerHandle, RunnerPollResult, RunnerResult } from "./runner/types"
 import type { LogRecord, LogRepository, Storage } from "./storage/types"
 import { createTrackerClient } from "./tracker/create-tracker-client"
 import type { IssueTrackerClient } from "./tracker/types"
@@ -31,6 +31,14 @@ const CLAUDE_REPORT_INSTRUCTION = [
   "",
   '    herdr-symphony report --status failed --summary "失敗理由"',
 ].join("\n")
+
+type DispatchContext = {
+  handle: RunnerHandle
+  issue: Issue
+  runtimeConfig: ResolvedIssueRuntimeConfig
+  workspace: WorkspaceResult
+  reportPath: string | undefined
+}
 
 type ServiceDependencies = {
   tracker?: IssueTrackerClient
@@ -76,6 +84,7 @@ export class SymphonyService {
   private readonly logRepository: LogRepository | undefined
   private stopped = false
   private readonly pendingDispatches = new Set<Promise<void>>()
+  private readonly dispatchContexts = new Map<string, DispatchContext>()
 
   private config: ServiceConfig
   private template: string
@@ -224,14 +233,118 @@ export class SymphonyService {
     const ids = [...this.state.running.keys()]
     if (ids.length === 0) {
       this.debugLog("reconcile running=0")
+      await this.pollDispatches()
       return
     }
     const refreshed = await this.tracker.fetchIssueStatesByIds(ids)
     const stopped = this.state.reconcileRunning(refreshed)
     for (const issueId of stopped) {
       this.releaseIssue(issueId)
+      this.dispatchContexts.delete(issueId)
     }
     this.debugLog(`reconcile running=${ids.length} refreshed=${refreshed.length}`)
+
+    await this.pollDispatches()
+  }
+
+  private async pollDispatches(): Promise<void> {
+    const entries = [...this.dispatchContexts.entries()]
+    for (const [issueId, ctx] of entries) {
+      if (!this.state.running.has(issueId)) {
+        this.dispatchContexts.delete(issueId)
+        continue
+      }
+      let pollResult: RunnerPollResult
+      try {
+        pollResult = await this.runner.pollCompletion(ctx.handle)
+      } catch (error) {
+        pollResult = {
+          state: "done" as const,
+          result: {
+            status: "failed" as const,
+            error: formatError(error),
+            responseText: null,
+          },
+        }
+      }
+      if (pollResult.state === "running") {
+        continue
+      }
+      this.dispatchContexts.delete(issueId)
+      await this.finalizeCompletion(issueId, ctx, pollResult.result)
+    }
+  }
+
+  private async finalizeCompletion(
+    issueId: string,
+    ctx: DispatchContext,
+    result: RunnerResult,
+  ): Promise<void> {
+    if (!this.state.running.has(issueId)) {
+      return
+    }
+
+    const { issue, runtimeConfig, workspace } = ctx
+    const finalizedIssue = await this.finalizeIssueState(runtimeConfig.issue, result)
+
+    if (result.status === "succeeded" && result.responseText) {
+      const reporters = this.config.work.reporter ?? ["file"]
+
+      if (reporters.includes("file")) {
+        try {
+          await this.appendAgentLog(workspace.path, result.responseText)
+        } catch (e) {
+          this.debugLog(`appendAgentLog failed issue=${issue.identifier} error=${formatError(e)}`)
+        }
+      }
+
+      if (reporters.includes("tracker")) {
+        try {
+          const freshDescription = await this.fetchIssueDescription(finalizedIssue)
+          const timestamp = new Date().toISOString()
+          const updatedDescription = appendAgentLogToDescription(
+            freshDescription,
+            this.workflowName,
+            timestamp,
+            result.responseText,
+          )
+          await this.updateItemDescription(finalizedIssue, updatedDescription)
+        } catch (e) {
+          this.debugLog(
+            `updateItemDescription failed issue=${issue.identifier} error=${formatError(e)}`,
+          )
+        }
+      }
+    }
+
+    this.state.release(issueId, {
+      status: result.status,
+      error: result.error,
+      finishedAt: new Date().toISOString(),
+    })
+    this.releaseIssue(issueId)
+
+    this.debugLog(
+      `runner done issue=${issue.identifier} status=${result.status} error=${result.error ?? "none"}`,
+    )
+    this.persistLog(
+      finalizedIssue.id,
+      finalizedIssue.identifier,
+      "done",
+      `status=${result.status}${result.error ? ` error=${result.error}` : ""}`,
+    )
+    this.writeLog(`done ${finalizedIssue.identifier} status=${result.status}`)
+
+    if (this.config.hooks.afterRun) {
+      this.debugLog(`hook after_run start cwd=${workspace.path}`)
+      await this.runHookFn(
+        this.config.hooks.afterRun,
+        workspace.path,
+        this.config.hooks.timeoutMs,
+        false,
+      )
+      this.debugLog(`hook after_run done cwd=${workspace.path}`)
+    }
   }
 
   private async dispatch(issue: Issue): Promise<void> {
@@ -271,131 +384,73 @@ export class SymphonyService {
         this.debugLog(`hook before_run done cwd=${workspace.path}`)
       }
 
-      try {
-        const content = await this.renderPromptFn(this.template, runtimeConfig.issue, null)
-        let agmsg:
-          | {
-              team: string
-              orchestratorAgent: string
-            }
-          | undefined
-        let reportPath: string | undefined
-        let finalContent = content
-
-        if (runtimeConfig.runner.agent === "claude") {
-          const messenger = runtimeConfig.runner.claude.messenger
-          if (messenger === "report_file") {
-            reportPath = join(workspace.path, ".herdr-symphony-report.json")
-            await rm(reportPath, { force: true })
-            finalContent = `${content}${CLAUDE_REPORT_INSTRUCTION}`
-          } else {
-            agmsg = { team: "herdr-symphony", orchestratorAgent: "herdr-symphony" }
+      const content = await this.renderPromptFn(this.template, runtimeConfig.issue, null)
+      let agmsg:
+        | {
+            team: string
+            orchestratorAgent: string
           }
-        }
+        | undefined
+      let reportPath: string | undefined
+      let finalContent = content
 
-        const runnerTimeoutMs = runtimeConfig.runner.turnTimeoutMs
-        const runnerAgent = runtimeConfig.runner.opencode.agent
-        const runnerModel =
-          runtimeConfig.runner.agent === "claude"
-            ? runtimeConfig.runner.claude.model
-            : runtimeConfig.runner.opencode.model
-        const runnerPermissionMode =
-          runtimeConfig.runner.agent === "claude"
-            ? runtimeConfig.runner.claude.permissionMode
-            : null
-        const runnerOnBlocked = runtimeConfig.runner.onBlocked
-        this.debugLog(
-          `runner start kind=${runtimeConfig.runner.kind} workspace=${workspace.path}` +
-            (runnerAgent ? ` agent=${runnerAgent}` : "") +
-            (runnerModel ? ` model=${runnerModel}` : ""),
-        )
-        const result = await this.runner.runIssue(runtimeConfig.issue, {
-          content: finalContent,
-          attempt: null,
-          workspacePath: workspace.path,
-          agentKind: runtimeConfig.runner.agent,
-          agent: runnerAgent,
-          model: runnerModel,
-          permissionMode: runnerPermissionMode,
-          onBlocked: runnerOnBlocked,
-          timeoutMs: runnerTimeoutMs,
-          workflowName: this.workflowName,
-          agmsg,
-          reportPath,
-          onEvent: (event) => {
-            this.state.markEvent(issue.id)
-            const message = "message" in event ? event.message : event.event
-            this.writeLog(this.formatEventLog(runningIssue.identifier, event.event, message))
-          },
-        })
-
-        if (!this.state.running.has(issue.id)) {
-          return
-        }
-
-        const finalizedIssue = await this.finalizeIssueState(runtimeConfig.issue, result)
-
-        if (result.status === "succeeded" && result.responseText) {
-          const reporters = this.config.work.reporter ?? ["file"]
-
-          if (reporters.includes("file")) {
-            try {
-              await this.appendAgentLog(workspace.path, result.responseText)
-            } catch (e) {
-              this.debugLog(
-                `appendAgentLog failed issue=${issue.identifier} error=${formatError(e)}`,
-              )
-            }
-          }
-
-          if (reporters.includes("tracker")) {
-            try {
-              const freshDescription = await this.fetchIssueDescription(finalizedIssue)
-              const timestamp = new Date().toISOString()
-              const updatedDescription = appendAgentLogToDescription(
-                freshDescription,
-                this.workflowName,
-                timestamp,
-                result.responseText,
-              )
-              await this.updateItemDescription(finalizedIssue, updatedDescription)
-            } catch (e) {
-              this.debugLog(
-                `updateItemDescription failed issue=${issue.identifier} error=${formatError(e)}`,
-              )
-            }
-          }
-        }
-
-        this.state.release(issue.id, {
-          status: result.status,
-          error: result.error,
-          finishedAt: new Date().toISOString(),
-        })
-        this.releaseIssue(issue.id)
-
-        this.debugLog(
-          `runner done issue=${issue.identifier} status=${result.status} error=${result.error ?? "none"}`,
-        )
-        this.persistLog(
-          finalizedIssue.id,
-          finalizedIssue.identifier,
-          "done",
-          `status=${result.status}${result.error ? ` error=${result.error}` : ""}`,
-        )
-        this.writeLog(`done ${finalizedIssue.identifier} status=${result.status}`)
-      } finally {
-        if (this.config.hooks.afterRun) {
-          this.debugLog(`hook after_run start cwd=${workspace.path}`)
-          await this.runHookFn(
-            this.config.hooks.afterRun,
-            workspace.path,
-            this.config.hooks.timeoutMs,
-            false,
-          )
-          this.debugLog(`hook after_run done cwd=${workspace.path}`)
+      if (runtimeConfig.runner.agent === "claude") {
+        const messenger = runtimeConfig.runner.claude.messenger
+        if (messenger === "report_file") {
+          reportPath = join(workspace.path, ".herdr-symphony-report.json")
+          await rm(reportPath, { force: true })
+          finalContent = `${content}${CLAUDE_REPORT_INSTRUCTION}`
+        } else {
+          agmsg = { team: "herdr-symphony", orchestratorAgent: "herdr-symphony" }
         }
       }
+
+      const runnerTimeoutMs = runtimeConfig.runner.turnTimeoutMs
+      const runnerAgent = runtimeConfig.runner.opencode.agent
+      const runnerModel =
+        runtimeConfig.runner.agent === "claude"
+          ? runtimeConfig.runner.claude.model
+          : runtimeConfig.runner.opencode.model
+      const runnerPermissionMode =
+        runtimeConfig.runner.agent === "claude" ? runtimeConfig.runner.claude.permissionMode : null
+      const runnerOnBlocked = runtimeConfig.runner.onBlocked
+      this.debugLog(
+        `runner start kind=${runtimeConfig.runner.kind} workspace=${workspace.path}` +
+          (runnerAgent ? ` agent=${runnerAgent}` : "") +
+          (runnerModel ? ` model=${runnerModel}` : ""),
+      )
+      const handle = await this.runner.startIssue(runtimeConfig.issue, {
+        content: finalContent,
+        attempt: null,
+        workspacePath: workspace.path,
+        agentKind: runtimeConfig.runner.agent,
+        agent: runnerAgent,
+        model: runnerModel,
+        permissionMode: runnerPermissionMode,
+        onBlocked: runnerOnBlocked,
+        timeoutMs: runnerTimeoutMs,
+        workflowName: this.workflowName,
+        agmsg,
+        reportPath,
+        onEvent: (event) => {
+          this.state.markEvent(issue.id)
+          const message = "message" in event ? event.message : event.event
+          this.writeLog(this.formatEventLog(runningIssue.identifier, event.event, message))
+        },
+      })
+
+      this.state.setSessionId(issue.id, handle.sessionId)
+      this.dispatchContexts.set(issue.id, {
+        handle,
+        issue: runningIssue,
+        runtimeConfig,
+        workspace,
+        reportPath,
+      })
+
+      this.debugLog(
+        `dispatch started issue=${runningIssue.identifier} sessionId=${handle.sessionId}`,
+      )
     } catch (error) {
       const errorMessage = formatError(error)
       this.debugLog(`dispatch error issue=${issue.identifier} error=${errorMessage}`)

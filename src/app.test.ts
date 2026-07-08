@@ -6,7 +6,7 @@ import { join } from "node:path"
 import { startHerdrSymphony } from "./app"
 import type { Issue, ServiceConfig } from "./domain/types"
 import { isActiveState } from "./orchestrator/scheduling"
-import type { Runner, RunnerResult } from "./runner/types"
+import type { Runner, RunnerHandle, RunnerPollResult, RunnerResult } from "./runner/types"
 import { SymphonyService } from "./service"
 import type { IssueTrackerClient } from "./tracker/types"
 
@@ -77,8 +77,14 @@ function _makeConfig(baseDir: string): ServiceConfig {
 
 function makeMockRunner(): Runner {
   return {
-    async runIssue(): Promise<RunnerResult> {
-      return { status: "succeeded", error: null, responseText: "Done" }
+    async startIssue(issue): Promise<RunnerHandle> {
+      return { sessionId: "test-session", issueId: issue.id }
+    },
+    async pollCompletion(): Promise<RunnerPollResult> {
+      return {
+        state: "done",
+        result: { status: "succeeded", error: null, responseText: "Done" },
+      }
     },
     async cancelRun() {},
   }
@@ -119,6 +125,7 @@ describe("startHerdrSymphony", () => {
 
     const logs: string[] = []
     let _refreshCount = 0
+    let service: SymphonyService | undefined
 
     await startHerdrSymphony(
       join(tmpDir, "WORKFLOW.md"),
@@ -128,7 +135,7 @@ describe("startHerdrSymphony", () => {
       },
       {
         createService: (config, template, options, input) => {
-          return new SymphonyService(config, template, {
+          const s = new SymphonyService(config, template, {
             ...options,
             ...input,
             storage: input.storage ?? undefined,
@@ -148,12 +155,16 @@ describe("startHerdrSymphony", () => {
               if (line.includes("done TEST-1")) _refreshCount++
             },
           })
+          service = s
+          return s
         },
         schedule: (_callback, _intervalMs) => {
           return () => {}
         },
       },
     )
+
+    await service?.reconcileRunning()
 
     expect(logs.some((l) => l.includes("start TEST-1"))).toBe(true)
     expect(logs.some((l) => l.includes("done TEST-1"))).toBe(true)

@@ -7,7 +7,14 @@ import type { HerdrAgentState, HerdrClient } from "../../herdr/herdr-client"
 import { createHerdrClient } from "../../herdr/herdr-client"
 import { readReport } from "../../report/write-report"
 import { sanitizeAgentName, sanitizeWorkspaceKey } from "../../utils/normalize"
-import type { Runner, RunnerEvent, RunnerOptions, RunnerResult } from "../types"
+import type {
+  Runner,
+  RunnerEvent,
+  RunnerHandle,
+  RunnerOptions,
+  RunnerPollResult,
+  RunnerResult,
+} from "../types"
 import type { ReportResolver } from "./report"
 import { createReportResolver } from "./report"
 
@@ -53,9 +60,21 @@ type AgmsgWaitContext = {
   reminderAckDeadlineMs: number
 }
 
-type WaitResult = {
-  state: HerdrAgentState | null
-  report: AgentReportMessage | null
+type AgentContext = {
+  handle: RunnerHandle
+  target: string
+  agentName: string
+  workspacePath: string
+  startedAt: string
+  agentKind: "opencode" | "claude"
+  onBlocked: "continue" | "fail" | null
+  reportPath: string | undefined
+  pendingRemindIntervalMs: number
+  agmsgContext: AgmsgWaitContext | null
+  deadline: number
+  sawActive: boolean
+  sawAgent: boolean
+  onEvent: ((event: RunnerEvent) => void) | undefined
 }
 
 function buildClaudeBootstrapPrompt(team: string, agentName: string, issueId: string): string {
@@ -124,6 +143,7 @@ export class HerdrAgentRunner implements Runner {
   private readonly reportResolver: ReportResolver
   private readonly logger: (msg: string) => void
   private readonly now: () => number
+  private readonly contexts = new Map<string, AgentContext>()
 
   constructor(
     private readonly config: ServiceConfig,
@@ -138,177 +158,232 @@ export class HerdrAgentRunner implements Runner {
     this.now = deps.now ?? Date.now
   }
 
-  async runIssue(issue: Issue, options: RunnerOptions): Promise<RunnerResult> {
+  async startIssue(issue: Issue, options: RunnerOptions): Promise<RunnerHandle> {
     const label = issue.identifier
     const timeoutMs =
       options.timeoutMs ?? this.config.work.herdrAgent.turnTimeoutMs ?? DEFAULT_TIMEOUT_MS
 
-    try {
-      const startedAt = new Date().toISOString()
-      const workspace = await this.client.ensureWorkspace(options.workspacePath, label)
+    const startedAt = new Date().toISOString()
+    const workspace = await this.client.ensureWorkspace(options.workspacePath, label)
 
-      const agentName = buildAgentName(issue.identifier, options.workflowName, this.now())
+    const agentName = buildAgentName(issue.identifier, options.workflowName, this.now())
 
-      let content = options.content
-      let agmsgContext: AgmsgWaitContext | null = null
-      let handshakeTimeoutMs = DEFAULT_HANDSHAKE_TIMEOUT_MS
-      let ackResendIntervalMs = DEFAULT_ACK_RESEND_INTERVAL_MS
+    let content = options.content
+    let agmsgContext: AgmsgWaitContext | null = null
+    let handshakeTimeoutMs = DEFAULT_HANDSHAKE_TIMEOUT_MS
+    let ackResendIntervalMs = DEFAULT_ACK_RESEND_INTERVAL_MS
 
-      if (options.agmsg && options.agentKind === "claude") {
-        if (!this.customAgmsgClient && !isAgmsgAvailable()) {
-          throw new Error(`agmsg is not installed: ${getAgmsgScriptsDir()}/send.sh not found`)
-        }
-        const agmsgAgentName = sanitizeAgentName(agentName)
-        const agentTeamSuffix = sanitizeWorkspaceKey(agmsgAgentName)
-        const team = options.agmsg.team.endsWith(agentTeamSuffix)
-          ? options.agmsg.team
-          : `${options.agmsg.team}-${agentTeamSuffix}`
-        const orchestratorAgent = options.agmsg.orchestratorAgent
-        await this.agmsgClient.join(team, orchestratorAgent, "opencode", options.workspacePath)
-        await this.agmsgClient.join(team, agmsgAgentName, "claude-code", options.workspacePath)
-        await this.agmsgClient.setDelivery("monitor", "claude-code", options.workspacePath)
-        content = buildClaudeBootstrapPrompt(team, agmsgAgentName, issue.id)
-        handshakeTimeoutMs = options.agmsg.handshakeTimeoutMs ?? DEFAULT_HANDSHAKE_TIMEOUT_MS
-        ackResendIntervalMs = options.agmsg.ackResendIntervalMs ?? DEFAULT_ACK_RESEND_INTERVAL_MS
-        agmsgContext = {
-          client: this.agmsgClient,
-          team,
-          orchestratorAgent,
-          agentName: agmsgAgentName,
-          issueId: issue.id,
-          runId: agmsgAgentName,
-          reminderAckDeadlineMs:
-            options.agmsg.reminderAckDeadlineMs ?? DEFAULT_REMINDER_ACK_DEADLINE_MS,
-        }
+    if (options.agmsg && options.agentKind === "claude") {
+      if (!this.customAgmsgClient && !isAgmsgAvailable()) {
+        throw new Error(`agmsg is not installed: ${getAgmsgScriptsDir()}/send.sh not found`)
       }
-
-      const argv = this.buildAgentArgv({ ...options, content })
-
-      const effectiveReportPath = options.agentKind === "claude" ? options.reportPath : undefined
-
-      const agent = await this.client.startAgent(agentName, {
-        workspaceId: workspace.id,
-        cwd: options.workspacePath,
-        argv,
-        env: effectiveReportPath ? { HERDR_SYMPHONY_REPORT_PATH: effectiveReportPath } : undefined,
-      })
-
-      const target = agent.paneId ?? agentName
-
-      this.emit(options, {
-        event: "agent_started",
-        timestamp: new Date().toISOString(),
-        agentName,
-        workspaceId: workspace.id,
-      })
-
-      if (agmsgContext) {
-        const handshake = await this.waitForTaskAck(
-          agmsgContext,
-          options.content,
-          handshakeTimeoutMs,
-          ackResendIntervalMs,
-        )
-        if (!handshake) {
-          return {
-            status: "failed",
-            error: "agmsg delivery handshake timed out",
-            responseText: null,
-          }
-        }
+      const agmsgAgentName = sanitizeAgentName(agentName)
+      const agentTeamSuffix = sanitizeWorkspaceKey(agmsgAgentName)
+      const team = options.agmsg.team.endsWith(agentTeamSuffix)
+        ? options.agmsg.team
+        : `${options.agmsg.team}-${agentTeamSuffix}`
+      const orchestratorAgent = options.agmsg.orchestratorAgent
+      await this.agmsgClient.join(team, orchestratorAgent, "opencode", options.workspacePath)
+      await this.agmsgClient.join(team, agmsgAgentName, "claude-code", options.workspacePath)
+      await this.agmsgClient.setDelivery("monitor", "claude-code", options.workspacePath)
+      content = buildClaudeBootstrapPrompt(team, agmsgAgentName, issue.id)
+      handshakeTimeoutMs = options.agmsg.handshakeTimeoutMs ?? DEFAULT_HANDSHAKE_TIMEOUT_MS
+      ackResendIntervalMs = options.agmsg.ackResendIntervalMs ?? DEFAULT_ACK_RESEND_INTERVAL_MS
+      agmsgContext = {
+        client: this.agmsgClient,
+        team,
+        orchestratorAgent,
+        agentName: agmsgAgentName,
+        issueId: issue.id,
+        runId: agmsgAgentName,
+        reminderAckDeadlineMs:
+          options.agmsg.reminderAckDeadlineMs ?? DEFAULT_REMINDER_ACK_DEADLINE_MS,
       }
+    }
 
-      const waitResult = await this.waitForAgentCompletion(
-        target,
-        timeoutMs,
-        options.onBlocked ?? null,
+    const argv = this.buildAgentArgv({ ...options, content })
+
+    const effectiveReportPath = options.agentKind === "claude" ? options.reportPath : undefined
+
+    const agent = await this.client.startAgent(agentName, {
+      workspaceId: workspace.id,
+      cwd: options.workspacePath,
+      argv,
+      env: effectiveReportPath ? { HERDR_SYMPHONY_REPORT_PATH: effectiveReportPath } : undefined,
+    })
+
+    const target = agent.paneId ?? agentName
+
+    this.emit(options, {
+      event: "agent_started",
+      timestamp: new Date().toISOString(),
+      agentName,
+      workspaceId: workspace.id,
+    })
+
+    const handle: RunnerHandle = { sessionId: target, issueId: issue.id }
+
+    if (agmsgContext) {
+      const handshake = await this.waitForTaskAck(
         agmsgContext,
-        effectiveReportPath,
-        options.pendingRemindIntervalMs ??
-          this.config.work.herdrAgent.claude.pendingRemindIntervalMs,
+        options.content,
+        handshakeTimeoutMs,
+        ackResendIntervalMs,
       )
-
-      if (waitResult.state === null) {
-        return {
-          status: "timeout",
-          error: `agent timed out after ${timeoutMs}ms`,
-          responseText: null,
-        }
+      if (!handshake) {
+        await this.client.closePane(target)
+        throw new Error("agmsg delivery handshake timed out")
       }
+    }
 
-      if (waitResult.state === "blocked") {
-        return {
+    this.contexts.set(target, {
+      handle,
+      target,
+      agentName,
+      workspacePath: options.workspacePath,
+      startedAt,
+      agentKind: options.agentKind,
+      onBlocked: options.onBlocked ?? null,
+      reportPath: effectiveReportPath,
+      pendingRemindIntervalMs:
+        options.pendingRemindIntervalMs ??
+        this.config.work.herdrAgent.claude.pendingRemindIntervalMs,
+      agmsgContext,
+      deadline: this.now() + timeoutMs,
+      sawActive: false,
+      sawAgent: false,
+      onEvent: options.onEvent,
+    })
+
+    return handle
+  }
+
+  async pollCompletion(handle: RunnerHandle): Promise<RunnerPollResult> {
+    const ctx = this.contexts.get(handle.sessionId)
+    if (!ctx) {
+      return {
+        state: "done",
+        result: {
+          status: "failed",
+          error: `unknown handle: ${handle.sessionId}`,
+          responseText: null,
+        },
+      }
+    }
+
+    if (this.now() >= ctx.deadline) {
+      return this.done(ctx, {
+        status: "timeout",
+        error: `agent timed out after`,
+        responseText: null,
+      })
+    }
+
+    const info = await this.client.getAgent(ctx.target)
+
+    if (info === null) {
+      if (ctx.sawActive) {
+        if (ctx.agmsgContext) {
+          const handled = await this.handleAgmsgIdle(ctx.agmsgContext)
+          if (handled.state === "done") {
+            return this.doneFromAgmsgReport(ctx, handled.report)
+          }
+          ctx.sawActive = false
+          return { state: "running" }
+        }
+        if (ctx.reportPath) {
+          if (
+            this.handleReportFileIdle(ctx.target, ctx.reportPath, ctx.pendingRemindIntervalMs) ===
+            "done"
+          ) {
+            return this.doneFromReportFile(ctx)
+          }
+          ctx.sawActive = false
+          return { state: "running" }
+        }
+        return this.doneSucceeded(ctx)
+      }
+      if (ctx.sawAgent) {
+        if (ctx.reportPath) {
+          if (
+            this.handleReportFileIdle(ctx.target, ctx.reportPath, ctx.pendingRemindIntervalMs) ===
+            "done"
+          ) {
+            return this.doneFromReportFile(ctx)
+          }
+          return { state: "running" }
+        }
+        return this.doneSucceeded(ctx)
+      }
+      return { state: "running" }
+    }
+
+    ctx.sawAgent = true
+
+    const state: HerdrAgentState = info.state
+    if (state === "working" || state === "blocked") {
+      ctx.sawActive = true
+      if (state === "blocked" && ctx.onBlocked === "fail") {
+        return this.done(ctx, {
           status: "failed",
           error: "agent is blocked, needs operator input",
           responseText: null,
-        }
+        })
       }
+      return { state: "running" }
+    }
 
-      this.emit(options, {
-        event: "agent_status",
-        timestamp: new Date().toISOString(),
-        state: waitResult.state,
-      })
-
-      if (waitResult.report?.status === "failed") {
-        return {
-          status: "failed",
-          error: waitResult.report.summary || "reported as failed",
-          responseText: null,
+    if (state === "done") {
+      if (ctx.reportPath) {
+        if (
+          this.handleReportFileIdle(ctx.target, ctx.reportPath, ctx.pendingRemindIntervalMs) ===
+          "done"
+        ) {
+          return this.doneFromReportFile(ctx)
         }
+        return { state: "running" }
       }
-      if (waitResult.report?.status === "done" && waitResult.report.summary) {
-        return {
-          status: "succeeded",
-          error: null,
-          responseText: waitResult.report.summary,
-        }
-      }
+      return this.doneSucceeded(ctx)
+    }
 
-      if (effectiveReportPath) {
-        const report = readReport(effectiveReportPath)
-        if (report?.status === "failed") {
-          return {
-            status: "failed",
-            error: report.summary || "reported as failed",
-            responseText: null,
+    if (state === "idle") {
+      if (ctx.sawActive) {
+        if (ctx.agmsgContext) {
+          const handled = await this.handleAgmsgIdle(ctx.agmsgContext)
+          if (handled.state === "done") {
+            return this.doneFromAgmsgReport(ctx, handled.report)
           }
+          ctx.sawActive = false
+          return { state: "running" }
         }
-        if (report?.status === "done" && report.summary) {
-          return {
-            status: "succeeded",
-            error: null,
-            responseText: report.summary,
+        if (ctx.reportPath) {
+          if (
+            this.handleReportFileIdle(ctx.target, ctx.reportPath, ctx.pendingRemindIntervalMs) ===
+            "done"
+          ) {
+            return this.doneFromReportFile(ctx)
           }
+          ctx.sawActive = false
+          return { state: "running" }
         }
+        return this.doneSucceeded(ctx)
       }
-
-      const resolved = await this.reportResolver.resolve({
-        workspacePath: options.workspacePath,
-        startedAt,
-        agentKind: options.agentKind,
-      })
-      if (resolved === null) {
-        this.logger(`reportResolver returned null, falling back to pane read target=${target}`)
-      }
-      const responseText = resolved ?? (await this.client.readAgent(target))
-
-      return {
-        status: "succeeded",
-        error: null,
-        responseText: responseText?.trim() || null,
-      }
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error)
-      return {
-        status: "failed",
-        error: message,
-        responseText: null,
+      if (ctx.reportPath && ctx.sawAgent) {
+        if (
+          this.handleReportFileIdle(ctx.target, ctx.reportPath, ctx.pendingRemindIntervalMs) ===
+          "done"
+        ) {
+          return this.doneFromReportFile(ctx)
+        }
+        return { state: "running" }
       }
     }
+
+    return { state: "running" }
   }
 
   async cancelRun(target: string): Promise<void> {
+    this.contexts.delete(target)
     await this.client.closePane(target)
   }
 
@@ -352,100 +427,6 @@ export class HerdrAgentRunner implements Runner {
     }
     this.logger(`agmsg delivery handshake timed out agent=${ctx.agentName}`)
     return false
-  }
-
-  private async waitForAgentCompletion(
-    target: string,
-    timeoutMs: number,
-    onBlocked: "continue" | "fail" | null,
-    agmsgContext: AgmsgWaitContext | null,
-    reportPath: string | undefined,
-    pendingRemindIntervalMs: number,
-  ): Promise<WaitResult> {
-    const deadline = this.now() + timeoutMs
-    let sawActive = false
-    let sawAgent = false
-
-    const handleReportFileResult = (
-      target: string,
-      reportPath: string,
-    ): "done" | "pending" | "none" => {
-      return this.handleReportFileIdle(target, reportPath, pendingRemindIntervalMs)
-    }
-
-    while (this.now() < deadline) {
-      await new Promise((resolve) => setTimeout(resolve, this.pollIntervalMs))
-      const info = await this.client.getAgent(target)
-
-      if (info === null) {
-        if (sawActive) {
-          if (agmsgContext) {
-            const handled = await this.handleAgmsgIdle(agmsgContext)
-            if (handled.state === "done") return { state: "done", report: handled.report }
-            sawActive = false
-            continue
-          }
-          if (reportPath) {
-            if (handleReportFileResult(target, reportPath) === "done")
-              return { state: "done", report: null }
-            sawActive = false
-            continue
-          }
-          return { state: "done", report: null }
-        }
-        if (sawAgent) {
-          if (reportPath) {
-            if (handleReportFileResult(target, reportPath) === "done")
-              return { state: "done", report: null }
-            continue
-          }
-          return { state: "done", report: null }
-        }
-        continue
-      }
-
-      sawAgent = true
-
-      if (info.state === "working" || info.state === "blocked") {
-        sawActive = true
-        if (info.state === "blocked" && onBlocked === "fail") {
-          return { state: "blocked", report: null }
-        }
-        continue
-      }
-
-      if (info.state === "done") {
-        if (reportPath) {
-          if (handleReportFileResult(target, reportPath) === "done")
-            return { state: "done", report: null }
-          continue
-        }
-        return { state: "done", report: null }
-      }
-
-      if (info.state === "idle") {
-        if (sawActive) {
-          if (agmsgContext) {
-            const handled = await this.handleAgmsgIdle(agmsgContext)
-            if (handled.state === "done") return { state: "done", report: handled.report }
-            sawActive = false
-            continue
-          }
-          if (reportPath) {
-            if (handleReportFileResult(target, reportPath) === "done")
-              return { state: "done", report: null }
-            sawActive = false
-            continue
-          }
-          return { state: "idle", report: null }
-        }
-        if (reportPath && sawAgent) {
-          if (handleReportFileResult(target, reportPath) === "done")
-            return { state: "done", report: null }
-        }
-      }
-    }
-    return { state: null, report: null }
   }
 
   private async handleAgmsgIdle(
@@ -498,6 +479,78 @@ export class HerdrAgentRunner implements Runner {
     void this.client.sendKeys(target, "Enter")
     this.logger("report-file reminder sent")
     return "none"
+  }
+
+  private emitStatus(ctx: AgentContext, state: string): void {
+    if (!ctx.onEvent) return
+    ctx.onEvent({
+      event: "agent_status",
+      timestamp: new Date().toISOString(),
+      state,
+    })
+  }
+
+  private done(ctx: AgentContext, result: RunnerResult): RunnerPollResult {
+    this.emitStatus(ctx, result.status === "timeout" ? "timeout" : result.status)
+    this.contexts.delete(ctx.target)
+    return { state: "done", result }
+  }
+
+  private async doneFromAgmsgReport(
+    ctx: AgentContext,
+    report: AgentReportMessage | undefined,
+  ): Promise<RunnerPollResult> {
+    if (report?.status === "failed") {
+      return this.done(ctx, {
+        status: "failed",
+        error: report.summary || "reported as failed",
+        responseText: null,
+      })
+    }
+    if (report?.status === "done" && report.summary) {
+      return this.done(ctx, {
+        status: "succeeded",
+        error: null,
+        responseText: report.summary,
+      })
+    }
+    return this.doneSucceeded(ctx)
+  }
+
+  private async doneFromReportFile(ctx: AgentContext): Promise<RunnerPollResult> {
+    const report = ctx.reportPath ? readReport(ctx.reportPath) : null
+    if (report?.status === "failed") {
+      return this.done(ctx, {
+        status: "failed",
+        error: report.summary || "reported as failed",
+        responseText: null,
+      })
+    }
+    if (report?.status === "done" && report.summary) {
+      return this.done(ctx, {
+        status: "succeeded",
+        error: null,
+        responseText: report.summary,
+      })
+    }
+    return this.doneSucceeded(ctx)
+  }
+
+  private async doneSucceeded(ctx: AgentContext): Promise<RunnerPollResult> {
+    const resolved = await this.reportResolver.resolve({
+      workspacePath: ctx.workspacePath,
+      startedAt: ctx.startedAt,
+      agentKind: ctx.agentKind,
+    })
+    if (resolved === null) {
+      this.logger(`reportResolver returned null, falling back to pane read target=${ctx.target}`)
+    }
+    const responseText = resolved ?? (await this.client.readAgent(ctx.target))
+    return this.done(ctx, {
+      status: "succeeded",
+      error: null,
+      responseText: responseText?.trim() || null,
+    })
   }
 
   private buildAgentArgv(options: RunnerOptions): string[] {

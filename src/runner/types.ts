@@ -34,7 +34,15 @@ export type RunnerOptions = {
   onEvent?: (event: RunnerEvent) => void
 }
 
+export type RunnerHandle = {
+  sessionId: string
+  issueId: string
+}
+
+export type RunnerPollResult = { state: "running" } | { state: "done"; result: RunnerResult }
+
 export type Runner = {
-  runIssue(issue: Issue, options: RunnerOptions): Promise<RunnerResult>
+  startIssue(issue: Issue, options: RunnerOptions): Promise<RunnerHandle>
+  pollCompletion(handle: RunnerHandle): Promise<RunnerPollResult>
   cancelRun(target: string): Promise<void>
 }

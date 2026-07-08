@@ -5,7 +5,13 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import type { Issue, ServiceConfig } from "./domain/types"
 import { isActiveState } from "./orchestrator/scheduling"
-import type { Runner, RunnerOptions, RunnerResult } from "./runner/types"
+import type {
+  Runner,
+  RunnerHandle,
+  RunnerOptions,
+  RunnerPollResult,
+  RunnerResult,
+} from "./runner/types"
 import { SymphonyService } from "./service"
 import type { Storage } from "./storage/types"
 import type { IssueTrackerClient } from "./tracker/types"
@@ -80,12 +86,18 @@ function makeIssue(overrides: Partial<Issue> = {}): Issue {
 
 function makeMockRunner(result: Partial<RunnerResult> = {}): Runner {
   return {
-    async runIssue(_issue, _options: RunnerOptions): Promise<RunnerResult> {
+    async startIssue(issue): Promise<RunnerHandle> {
+      return { sessionId: "test-session", issueId: issue.id }
+    },
+    async pollCompletion(): Promise<RunnerPollResult> {
       return {
-        status: "succeeded",
-        error: null,
-        responseText: "Task done",
-        ...result,
+        state: "done",
+        result: {
+          status: "succeeded",
+          error: null,
+          responseText: "Task done",
+          ...result,
+        },
       }
     },
     async cancelRun() {},
@@ -97,13 +109,19 @@ function makeCapturingRunner(result: Partial<RunnerResult> = {}): Runner & {
 } {
   let options: RunnerOptions | null = null
   return {
-    async runIssue(_issue, receivedOptions: RunnerOptions): Promise<RunnerResult> {
+    async startIssue(issue, receivedOptions: RunnerOptions): Promise<RunnerHandle> {
       options = receivedOptions
+      return { sessionId: "test-session", issueId: issue.id }
+    },
+    async pollCompletion(): Promise<RunnerPollResult> {
       return {
-        status: "succeeded",
-        error: null,
-        responseText: "Task done",
-        ...result,
+        state: "done",
+        result: {
+          status: "succeeded",
+          error: null,
+          responseText: "Task done",
+          ...result,
+        },
       }
     },
     async cancelRun() {},
@@ -170,6 +188,7 @@ describe("SymphonyService", () => {
 
     await service.refresh()
     await service.waitForDispatches()
+    await service.reconcileRunning()
 
     expect(logs.some((l) => l.includes("done TEST-1"))).toBe(true)
     service.shutdown()
@@ -193,6 +212,7 @@ describe("SymphonyService", () => {
 
     await service.refresh()
     await service.waitForDispatches()
+    await service.reconcileRunning()
 
     expect(logs.some((l) => l.includes("done TEST-1 status=failed"))).toBe(true)
     service.shutdown()
@@ -223,6 +243,7 @@ describe("SymphonyService", () => {
 
     await service.refresh()
     await service.waitForDispatches()
+    await service.reconcileRunning()
 
     const states = stateLog.map((s) => s.state)
     expect(states).toContain("In progress")
@@ -252,6 +273,7 @@ describe("SymphonyService", () => {
 
     await service.refresh()
     await service.waitForDispatches()
+    await service.reconcileRunning()
 
     const { existsSync, readFileSync } = await import("node:fs")
     const logPath = join(tmpDir, "AGENTLOGS.local.md")
@@ -277,6 +299,7 @@ describe("SymphonyService", () => {
 
     await service.refresh()
     await service.waitForDispatches()
+    await service.reconcileRunning()
 
     expect(logs.some((l) => l.includes("idle"))).toBe(true)
     service.shutdown()
@@ -307,6 +330,7 @@ describe("SymphonyService", () => {
 
     await service.refresh()
     await service.waitForDispatches()
+    await service.reconcileRunning()
 
     expect(runner.options?.agmsg).toEqual({
       team: "herdr-symphony",
@@ -335,6 +359,7 @@ describe("SymphonyService", () => {
 
     await service.refresh()
     await service.waitForDispatches()
+    await service.reconcileRunning()
 
     expect(runner.options?.agmsg).toBeUndefined()
     expect(runner.options?.content).toBe("prompt")
@@ -372,6 +397,7 @@ describe("SymphonyService", () => {
 
     await service.refresh()
     await service.waitForDispatches()
+    await service.reconcileRunning()
 
     expect(runner.options?.agmsg).toBeUndefined()
     expect(runner.options?.reportPath).toBe(join(tmpDir, ".herdr-symphony-report.json"))
@@ -404,6 +430,7 @@ describe("SymphonyService", () => {
 
     await service.refresh()
     await service.waitForDispatches()
+    await service.reconcileRunning()
 
     expect(runner.options?.agmsg).toEqual({
       team: "herdr-symphony",
@@ -469,6 +496,7 @@ describe("SymphonyService", () => {
 
     await service.refresh()
     await service.waitForDispatches()
+    await service.reconcileRunning()
     await new Promise((resolve) => setTimeout(resolve, 10))
 
     expect(logs.some((l) => l.includes("dispatch unhandled error"))).toBe(true)

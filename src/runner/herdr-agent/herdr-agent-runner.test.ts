@@ -7,8 +7,25 @@ import { formatAgmsgMessage } from "../../agmsg/agmsg-message"
 import type { Issue, ServiceConfig } from "../../domain/types"
 import type { HerdrAgentInfo, HerdrClient, HerdrWorkspaceInfo } from "../../herdr/herdr-client"
 import { writeReport } from "../../report/write-report"
+import type { RunnerOptions, RunnerResult } from "../types"
 import { buildAgentName, HerdrAgentRunner } from "./herdr-agent-runner"
 import type { ReportContext, ReportResolver } from "./report"
+
+async function runUntilDone(
+  runner: HerdrAgentRunner,
+  issue: Issue,
+  options: RunnerOptions,
+): Promise<RunnerResult> {
+  const handle = await runner.startIssue(issue, options)
+  for (let i = 0; i < 200; i++) {
+    const poll = await runner.pollCompletion(handle)
+    if (poll.state === "done") {
+      return poll.result
+    }
+    await new Promise((resolve) => setTimeout(resolve, 1))
+  }
+  throw new Error("runUntilDone: exceeded max poll iterations")
+}
 
 function nullReportResolver(): ReportResolver {
   return { resolve: () => Promise.resolve(null) }
@@ -271,7 +288,7 @@ describe("HerdrAgentRunner", () => {
     })
     const issue = makeIssue()
 
-    const result = await runner.runIssue(issue, {
+    const result = await runUntilDone(runner, issue, {
       content: "Fix the bug",
       agentKind: "opencode",
       attempt: null,
@@ -292,7 +309,7 @@ describe("HerdrAgentRunner", () => {
       reportResolver: resolver,
     })
 
-    const result = await runner.runIssue(makeIssue(), {
+    const result = await runUntilDone(runner, makeIssue(), {
       content: "Fix the bug",
       agentKind: "opencode",
       attempt: null,
@@ -311,7 +328,7 @@ describe("HerdrAgentRunner", () => {
       reportResolver: nullReportResolver(),
     })
 
-    const result = await runner.runIssue(makeIssue(), {
+    const result = await runUntilDone(runner, makeIssue(), {
       content: "Fix the bug",
       agentKind: "opencode",
       attempt: null,
@@ -337,7 +354,7 @@ describe("HerdrAgentRunner", () => {
       reportResolver: resolver,
     })
 
-    await runner.runIssue(makeIssue(), {
+    await runUntilDone(runner, makeIssue(), {
       content: "Fix the bug",
       agentKind: "claude",
       attempt: null,
@@ -358,7 +375,7 @@ describe("HerdrAgentRunner", () => {
       reportResolver: nullReportResolver(),
     })
 
-    await runner.runIssue(makeIssue(), {
+    await runUntilDone(runner, makeIssue(), {
       content: "Fix the bug",
       agentKind: "opencode",
       attempt: null,
@@ -385,7 +402,7 @@ describe("HerdrAgentRunner", () => {
       reportResolver: nullReportResolver(),
     })
 
-    await runner.runIssue(makeIssue(), {
+    await runUntilDone(runner, makeIssue(), {
       content: "Implement feature X",
       agentKind: "opencode",
       attempt: null,
@@ -406,7 +423,7 @@ describe("HerdrAgentRunner", () => {
     })
     const issue = makeIssue({ identifier: "PROJ-42" })
 
-    await runner.runIssue(issue, {
+    await runUntilDone(runner, issue, {
       content: "Do work",
       agentKind: "opencode",
       attempt: null,
@@ -426,7 +443,7 @@ describe("HerdrAgentRunner", () => {
     })
     const issue = makeIssue({ identifier: "PROJ-42" })
 
-    await runner.runIssue(issue, {
+    await runUntilDone(runner, issue, {
       content: "Do work",
       agentKind: "opencode",
       attempt: null,
@@ -447,7 +464,7 @@ describe("HerdrAgentRunner", () => {
     })
     const issue = makeIssue({ identifier: "PROJ-42" })
 
-    await runner.runIssue(issue, {
+    await runUntilDone(runner, issue, {
       content: "Do work",
       agentKind: "opencode",
       attempt: null,
@@ -492,7 +509,7 @@ describe("HerdrAgentRunner", () => {
       reportResolver: nullReportResolver(),
     })
 
-    await runner.runIssue(makeIssue(), {
+    await runUntilDone(runner, makeIssue(), {
       content: "Fix the bug",
       agentKind: "opencode",
       attempt: null,
@@ -512,7 +529,7 @@ describe("HerdrAgentRunner", () => {
       reportResolver: nullReportResolver(),
     })
 
-    const result = await runner.runIssue(makeIssue(), {
+    const result = await runUntilDone(runner, makeIssue(), {
       content: "Fix the bug",
       agentKind: "opencode",
       attempt: null,
@@ -533,7 +550,7 @@ describe("HerdrAgentRunner", () => {
       reportResolver: nullReportResolver(),
     })
 
-    const result = await runner.runIssue(makeIssue(), {
+    const result = await runUntilDone(runner, makeIssue(), {
       content: "Fix the bug",
       agentKind: "opencode",
       attempt: null,
@@ -554,7 +571,7 @@ describe("HerdrAgentRunner", () => {
       reportResolver: nullReportResolver(),
     })
 
-    const result = await runner.runIssue(makeIssue(), {
+    const result = await runUntilDone(runner, makeIssue(), {
       content: "Fix the bug",
       agentKind: "opencode",
       attempt: null,
@@ -577,7 +594,7 @@ describe("HerdrAgentRunner", () => {
       reportResolver: nullReportResolver(),
     })
 
-    const result = await runner.runIssue(makeIssue(), {
+    const result = await runUntilDone(runner, makeIssue(), {
       content: "Fix the bug",
       agentKind: "opencode",
       attempt: null,
@@ -603,7 +620,7 @@ describe("HerdrAgentRunner", () => {
       reportResolver: nullReportResolver(),
     })
 
-    const result = await runner.runIssue(makeIssue(), {
+    const result = await runUntilDone(runner, makeIssue(), {
       content: "Fix the bug",
       agentKind: "opencode",
       attempt: null,
@@ -632,7 +649,7 @@ describe("HerdrAgentRunner", () => {
       now: () => 1_719_662_400_000,
     })
 
-    const result = await runner.runIssue(makeIssue(), {
+    const result = await runUntilDone(runner, makeIssue(), {
       content: "Fix the bug",
       agentKind: "claude",
       attempt: null,
@@ -662,7 +679,7 @@ describe("HerdrAgentRunner", () => {
       now: () => 1_719_662_400_000,
     })
 
-    const result = await runner.runIssue(makeIssue(), {
+    const result = await runUntilDone(runner, makeIssue(), {
       content: "Fix the bug",
       agentKind: "claude",
       attempt: null,
@@ -718,7 +735,7 @@ describe("HerdrAgentRunner", () => {
       now: () => 1_719_662_400_000,
     })
 
-    const result = await runner.runIssue(makeIssue(), {
+    const result = await runUntilDone(runner, makeIssue(), {
       content: "Fix the bug",
       agentKind: "claude",
       attempt: null,
@@ -769,7 +786,7 @@ describe("HerdrAgentRunner", () => {
       now: () => 1_719_662_400_000,
     })
 
-    const result = await runner.runIssue(makeIssue(), {
+    const result = await runUntilDone(runner, makeIssue(), {
       content: "Fix the bug",
       agentKind: "claude",
       attempt: null,
@@ -820,7 +837,7 @@ describe("HerdrAgentRunner", () => {
       now: () => 1_719_662_400_000,
     })
 
-    const result = await runner.runIssue(makeIssue(), {
+    const result = await runUntilDone(runner, makeIssue(), {
       content: "Fix the bug",
       agentKind: "claude",
       attempt: null,
@@ -843,7 +860,7 @@ describe("HerdrAgentRunner", () => {
       now: () => 1_719_662_400_000,
     })
 
-    await runner.runIssue(makeIssue(), {
+    await runUntilDone(runner, makeIssue(), {
       content: "Fix the bug",
       agentKind: "claude",
       attempt: null,
@@ -898,7 +915,7 @@ describe("HerdrAgentRunner", () => {
     })
     const issue = makeIssue({ identifier: "tomoasleep/herdr-symphony#1" })
 
-    await runner.runIssue(issue, {
+    await runUntilDone(runner, issue, {
       content: "Fix the bug",
       agentKind: "claude",
       attempt: null,
@@ -927,7 +944,7 @@ describe("HerdrAgentRunner", () => {
       now: () => 1_719_662_400_000,
     })
 
-    await runner.runIssue(makeIssue(), {
+    await runUntilDone(runner, makeIssue(), {
       content: "Fix the bug",
       agentKind: "claude",
       attempt: null,
@@ -961,7 +978,7 @@ describe("HerdrAgentRunner", () => {
       now: () => 1_719_662_400_000,
     })
 
-    await runner.runIssue(makeIssue({ id: "issue-1" }), {
+    await runUntilDone(runner, makeIssue({ id: "issue-1" }), {
       content: "Fix the bug",
       agentKind: "claude",
       attempt: null,
@@ -988,7 +1005,7 @@ describe("HerdrAgentRunner", () => {
     })
   })
 
-  test("Claude は task ack が返らない場合に task を再送し handshake timeout で failed になる", async () => {
+  test("Claude は task ack が返らない場合に task を再送し handshake timeout で throw する", async () => {
     const agmsg = makeMockAgmsgClient({ inboxResponses: [], noTaskAck: true })
     const client = makeMockHerdrClient({})
     const runner = new HerdrAgentRunner(makeConfig(), {
@@ -999,22 +1016,21 @@ describe("HerdrAgentRunner", () => {
       now: () => 1_719_662_400_000,
     })
 
-    const result = await runner.runIssue(makeIssue({ id: "issue-1" }), {
-      content: "Fix the bug",
-      agentKind: "claude",
-      attempt: null,
-      workspacePath: "/repo/worktree",
-      timeoutMs: 500,
-      agmsg: {
-        team: "herdr-symphony-TEST-1-ly02lc00",
-        orchestratorAgent: "herdr-symphony",
-        handshakeTimeoutMs: 30,
-        ackResendIntervalMs: 10,
-      },
-    })
-
-    expect(result.status).toBe("failed")
-    expect(result.error).toContain("agmsg delivery handshake timed out")
+    await expect(
+      runner.startIssue(makeIssue({ id: "issue-1" }), {
+        content: "Fix the bug",
+        agentKind: "claude",
+        attempt: null,
+        workspacePath: "/repo/worktree",
+        timeoutMs: 500,
+        agmsg: {
+          team: "herdr-symphony-TEST-1-ly02lc00",
+          orchestratorAgent: "herdr-symphony",
+          handshakeTimeoutMs: 30,
+          ackResendIntervalMs: 10,
+        },
+      }),
+    ).rejects.toThrow("agmsg delivery handshake timed out")
     expect(agmsg.sendCalls.length).toBeGreaterThanOrEqual(2)
   })
 
@@ -1034,7 +1050,7 @@ describe("HerdrAgentRunner", () => {
       reportResolver: nullReportResolver(),
     })
 
-    const result = await runner.runIssue(makeIssue(), {
+    const result = await runUntilDone(runner, makeIssue(), {
       content: "Fix the bug",
       agentKind: "opencode",
       attempt: null,
@@ -1056,7 +1072,7 @@ describe("HerdrAgentRunner", () => {
       reportResolver: nullReportResolver(),
     })
 
-    await runner.runIssue(makeIssue(), {
+    await runUntilDone(runner, makeIssue(), {
       content: "Fix the bug",
       agentKind: "opencode",
       attempt: null,
@@ -1078,7 +1094,7 @@ describe("HerdrAgentRunner", () => {
       reportResolver: nullReportResolver(),
     })
 
-    await runner.runIssue(makeIssue(), {
+    await runUntilDone(runner, makeIssue(), {
       content: "Fix the bug",
       agentKind: "claude",
       attempt: null,
@@ -1098,7 +1114,7 @@ describe("HerdrAgentRunner", () => {
       reportResolver: nullReportResolver(),
     })
 
-    await runner.runIssue(makeIssue(), {
+    await runUntilDone(runner, makeIssue(), {
       content: "Fix the bug",
       agentKind: "claude",
       attempt: null,
@@ -1119,7 +1135,7 @@ describe("HerdrAgentRunner", () => {
       reportResolver: nullReportResolver(),
     })
 
-    await runner.runIssue(makeIssue(), {
+    await runUntilDone(runner, makeIssue(), {
       content: "Fix the bug",
       agentKind: "claude",
       attempt: null,
@@ -1140,7 +1156,7 @@ describe("HerdrAgentRunner", () => {
       reportResolver: nullReportResolver(),
     })
 
-    await runner.runIssue(makeIssue(), {
+    await runUntilDone(runner, makeIssue(), {
       content: "Fix the bug",
       agentKind: "claude",
       attempt: null,
@@ -1161,7 +1177,7 @@ describe("HerdrAgentRunner", () => {
       reportResolver: nullReportResolver(),
     })
 
-    await runner.runIssue(makeIssue(), {
+    await runUntilDone(runner, makeIssue(), {
       content: "Fix the bug",
       agentKind: "claude",
       attempt: null,
@@ -1183,7 +1199,7 @@ describe("HerdrAgentRunner", () => {
       reportResolver: nullReportResolver(),
     })
 
-    await runner.runIssue(makeIssue(), {
+    await runUntilDone(runner, makeIssue(), {
       content: "Fix the bug",
       agentKind: "claude",
       attempt: null,
@@ -1203,7 +1219,7 @@ describe("HerdrAgentRunner", () => {
       reportResolver: nullReportResolver(),
     })
 
-    await runner.runIssue(makeIssue(), {
+    await runUntilDone(runner, makeIssue(), {
       content: "Fix the bug",
       agentKind: "opencode",
       attempt: null,
@@ -1224,7 +1240,7 @@ describe("HerdrAgentRunner", () => {
       reportResolver: nullReportResolver(),
     })
 
-    await runner.runIssue(makeIssue(), {
+    await runUntilDone(runner, makeIssue(), {
       content: "Fix the bug",
       agentKind: "claude",
       attempt: null,
@@ -1252,7 +1268,7 @@ describe("HerdrAgentRunner", () => {
       reportResolver: nullReportResolver(),
     })
 
-    const result = await runner.runIssue(makeIssue(), {
+    const result = await runUntilDone(runner, makeIssue(), {
       content: "Fix the bug",
       agentKind: "claude",
       attempt: null,
@@ -1279,7 +1295,7 @@ describe("HerdrAgentRunner", () => {
       reportResolver: nullReportResolver(),
     })
 
-    const result = await runner.runIssue(makeIssue(), {
+    const result = await runUntilDone(runner, makeIssue(), {
       content: "Fix the bug",
       agentKind: "claude",
       attempt: null,
@@ -1301,7 +1317,7 @@ describe("HerdrAgentRunner", () => {
       reportResolver: nullReportResolver(),
     })
 
-    const result = await runner.runIssue(makeIssue(), {
+    const result = await runUntilDone(runner, makeIssue(), {
       content: "Fix the bug",
       agentKind: "claude",
       attempt: null,
@@ -1323,7 +1339,7 @@ describe("HerdrAgentRunner", () => {
       reportResolver: nullReportResolver(),
     })
 
-    const result = await runner.runIssue(makeIssue(), {
+    const result = await runUntilDone(runner, makeIssue(), {
       content: "Fix the bug",
       agentKind: "claude",
       attempt: null,
@@ -1404,7 +1420,7 @@ describe("HerdrAgentRunner", () => {
         reportResolver: nullReportResolver(),
       })
 
-      const runPromise = runner.runIssue(makeIssue(), {
+      const runPromise = runUntilDone(runner, makeIssue(), {
         content: "Fix the bug",
         agentKind: "claude",
         attempt: null,
@@ -1433,7 +1449,7 @@ describe("HerdrAgentRunner", () => {
         reportResolver: nullReportResolver(),
       })
 
-      const runPromise = runner.runIssue(makeIssue(), {
+      const runPromise = runUntilDone(runner, makeIssue(), {
         content: "Fix the bug",
         agentKind: "claude",
         attempt: null,
@@ -1463,7 +1479,7 @@ describe("HerdrAgentRunner", () => {
         reportResolver: nullReportResolver(),
       })
 
-      const runPromise = runner.runIssue(makeIssue(), {
+      const runPromise = runUntilDone(runner, makeIssue(), {
         content: "Fix the bug",
         agentKind: "claude",
         attempt: null,
@@ -1495,7 +1511,7 @@ describe("HerdrAgentRunner", () => {
         reportResolver: nullReportResolver(),
       })
 
-      const runPromise = runner.runIssue(makeIssue(), {
+      const runPromise = runUntilDone(runner, makeIssue(), {
         content: "Fix the bug",
         agentKind: "claude",
         attempt: null,
@@ -1529,7 +1545,7 @@ describe("HerdrAgentRunner", () => {
         reportResolver: nullReportResolver(),
       })
 
-      const runPromise = runner.runIssue(makeIssue(), {
+      const runPromise = runUntilDone(runner, makeIssue(), {
         content: "Fix the bug",
         agentKind: "claude",
         attempt: null,
@@ -1565,7 +1581,7 @@ describe("HerdrAgentRunner", () => {
         now: () => currentTime,
       })
 
-      const runPromise = runner.runIssue(makeIssue(), {
+      const runPromise = runUntilDone(runner, makeIssue(), {
         content: "Fix the bug",
         agentKind: "claude",
         attempt: null,
@@ -1609,7 +1625,7 @@ describe("HerdrAgentRunner", () => {
         now: () => currentTime,
       })
 
-      const runPromise = runner.runIssue(makeIssue(), {
+      const runPromise = runUntilDone(runner, makeIssue(), {
         content: "Fix the bug",
         agentKind: "claude",
         attempt: null,
@@ -1658,7 +1674,7 @@ describe("HerdrAgentRunner", () => {
         now: () => currentTime,
       })
 
-      const runPromise = runner.runIssue(makeIssue(), {
+      const runPromise = runUntilDone(runner, makeIssue(), {
         content: "Fix the bug",
         agentKind: "claude",
         attempt: null,
@@ -1705,7 +1721,7 @@ describe("HerdrAgentRunner", () => {
         reportResolver: nullReportResolver(),
       })
 
-      const runPromise = runner.runIssue(makeIssue(), {
+      const runPromise = runUntilDone(runner, makeIssue(), {
         content: "Fix the bug",
         agentKind: "claude",
         attempt: null,
@@ -1739,7 +1755,7 @@ describe("HerdrAgentRunner", () => {
         reportResolver: resolver,
       })
 
-      const result = await runner.runIssue(makeIssue(), {
+      const result = await runUntilDone(runner, makeIssue(), {
         content: "Fix the bug",
         agentKind: "claude",
         attempt: null,
@@ -1765,7 +1781,7 @@ describe("HerdrAgentRunner", () => {
         reportResolver: nullReportResolver(),
       })
 
-      const result = await runner.runIssue(makeIssue(), {
+      const result = await runUntilDone(runner, makeIssue(), {
         content: "Fix the bug",
         agentKind: "claude",
         attempt: null,
@@ -1791,7 +1807,7 @@ describe("HerdrAgentRunner", () => {
         reportResolver: nullReportResolver(),
       })
 
-      const result = await runner.runIssue(makeIssue(), {
+      const result = await runUntilDone(runner, makeIssue(), {
         content: "Fix the bug",
         agentKind: "opencode",
         attempt: null,
