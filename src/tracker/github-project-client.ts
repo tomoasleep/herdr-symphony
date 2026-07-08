@@ -748,11 +748,10 @@ function normalizePriority(value: string | null): number | null {
   return null
 }
 
-async function runGhGraphqlOnce(
+export function buildGhArgs(
   query: string,
   variables: Record<string, string | number | string[]>,
-  writeLog?: (line: string) => void,
-): Promise<GraphqlPayload> {
+): string[] {
   const args = ["api", "graphql", "-f", `query=${query}`]
   for (const [key, value] of Object.entries(variables)) {
     if (typeof value === "string" && value.length === 0) {
@@ -760,12 +759,21 @@ async function runGhGraphqlOnce(
     }
     if (Array.isArray(value)) {
       for (const item of value) {
-        args.push("-F", `${key}=${item}`)
+        args.push("-F", `${key}[]=${item}`)
       }
     } else {
       args.push("-F", `${key}=${value}`)
     }
   }
+  return args
+}
+
+async function runGhGraphqlOnce(
+  query: string,
+  variables: Record<string, string | number | string[]>,
+  writeLog?: (line: string) => void,
+): Promise<GraphqlPayload> {
+  const args = buildGhArgs(query, variables)
 
   writeLog?.(
     `tracker gh command=gh args=${args.filter((arg) => !arg.startsWith("query=")).join(" ")}`,

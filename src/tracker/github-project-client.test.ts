@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test"
 import type { TrackerConfig } from "../domain/types"
 import {
+  buildGhArgs,
   buildStatusFilter,
   GitHubProjectClient,
   type GraphqlPayload,
@@ -949,4 +950,46 @@ test("fetchCandidateIssues は rateLimit をログ出力する", async () => {
   expect(writes.join("\n")).toContain(
     "tracker rateLimit cost=1 remaining=4999 resetAt=2026-07-08T00:00:00Z",
   )
+})
+
+test("buildGhArgs はスカラー変数を -F key=value で渡す", () => {
+  const args = buildGhArgs("query{viewer{login}}", { owner: "tomoasleep", number: 4 })
+  expect(args).toEqual([
+    "api",
+    "graphql",
+    "-f",
+    "query=query{viewer{login}}",
+    "-F",
+    "owner=tomoasleep",
+    "-F",
+    "number=4",
+  ])
+})
+
+test("buildGhArgs は配列変数を -F key[]=value で渡す", () => {
+  const args = buildGhArgs("query($ids:[ID!]!){nodes(ids:$ids){__typename}}", {
+    ids: ["PVTI_a", "PVTI_b"],
+  })
+  expect(args).toEqual([
+    "api",
+    "graphql",
+    "-f",
+    "query=query($ids:[ID!]!){nodes(ids:$ids){__typename}}",
+    "-F",
+    "ids[]=PVTI_a",
+    "-F",
+    "ids[]=PVTI_b",
+  ])
+})
+
+test("buildGhArgs は空文字列のスカラー変数をスキップする", () => {
+  const args = buildGhArgs("query{viewer{login}}", { owner: "tomoasleep", after: "", filter: "" })
+  expect(args).toEqual([
+    "api",
+    "graphql",
+    "-f",
+    "query=query{viewer{login}}",
+    "-F",
+    "owner=tomoasleep",
+  ])
 })
