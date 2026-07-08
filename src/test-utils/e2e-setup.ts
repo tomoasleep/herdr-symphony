@@ -64,6 +64,7 @@ export function makeOpencodeServiceConfig(trackerDir: string): ServiceConfig {
           permissionMode: null,
           messenger: "agmsg",
           pendingRemindIntervalMs: 900_000,
+          reminderGracePeriodMs: 180_000,
         },
         workspaceLabel: null,
         turnTimeoutMs: 60_000,
@@ -114,7 +115,13 @@ export function makeClaudeServiceConfig(
       herdrAgent: {
         agent: "claude",
         opencode: { model: null, agent: null },
-        claude: { model: null, permissionMode: null, messenger, pendingRemindIntervalMs: 900_000 },
+        claude: {
+          model: null,
+          permissionMode: null,
+          messenger,
+          pendingRemindIntervalMs: 900_000,
+          reminderGracePeriodMs: 180_000,
+        },
         workspaceLabel: null,
         turnTimeoutMs: 120_000,
         onBlocked: null,

@@ -40,6 +40,7 @@ function makeConfig(): ServiceConfig {
           permissionMode: null,
           messenger: "agmsg",
           pendingRemindIntervalMs: 900_000,
+          reminderGracePeriodMs: 180_000,
         },
         workspaceLabel: null,
         turnTimeoutMs: 3_600_000,

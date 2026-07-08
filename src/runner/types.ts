@@ -31,6 +31,7 @@ export type RunnerOptions = {
   }
   reportPath?: string
   pendingRemindIntervalMs?: number
+  reminderGracePeriodMs?: number
   onEvent?: (event: RunnerEvent) => void
 }
 

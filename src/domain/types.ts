@@ -75,6 +75,7 @@ export type HerdrAgentClaudeConfig = {
   permissionMode: string | null
   messenger: ClaudeMessenger
   pendingRemindIntervalMs: number
+  reminderGracePeriodMs: number
 }
 
 export type OnBlockedStrategy = "continue" | "fail"
@@ -113,6 +114,7 @@ export type ResolvedHerdrAgentRunnerConfig = {
     permissionMode: string | null
     messenger: ClaudeMessenger
     pendingRemindIntervalMs: number
+    reminderGracePeriodMs: number
   }
   workspaceLabel: string | null
   turnTimeoutMs: number | null

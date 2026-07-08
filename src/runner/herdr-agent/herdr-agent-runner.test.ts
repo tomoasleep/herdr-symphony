@@ -72,6 +72,7 @@ function makeConfig(overrides: Partial<ServiceConfig["work"]> = {}): ServiceConf
           permissionMode: null,
           messenger: "agmsg",
           pendingRemindIntervalMs: 900_000,
+          reminderGracePeriodMs: 180_000,
         },
         workspaceLabel: null,
         turnTimeoutMs: 3_600_000,
@@ -1551,6 +1552,7 @@ describe("HerdrAgentRunner", () => {
         attempt: null,
         workspacePath: "/repo/worktree",
         reportPath,
+        reminderGracePeriodMs: 0,
       })
 
       await new Promise((resolve) => setTimeout(resolve, 50))
@@ -1588,6 +1590,7 @@ describe("HerdrAgentRunner", () => {
         workspacePath: "/repo/worktree",
         reportPath,
         pendingRemindIntervalMs: 5_000,
+        reminderGracePeriodMs: 0,
         timeoutMs: 100_000,
       })
 
@@ -1818,6 +1821,89 @@ describe("HerdrAgentRunner", () => {
       expect(result.status).toBe("succeeded")
       expect(result.responseText).toBe("Done.")
       expect(client.startAgentArgs?.env?.HERDR_SYMPHONY_REPORT_PATH).toBeUndefined()
+    })
+
+    test("grace period 中の idle では sawActive 後でも report 未送信なら reminder を送らない", async () => {
+      const reportPath = makeReportPath()
+      let currentTime = 0
+      const client = makeMockHerdrClient({
+        getAgentResult: [
+          { name: "TEST-1", state: "idle", paneId: "w1:p1", workspaceId: "w1" },
+          { name: "TEST-1", state: "idle", paneId: "w1:p1", workspaceId: "w1" },
+          { name: "TEST-1", state: "working", paneId: "w1:p1", workspaceId: "w1" },
+          { name: "TEST-1", state: "idle", paneId: "w1:p1", workspaceId: "w1" },
+        ],
+      })
+      const runner = new HerdrAgentRunner(makeConfig(), {
+        herdrClient: client,
+        pollIntervalMs: 0,
+        reportResolver: nullReportResolver(),
+        now: () => currentTime,
+      })
+
+      const runPromise = runUntilDone(runner, makeIssue(), {
+        content: "Fix the bug",
+        agentKind: "claude",
+        attempt: null,
+        workspacePath: "/repo/worktree",
+        reportPath,
+        reminderGracePeriodMs: 5_000,
+        timeoutMs: 1_000_000,
+      })
+
+      await new Promise((resolve) => setTimeout(resolve, 30))
+      expect(client.sentInputs.length).toBe(0)
+
+      currentTime += 6_000
+      await new Promise((resolve) => setTimeout(resolve, 30))
+
+      writeReport(reportPath, "done", "完了")
+      const result = await runPromise
+
+      expect(result.status).toBe("succeeded")
+      expect(result.responseText).toBe("完了")
+    })
+
+    test("grace period 明け後の idle では sawAgent のみでも reminder を送る", async () => {
+      const reportPath = makeReportPath()
+      let currentTime = 0
+      const client = makeMockHerdrClient({
+        getAgentResult: Array.from({ length: 8 }, () => ({
+          name: "TEST-1",
+          state: "idle",
+          paneId: "w1:p1",
+          workspaceId: "w1",
+        })),
+      })
+      const runner = new HerdrAgentRunner(makeConfig(), {
+        herdrClient: client,
+        pollIntervalMs: 0,
+        reportResolver: nullReportResolver(),
+        now: () => currentTime,
+      })
+
+      const runPromise = runUntilDone(runner, makeIssue(), {
+        content: "Fix the bug",
+        agentKind: "claude",
+        attempt: null,
+        workspacePath: "/repo/worktree",
+        reportPath,
+        reminderGracePeriodMs: 5_000,
+        timeoutMs: 1_000_000,
+      })
+
+      await new Promise((resolve) => setTimeout(resolve, 30))
+      expect(client.sentInputs.length).toBe(0)
+
+      currentTime += 6_000
+      await new Promise((resolve) => setTimeout(resolve, 30))
+      expect(client.sentInputs.length).toBeGreaterThan(0)
+
+      writeReport(reportPath, "done", "完了")
+      const result = await runPromise
+
+      expect(result.status).toBe("succeeded")
+      expect(result.responseText).toBe("完了")
     })
   })
 })

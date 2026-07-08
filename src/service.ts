@@ -432,6 +432,7 @@ export class SymphonyService {
         workflowName: this.workflowName,
         agmsg,
         reportPath,
+        reminderGracePeriodMs: runtimeConfig.runner.claude.reminderGracePeriodMs,
         onEvent: (event) => {
           this.state.markEvent(issue.id)
           const message = "message" in event ? event.message : event.event

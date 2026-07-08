@@ -261,6 +261,31 @@ test("claude.pending_remind_interval_ms 未指定時は 900_000 (15分) にな�
   expect(config.work.herdrAgent.claude.pendingRemindIntervalMs).toBe(900_000)
 })
 
+test("claude.reminder_grace_period_ms を解決できる", () => {
+  const config = resolveConfig({
+    tracker: { kind: "file", file: { base_dir: "/issues" } },
+    work: {
+      runner: "herdr_agent",
+      herdr_agent: {
+        agent: "claude",
+        claude: {
+          reminder_grace_period_ms: 30000,
+        },
+      },
+    },
+  })
+
+  expect(config.work.herdrAgent.claude.reminderGracePeriodMs).toBe(30_000)
+})
+
+test("claude.reminder_grace_period_ms 未指定時は 180_000 になる", () => {
+  const config = resolveConfig({
+    tracker: { kind: "file", file: { base_dir: "/issues" } },
+  })
+
+  expect(config.work.herdrAgent.claude.reminderGracePeriodMs).toBe(180_000)
+})
+
 test("claude.messenger に不正値を指定するとエラー", () => {
   expect(() =>
     resolveConfig({

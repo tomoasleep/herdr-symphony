@@ -122,6 +122,7 @@ const HerdrAgentClaudeSchema = z.object({
   permission_mode: z.string().optional().nullable(),
   messenger: z.enum(["agmsg", "report_file"]).optional().nullable(),
   pending_remind_interval_ms: z.union([z.number(), z.string()]).optional(),
+  reminder_grace_period_ms: z.union([z.number(), z.string()]).optional(),
 })
 
 const HerdrAgentSchema = z.object({
@@ -240,6 +241,10 @@ export function resolveConfigFromSchema(input: unknown): ServiceConfig {
           pendingRemindIntervalMs: Math.max(
             toInt(herdrAgentRaw?.claude?.pending_remind_interval_ms, 900_000),
             1_000,
+          ),
+          reminderGracePeriodMs: Math.max(
+            toInt(herdrAgentRaw?.claude?.reminder_grace_period_ms, 180_000),
+            0,
           ),
         },
         workspaceLabel: normalizeOptionalString(herdrAgentRaw?.workspace_label),
