@@ -8,8 +8,13 @@ export type ReportEntry = {
   timestamp: string
 }
 
-export function writeReport(path: string, status: ReportStatus, summary: string): void {
-  writeFileSync(path, JSON.stringify({ status, summary, timestamp: new Date().toISOString() }))
+export function writeReport(
+  path: string,
+  status: ReportStatus,
+  summary: string,
+  timestamp: string = new Date().toISOString(),
+): void {
+  writeFileSync(path, JSON.stringify({ status, summary, timestamp }))
 }
 
 export function readReport(path: string): ReportEntry | null {

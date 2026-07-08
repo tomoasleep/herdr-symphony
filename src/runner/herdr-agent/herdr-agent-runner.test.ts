@@ -1576,7 +1576,7 @@ describe("HerdrAgentRunner", () => {
       })
 
       await new Promise((resolve) => setTimeout(resolve, 10))
-      writeReport(reportPath, "pending", "待機中")
+      writeReport(reportPath, "pending", "待機中", new Date(currentTime).toISOString())
       await new Promise((resolve) => setTimeout(resolve, 10))
 
       const initialSendCount = client.sentInputs.length
@@ -1620,7 +1620,7 @@ describe("HerdrAgentRunner", () => {
       })
 
       await new Promise((resolve) => setTimeout(resolve, 10))
-      writeReport(reportPath, "pending", "待機中")
+      writeReport(reportPath, "pending", "待機中", new Date(currentTime).toISOString())
       await new Promise((resolve) => setTimeout(resolve, 10))
 
       const initialSendCount = client.sentInputs.length
@@ -1630,6 +1630,60 @@ describe("HerdrAgentRunner", () => {
 
       const midSendCount = client.sentInputs.length
       expect(midSendCount).toBe(initialSendCount)
+
+      writeReport(reportPath, "done", "完了")
+      const result = await runPromise
+
+      expect(result.status).toBe("succeeded")
+    })
+
+    test("新着の pending report 受信後は指定期間内に reminder を再送しない（クールダウン）", async () => {
+      const reportPath = makeReportPath()
+      const client = makeMockHerdrClient({
+        getAgentResult: [
+          { name: "TEST-1", state: "working", paneId: "w1:p1", workspaceId: "w1" },
+          { name: "TEST-1", state: "idle", paneId: "w1:p1", workspaceId: "w1" },
+          { name: "TEST-1", state: "idle", paneId: "w1:p1", workspaceId: "w1" },
+          { name: "TEST-1", state: "idle", paneId: "w1:p1", workspaceId: "w1" },
+          { name: "TEST-1", state: "idle", paneId: "w1:p1", workspaceId: "w1" },
+          { name: "TEST-1", state: "idle", paneId: "w1:p1", workspaceId: "w1" },
+          { name: "TEST-1", state: "idle", paneId: "w1:p1", workspaceId: "w1" },
+        ],
+      })
+      let currentTime = 1_000_000
+      const runner = new HerdrAgentRunner(makeConfig(), {
+        herdrClient: client,
+        pollIntervalMs: 0,
+        reportResolver: nullReportResolver(),
+        now: () => currentTime,
+      })
+
+      const runPromise = runner.runIssue(makeIssue(), {
+        content: "Fix the bug",
+        agentKind: "claude",
+        attempt: null,
+        workspacePath: "/repo/worktree",
+        reportPath,
+        pendingRemindIntervalMs: 5_000,
+        timeoutMs: 100_000,
+      })
+
+      await new Promise((resolve) => setTimeout(resolve, 10))
+      writeReport(reportPath, "pending", "待機中1", new Date(currentTime).toISOString())
+      await new Promise((resolve) => setTimeout(resolve, 10))
+
+      currentTime += 6_000
+      await new Promise((resolve) => setTimeout(resolve, 10))
+
+      const initialSendCount = client.sentInputs.length
+
+      writeReport(reportPath, "pending", "待機中2", new Date(currentTime).toISOString())
+      await new Promise((resolve) => setTimeout(resolve, 10))
+
+      currentTime += 3_000
+      await new Promise((resolve) => setTimeout(resolve, 10))
+
+      expect(client.sentInputs.length).toBe(initialSendCount)
 
       writeReport(reportPath, "done", "完了")
       const result = await runPromise

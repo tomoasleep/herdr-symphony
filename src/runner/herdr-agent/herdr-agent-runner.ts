@@ -365,24 +365,12 @@ export class HerdrAgentRunner implements Runner {
     const deadline = this.now() + timeoutMs
     let sawActive = false
     let sawAgent = false
-    let lastPendingAtMs = 0
 
     const handleReportFileResult = (
       target: string,
       reportPath: string,
     ): "done" | "pending" | "none" => {
-      const handled = this.handleReportFileIdle(
-        target,
-        reportPath,
-        lastPendingAtMs,
-        pendingRemindIntervalMs,
-      )
-      if (handled === "pending") {
-        if (lastPendingAtMs === 0) lastPendingAtMs = this.now()
-      } else {
-        lastPendingAtMs = 0
-      }
-      return handled
+      return this.handleReportFileIdle(target, reportPath, pendingRemindIntervalMs)
     }
 
     while (this.now() < deadline) {
@@ -491,7 +479,6 @@ export class HerdrAgentRunner implements Runner {
   private handleReportFileIdle(
     target: string,
     reportPath: string,
-    lastPendingAtMs: number,
     pendingRemindIntervalMs: number,
   ): "done" | "pending" | "none" {
     const report = readReport(reportPath)
@@ -499,7 +486,8 @@ export class HerdrAgentRunner implements Runner {
       return "done"
     }
     if (report?.status === "pending") {
-      if (lastPendingAtMs > 0 && this.now() - lastPendingAtMs >= pendingRemindIntervalMs) {
+      const reportedAt = Date.parse(report.timestamp)
+      if (Number.isNaN(reportedAt) || this.now() - reportedAt >= pendingRemindIntervalMs) {
         void this.client.sendInput(target, CLAUDE_REPORT_REMINDER)
         void this.client.sendKeys(target, "Enter")
         this.logger("report-file pending reminder sent")
