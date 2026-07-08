@@ -74,6 +74,7 @@ export type HerdrAgentClaudeConfig = {
   model: string | null
   permissionMode: string | null
   messenger: ClaudeMessenger
+  pendingRemindIntervalMs: number
 }
 
 export type OnBlockedStrategy = "continue" | "fail"
@@ -107,7 +108,12 @@ export type ResolvedHerdrAgentRunnerConfig = {
   kind: "herdr_agent"
   agent: "opencode" | "claude"
   opencode: { model: string | null; agent: string | null }
-  claude: { model: string | null; permissionMode: string | null; messenger: ClaudeMessenger }
+  claude: {
+    model: string | null
+    permissionMode: string | null
+    messenger: ClaudeMessenger
+    pendingRemindIntervalMs: number
+  }
   workspaceLabel: string | null
   turnTimeoutMs: number | null
   onBlocked: OnBlockedStrategy | null

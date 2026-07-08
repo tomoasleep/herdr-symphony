@@ -30,6 +30,7 @@ export type RunnerOptions = {
     reminderAckDeadlineMs?: number
   }
   reportPath?: string
+  pendingRemindIntervalMs?: number
   onEvent?: (event: RunnerEvent) => void
 }
 

@@ -224,6 +224,8 @@ export class HerdrAgentRunner implements Runner {
         options.onBlocked ?? null,
         agmsgContext,
         effectiveReportPath,
+        options.pendingRemindIntervalMs ??
+          this.config.work.herdrAgent.claude.pendingRemindIntervalMs,
       )
 
       if (waitResult.state === null) {
@@ -358,12 +360,32 @@ export class HerdrAgentRunner implements Runner {
     onBlocked: "continue" | "fail" | null,
     agmsgContext: AgmsgWaitContext | null,
     reportPath: string | undefined,
+    pendingRemindIntervalMs: number,
   ): Promise<WaitResult> {
-    const deadline = Date.now() + timeoutMs
+    const deadline = this.now() + timeoutMs
     let sawActive = false
     let sawAgent = false
+    let lastPendingAtMs = 0
 
-    while (Date.now() < deadline) {
+    const handleReportFileResult = (
+      target: string,
+      reportPath: string,
+    ): "done" | "pending" | "none" => {
+      const handled = this.handleReportFileIdle(
+        target,
+        reportPath,
+        lastPendingAtMs,
+        pendingRemindIntervalMs,
+      )
+      if (handled === "pending") {
+        if (lastPendingAtMs === 0) lastPendingAtMs = this.now()
+      } else {
+        lastPendingAtMs = 0
+      }
+      return handled
+    }
+
+    while (this.now() < deadline) {
       await new Promise((resolve) => setTimeout(resolve, this.pollIntervalMs))
       const info = await this.client.getAgent(target)
 
@@ -376,8 +398,8 @@ export class HerdrAgentRunner implements Runner {
             continue
           }
           if (reportPath) {
-            const handled = this.handleReportFileIdle(target, reportPath)
-            if (handled === "done") return { state: "done", report: null }
+            if (handleReportFileResult(target, reportPath) === "done")
+              return { state: "done", report: null }
             sawActive = false
             continue
           }
@@ -385,8 +407,8 @@ export class HerdrAgentRunner implements Runner {
         }
         if (sawAgent) {
           if (reportPath) {
-            const handled = this.handleReportFileIdle(target, reportPath)
-            if (handled === "done") return { state: "done", report: null }
+            if (handleReportFileResult(target, reportPath) === "done")
+              return { state: "done", report: null }
             continue
           }
           return { state: "done", report: null }
@@ -417,16 +439,16 @@ export class HerdrAgentRunner implements Runner {
             continue
           }
           if (reportPath) {
-            const handled = this.handleReportFileIdle(target, reportPath)
-            if (handled === "done") return { state: "done", report: null }
+            if (handleReportFileResult(target, reportPath) === "done")
+              return { state: "done", report: null }
             sawActive = false
             continue
           }
           return { state: "idle", report: null }
         }
         if (reportPath && sawAgent) {
-          const handled = this.handleReportFileIdle(target, reportPath)
-          if (handled === "done") return { state: "done", report: null }
+          if (handleReportFileResult(target, reportPath) === "done")
+            return { state: "done", report: null }
         }
       }
     }
@@ -461,12 +483,22 @@ export class HerdrAgentRunner implements Runner {
     return { state: "none" }
   }
 
-  private handleReportFileIdle(target: string, reportPath: string): "done" | "pending" | "none" {
+  private handleReportFileIdle(
+    target: string,
+    reportPath: string,
+    lastPendingAtMs: number,
+    pendingRemindIntervalMs: number,
+  ): "done" | "pending" | "none" {
     const report = readReport(reportPath)
     if (report?.status === "done" || report?.status === "failed") {
       return "done"
     }
     if (report?.status === "pending") {
+      if (lastPendingAtMs > 0 && this.now() - lastPendingAtMs >= pendingRemindIntervalMs) {
+        void this.client.sendInput(target, CLAUDE_REPORT_REMINDER)
+        void this.client.sendKeys(target, "Enter")
+        this.logger("report-file pending reminder sent")
+      }
       return "pending"
     }
     void this.client.sendInput(target, CLAUDE_REPORT_REMINDER)

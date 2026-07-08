@@ -134,6 +134,7 @@ work:
 | `claude.model` | string (Liquid) | null | `claude --model` |
 | `claude.permission_mode` | string (Liquid) | null | `claude --permission-mode` (`bypassPermissions` の場合は `--dangerously-skip-permissions` も付与) |
 | `claude.messenger` | `"agmsg"` \| `"report_file"` | `"agmsg"` | Claude との完了判定通信方式 |
+| `claude.pending_remind_interval_ms` | number | `900_000` (15分) | `report_file` モードで `pending` のまま再リマインドするまでの間隔 |
 | `workspace_label` | string (Liquid) | issue.identifier | Herdr workspace の label |
 | `turn_timeout_ms` | number | null (無制限) | Agent 完了待ちタイムアウト |
 
@@ -155,7 +156,7 @@ agmsg が必要です（`~/.agents/skills/agmsg/scripts/send.sh` が存在する
 
 #### `report_file`
 
-ファイルベースの report 機構。プロンプト末尾に `herdr-symphony report --status ... --summary ...` の実行指示を追加し、`HERDR_SYMPHONY_REPORT_PATH` 環境変数で report file パスを Claude に注入します。Claude が `.herdr-symphony-report.json` に `done` / `pending` / `failed` を書き、runner が report file をポーリングして完了判定します。report 未送信のまま idle になった場合は、`herdr agent send` と `pane send-keys Enter` で Claude pane に直接リマインドを送ります。
+ファイルベースの report 機構。プロンプト末尾に `herdr-symphony report --status ... --summary ...` の実行指示を追加し、`HERDR_SYMPHONY_REPORT_PATH` 環境変数で report file パスを Claude に注入します。Claude が `.herdr-symphony-report.json` に `done` / `pending` / `failed` を書き、runner が report file をポーリングして完了判定します。report 未送信のまま idle になった場合は、`herdr agent send` と `pane send-keys Enter` で Claude pane に直接リマインドを送ります。`pending` のまま `claude.pending_remind_interval_ms` (デフォルト15分) 経過した場合も同様にリマインドを再送します。
 
 ### work.workspace
 

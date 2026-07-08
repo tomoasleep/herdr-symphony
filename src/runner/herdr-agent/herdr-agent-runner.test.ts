@@ -50,7 +50,12 @@ function makeConfig(overrides: Partial<ServiceConfig["work"]> = {}): ServiceConf
       herdrAgent: {
         agent: "opencode",
         opencode: { model: "openai/gpt-5.4", agent: "build" },
-        claude: { model: null, permissionMode: null, messenger: "agmsg" },
+        claude: {
+          model: null,
+          permissionMode: null,
+          messenger: "agmsg",
+          pendingRemindIntervalMs: 900_000,
+        },
         workspaceLabel: null,
         turnTimeoutMs: 3_600_000,
         onBlocked: null,
@@ -1530,6 +1535,97 @@ describe("HerdrAgentRunner", () => {
       expect(result.status).toBe("succeeded")
       expect(client.sentInputs.length).toBeGreaterThanOrEqual(1)
       expect(client.sentKeys.length).toBeGreaterThanOrEqual(1)
+    })
+
+    test("pending report が指定期間経過で remind を再送する", async () => {
+      const reportPath = makeReportPath()
+      const client = makeMockHerdrClient({
+        getAgentResult: [
+          { name: "TEST-1", state: "working", paneId: "w1:p1", workspaceId: "w1" },
+          { name: "TEST-1", state: "idle", paneId: "w1:p1", workspaceId: "w1" },
+          { name: "TEST-1", state: "idle", paneId: "w1:p1", workspaceId: "w1" },
+          { name: "TEST-1", state: "idle", paneId: "w1:p1", workspaceId: "w1" },
+          { name: "TEST-1", state: "idle", paneId: "w1:p1", workspaceId: "w1" },
+        ],
+      })
+      let currentTime = 1_000_000
+      const runner = new HerdrAgentRunner(makeConfig(), {
+        herdrClient: client,
+        pollIntervalMs: 0,
+        reportResolver: nullReportResolver(),
+        now: () => currentTime,
+      })
+
+      const runPromise = runner.runIssue(makeIssue(), {
+        content: "Fix the bug",
+        agentKind: "claude",
+        attempt: null,
+        workspacePath: "/repo/worktree",
+        reportPath,
+        pendingRemindIntervalMs: 5_000,
+        timeoutMs: 100_000,
+      })
+
+      await new Promise((resolve) => setTimeout(resolve, 10))
+      writeReport(reportPath, "pending", "待機中")
+      await new Promise((resolve) => setTimeout(resolve, 10))
+
+      const initialSendCount = client.sentInputs.length
+
+      currentTime += 6_000
+      await new Promise((resolve) => setTimeout(resolve, 10))
+
+      writeReport(reportPath, "done", "完了")
+      const result = await runPromise
+
+      expect(result.status).toBe("succeeded")
+      expect(client.sentInputs.length).toBeGreaterThan(initialSendCount)
+    })
+
+    test("pending report が指定期間内は remind を再送しない", async () => {
+      const reportPath = makeReportPath()
+      const client = makeMockHerdrClient({
+        getAgentResult: [
+          { name: "TEST-1", state: "working", paneId: "w1:p1", workspaceId: "w1" },
+          { name: "TEST-1", state: "idle", paneId: "w1:p1", workspaceId: "w1" },
+          { name: "TEST-1", state: "idle", paneId: "w1:p1", workspaceId: "w1" },
+          { name: "TEST-1", state: "idle", paneId: "w1:p1", workspaceId: "w1" },
+        ],
+      })
+      let currentTime = 1_000_000
+      const runner = new HerdrAgentRunner(makeConfig(), {
+        herdrClient: client,
+        pollIntervalMs: 0,
+        reportResolver: nullReportResolver(),
+        now: () => currentTime,
+      })
+
+      const runPromise = runner.runIssue(makeIssue(), {
+        content: "Fix the bug",
+        agentKind: "claude",
+        attempt: null,
+        workspacePath: "/repo/worktree",
+        reportPath,
+        pendingRemindIntervalMs: 5_000,
+        timeoutMs: 100_000,
+      })
+
+      await new Promise((resolve) => setTimeout(resolve, 10))
+      writeReport(reportPath, "pending", "待機中")
+      await new Promise((resolve) => setTimeout(resolve, 10))
+
+      const initialSendCount = client.sentInputs.length
+
+      currentTime += 3_000
+      await new Promise((resolve) => setTimeout(resolve, 10))
+
+      const midSendCount = client.sentInputs.length
+      expect(midSendCount).toBe(initialSendCount)
+
+      writeReport(reportPath, "done", "完了")
+      const result = await runPromise
+
+      expect(result.status).toBe("succeeded")
     })
 
     test("reportPath と agmsg 両方未指定時は report resolver にフォールバック", async () => {

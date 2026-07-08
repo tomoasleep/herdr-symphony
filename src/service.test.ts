@@ -33,7 +33,12 @@ function makeConfig(overrides: Partial<ServiceConfig["work"]> = {}): ServiceConf
       herdrAgent: {
         agent: "opencode",
         opencode: { model: null, agent: null },
-        claude: { model: null, permissionMode: null, messenger: "agmsg" },
+        claude: {
+          model: null,
+          permissionMode: null,
+          messenger: "agmsg",
+          pendingRemindIntervalMs: 900_000,
+        },
         workspaceLabel: null,
         turnTimeoutMs: 3_600_000,
         onBlocked: null,
@@ -351,6 +356,7 @@ describe("SymphonyService", () => {
           model: null,
           permissionMode: null,
           messenger: "report_file",
+          pendingRemindIntervalMs: 900_000,
         },
       },
     })

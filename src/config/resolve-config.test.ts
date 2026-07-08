@@ -236,6 +236,31 @@ test("claude.messenger 未指定時は agmsg になる", () => {
   expect(config.work.herdrAgent.claude.messenger).toBe("agmsg")
 })
 
+test("claude.pending_remind_interval_ms を解決できる", () => {
+  const config = resolveConfig({
+    tracker: { kind: "file", file: { base_dir: "/issues" } },
+    work: {
+      runner: "herdr_agent",
+      herdr_agent: {
+        agent: "claude",
+        claude: {
+          pending_remind_interval_ms: 60000,
+        },
+      },
+    },
+  })
+
+  expect(config.work.herdrAgent.claude.pendingRemindIntervalMs).toBe(60_000)
+})
+
+test("claude.pending_remind_interval_ms 未指定時は 900_000 (15分) になる", () => {
+  const config = resolveConfig({
+    tracker: { kind: "file", file: { base_dir: "/issues" } },
+  })
+
+  expect(config.work.herdrAgent.claude.pendingRemindIntervalMs).toBe(900_000)
+})
+
 test("claude.messenger に不正値を指定するとエラー", () => {
   expect(() =>
     resolveConfig({

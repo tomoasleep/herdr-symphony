@@ -156,7 +156,7 @@ test("e2e: claude 対話モード — agent の画面全体を確認できる", 
                                ││  -e2e-test-TS-TS","toAgent":"herdr-symphony","issueId":"test-issue-claude","ackOf":"reminder"}' を実行してください。    ▐│
                                ││  完了時は、ユーザーへの完了報告と同等の内容を summary に入れて report してください。                                              ▐│
                                ││  done: /opt/agmsg/scripts/send.sh herdr-symphony-test-claude-ID-e2e-test-TS-TS                                ▐│
-       new                 menu││  test-claude-ID-e2e-test-TS-TS herdr-symphony '{"kind":"herdr-symphony.report","runId":"test-claude-ID ▐│
+       new               ● menu││  test-claude-ID-e2e-test-TS-TS herdr-symphony '{"kind":"herdr-symphony.report","runId":"test-claude-ID ▐│
       ─────────────────────────││  ID-e2e-test-TS-TS","toAgent":"herdr-symphony","issueId":"test-issue-claude","status":"done","summary":"対応内容:      ▐│
        agents           grouped││  ...。検証: ...。補足: ...。"}'                                                                                                   ▐│
                                ││  pending: /opt/agmsg/scripts/send.sh herdr-symphony-test-claude-ID-e2e-test-TS-TS                             ▐│
@@ -263,7 +263,7 @@ test("e2e: claude report 未送信の idle — agent の画面全体を確認で
                                ││  -e2e-test-TS-TS","toAgent":"herdr-symphony","issueId":"test-issue-claude","ackOf":"reminder"}' を実行してください。    ▐│
                                ││  完了時は、ユーザーへの完了報告と同等の内容を summary に入れて report してください。                                              ▐│
                                ││  done: /opt/agmsg/scripts/send.sh herdr-symphony-test-claude-ID-e2e-test-TS-TS                                ▐│
-       new                 menu││  test-claude-ID-e2e-test-TS-TS herdr-symphony '{"kind":"herdr-symphony.report","runId":"test-claude-ID ▐│
+       new               ● menu││  test-claude-ID-e2e-test-TS-TS herdr-symphony '{"kind":"herdr-symphony.report","runId":"test-claude-ID ▐│
       ─────────────────────────││  ID-e2e-test-TS-TS","toAgent":"herdr-symphony","issueId":"test-issue-claude","status":"done","summary":"対応内容:      ▐│
        agents           grouped││  ...。検証: ...。補足: ...。"}'                                                                                                   ▐│
                                ││  pending: /opt/agmsg/scripts/send.sh herdr-symphony-test-claude-ID-e2e-test-TS-TS                             ▐│
@@ -356,9 +356,9 @@ test("e2e: claude report_file モード — herdr-symphony report で完了報�
                                │┌▌ test-claude-ID-e2e-test-TS-TS ────────────────────────────────────────────────────────────────────────────────┐
        · workspace             ││╭─── Claude Code VERSION ────────────────────────────────────────────────────────────────────────────────────────────────────────╮ │
          main                  │││                                                    │ What's new                                                                 │ │
-                               │││                    Welcome back!                   │ Added a "Dynamic workflow size" setting in \`/config\` for controlling how … │ │
-       ○ test-claude-ID│││                                                    │ Added \`workflow.run_id\` and \`workflow.name\` OpenTelemetry attributes to t… │ │
-         master                │││                       ▐▛███▜▌                      │ Fixed a crash in the inline Ctrl+R history search when accepting or cance… │ │
+                               │││                    Welcome back!                   │ Fixed hook events not streaming during SessionStart hooks in headless ses… │ │
+       ○ test-claude-ID│││                                                    │ Added a warning when your login is about to expire, so you can re-authent… │ │
+         master                │││                       ▐▛███▜▌                      │ Added a grey ⏸ badge to the footer when in manual permission mode, making… │ │
                                │││                      ▝▜█████▛▘                     │ /release-notes for more                                                    │ │
                                │││                        ▘▘ ▝▝                       │                                                                            │ │
                                │││                                                    │                                                                            │ │
@@ -371,7 +371,7 @@ test("e2e: claude report_file モード — herdr-symphony report で完了報�
                                ││  ## 完了報告                                                                                                                       │
                                ││                                                                                                                                    │
                                ││  タスクが完了したら、以下のコマンドを実行してください。                                                                            │
-       new                 menu││                                                                                                                                    │
+       new               ● menu││                                                                                                                                    │
       ─────────────────────────││      herdr-symphony report --status done --summary "やった作業の要約"                                                              │
        agents           grouped││                                                                                                                                    │
                                ││  background task / subagent / task の完了待ちなら、以下のコマンドを実行してください。                                              │
