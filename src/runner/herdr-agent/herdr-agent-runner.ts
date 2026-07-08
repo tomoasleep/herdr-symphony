@@ -41,7 +41,7 @@ const DEFAULT_ACK_RESEND_INTERVAL_MS = 5_000
 const DEFAULT_REMINDER_ACK_DEADLINE_MS = 30_000
 
 const CLAUDE_REPORT_REMINDER =
-  'タスクは完了しましたか？完了した場合は `herdr-symphony report --status done --summary "やった作業の要約"` を実行してください。まだ background task / subagent / task の完了待ちなら `herdr-symphony report --status pending --summary "待機中の内容"` を実行してください。失敗した場合は `herdr-symphony report --status failed --summary "失敗理由"` を実行してください。'
+  'ユーザーに依頼された作業は完了しましたか？完了した場合は `herdr-symphony report --status done --summary "やった作業の要約"` を実行してください。まだ background task / subagent / task の完了待ちなら `herdr-symphony report --status pending --summary "待機中の内容"` を実行してください。失敗した場合は `herdr-symphony report --status failed --summary "失敗理由"` を実行してください。'
 
 type AgmsgWaitContext = {
   client: AgmsgClient
@@ -102,7 +102,7 @@ function formatReminderBody(issueId: string, runId: string, toAgent: string): st
     runId,
     toAgent,
     message:
-      "タスクは完了しましたか？完了した場合は done、待機中なら pending、失敗なら failed を agmsg で報告してください。",
+      "ユーザーに依頼された作業は完了しましたか？完了した場合は done、待機中なら pending、失敗なら failed を agmsg で報告してください。",
   })
 }
 

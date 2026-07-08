@@ -370,7 +370,7 @@ test("e2e: claude report_file モード — herdr-symphony report で完了報�
                                ││❯ Test prompt for test-claude-ID                                                                                          │
                                ││  ## 完了報告                                                                                                                       │
                                ││                                                                                                                                    │
-                               ││  タスクが完了したら、以下のコマンドを実行してください。                                                                            │
+                               ││  ユーザーに依頼された作業が完了したら、以下のコマンドを実行してください。                                                          │
        new               ● menu││                                                                                                                                    │
       ─────────────────────────││      herdr-symphony report --status done --summary "やった作業の要約"                                                              │
        agents           grouped││                                                                                                                                    │
