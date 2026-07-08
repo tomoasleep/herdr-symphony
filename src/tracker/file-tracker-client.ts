@@ -24,7 +24,7 @@ export class FileTrackerClient implements IssueTrackerClient {
     this.baseDir = config.file?.baseDir ?? ""
   }
 
-  async fetchCandidateIssues(): Promise<Issue[]> {
+  async fetchCandidateIssues(_activeStates?: string[]): Promise<Issue[]> {
     this.debugLog("tracker fetchCandidateIssues start")
     const issues: Issue[] = []
     const stateDirs = await this.scanStateDirectories()

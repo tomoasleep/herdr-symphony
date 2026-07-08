@@ -19,7 +19,7 @@ const CLAUDE_REPORT_INSTRUCTION = [
   "",
   "## 完了報告",
   "",
-  "タスクが完了したら、以下のコマンドを実行してください。",
+  "ユーザーに依頼された作業が完了したら、以下のコマンドを実行してください。",
   "",
   '    herdr-symphony report --status done --summary "やった作業の要約"',
   "",
@@ -177,7 +177,7 @@ export class SymphonyService {
     }
 
     this.debugLog("tracker fetchCandidateIssues start")
-    const candidates = await this.tracker.fetchCandidateIssues()
+    const candidates = await this.tracker.fetchCandidateIssues(this.config.work.activeStates)
     if (this.stopped) {
       return
     }

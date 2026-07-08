@@ -5,8 +5,9 @@ import { normalizeState } from "../utils/normalize"
 import { withRetry } from "../utils/retry"
 import type { IssueTrackerClient } from "./types"
 
-type GraphqlPayload = {
+export type GraphqlPayload = {
   data?: {
+    rateLimit?: { cost?: number; remaining?: number; resetAt?: string } | null
     repositoryOwner?: { projectV2?: unknown } | null
     viewer?: { login?: string | null } | null
     nodes?: Array<unknown | null> | null
@@ -120,14 +121,15 @@ export type ProjectField = {
   options?: Array<{ id: string; name: string }>
 }
 
-const PROJECT_ITEMS_QUERY = `query($owner:String!,$number:Int!,$after:String){
+const PROJECT_ITEMS_QUERY = `query($owner:String!,$number:Int!,$after:String,$filter:String!){
+  rateLimit { cost remaining resetAt }
   repositoryOwner(login:$owner){
     __typename
     login
     ... on User {
       projectV2(number:$number){
         url
-        items(first:20,after:$after){
+        items(first:20,after:$after,query:$filter){
           pageInfo{hasNextPage endCursor}
           nodes{
             id
@@ -176,7 +178,7 @@ const PROJECT_ITEMS_QUERY = `query($owner:String!,$number:Int!,$after:String){
     ... on Organization {
       projectV2(number:$number){
         url
-        items(first:20,after:$after){
+        items(first:20,after:$after,query:$filter){
           pageInfo{hasNextPage endCursor}
           nodes{
             id
@@ -303,6 +305,7 @@ const ISSUE_NODE_QUERY = `query($id:ID!){
 }`
 
 const ITEMS_BY_IDS_QUERY = `query($ids:[ID!]!){
+  rateLimit { cost remaining resetAt }
   nodes(ids:$ids){
     __typename
     ... on ProjectV2Item{
@@ -393,9 +396,31 @@ export class GitHubProjectClient implements IssueTrackerClient {
     return fields
   }
 
-  async fetchCandidateIssues(): Promise<Issue[]> {
+  async fetchCandidateIssues(activeStates?: string[]): Promise<Issue[]> {
     this.debugLog("tracker fetchCandidateIssues start")
+    if (activeStates && activeStates.length > 0) {
+      return this.fetchItemsByActiveStates(activeStates)
+    }
     return this.fetchAllItems()
+  }
+
+  private async fetchItemsByActiveStates(activeStates: string[]): Promise<Issue[]> {
+    const issues: Issue[] = []
+    const seen = new Set<string>()
+    for (const state of activeStates) {
+      const filter = buildStatusFilter(state)
+      this.debugLog(`tracker fetchItemsByActiveStates state=${state} filter=${filter}`)
+      const pageIssues = await this.fetchItemsWithFilter(filter)
+      for (const issue of pageIssues) {
+        if (seen.has(issue.id)) {
+          continue
+        }
+        seen.add(issue.id)
+        issues.push(issue)
+      }
+    }
+    this.debugLog(`tracker fetchItemsByActiveStates done count=${issues.length}`)
+    return issues
   }
 
   async fetchIssuesByStates(states: string[]): Promise<Issue[]> {
@@ -414,6 +439,7 @@ export class GitHubProjectClient implements IssueTrackerClient {
 
     this.debugLog(`tracker fetchIssueStatesByIds start ids=${ids.length}`)
     const payload = await this.runQuery(ITEMS_BY_IDS_QUERY, { ids })
+    this.logRateLimit(payload)
     const rawNodes =
       (payload as { data?: { nodes?: Array<ProjectItemNode | null> | null } | null }).data?.nodes ??
       []
@@ -516,17 +542,26 @@ export class GitHubProjectClient implements IssueTrackerClient {
   }
 
   private async fetchAllItems(): Promise<Issue[]> {
+    return this.fetchItemsWithFilter("")
+  }
+
+  private async fetchItemsWithFilter(filter: string): Promise<Issue[]> {
     const issues: Issue[] = []
     let after = ""
     const owner = await this.resolveOwner()
 
     while (true) {
-      this.debugLog(`tracker query operation=project_items after=${after || "start"}`)
+      this.debugLog(
+        `tracker query operation=project_items filter=${filter || "none"} after=${after || "start"}`,
+      )
       const payload = await this.runQuery(PROJECT_ITEMS_QUERY, {
         owner,
         number: this.config.github_project?.number ?? 0,
         after,
+        filter,
       })
+
+      this.logRateLimit(payload)
 
       const project = (payload as ProjectItemsPayload).data?.repositoryOwner?.projectV2 ?? null
       if (!project) {
@@ -549,8 +584,19 @@ export class GitHubProjectClient implements IssueTrackerClient {
       after = cursor
     }
 
-    this.debugLog(`tracker fetchAllItems done count=${issues.length}`)
+    this.debugLog(
+      `tracker fetchItemsWithFilter done count=${issues.length} filter=${filter || "none"}`,
+    )
     return issues
+  }
+
+  private logRateLimit(payload: GraphqlPayload): void {
+    const rl = payload.data?.rateLimit
+    if (rl && rl.cost != null && rl.remaining != null && rl.resetAt != null) {
+      this.debugLog(
+        `tracker rateLimit cost=${rl.cost} remaining=${rl.remaining} resetAt=${rl.resetAt}`,
+      )
+    }
   }
 
   private async resolveOwner(): Promise<string> {
@@ -585,6 +631,17 @@ export class GitHubProjectClient implements IssueTrackerClient {
   shouldRun(issue: Issue, activeStates: string[]): boolean {
     return isActiveState(issue.state, activeStates)
   }
+}
+
+export function quoteFilterValue(value: string): string {
+  if (/^[A-Za-z0-9_.-]+$/.test(value)) {
+    return value
+  }
+  return `"${value.replaceAll("\\", "\\\\").replaceAll('"', '\\"')}"`
+}
+
+export function buildStatusFilter(state: string): string {
+  return `Status:${quoteFilterValue(state)}`
 }
 
 export function normalizeProjectItem(node: ProjectItemNode, projectUrl: string): Issue {

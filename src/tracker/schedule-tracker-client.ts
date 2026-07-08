@@ -20,7 +20,7 @@ export class ScheduleTrackerClient implements IssueTrackerClient {
     this.writeLog = writeLog
   }
 
-  async fetchCandidateIssues(): Promise<Issue[]> {
+  async fetchCandidateIssues(_activeStates?: string[]): Promise<Issue[]> {
     this.debugLog("tracker fetchCandidateIssues start")
 
     const now = new Date()

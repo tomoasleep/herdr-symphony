@@ -1,7 +1,7 @@
 import type { Issue } from "../domain/types"
 
 export interface IssueTrackerClient {
-  fetchCandidateIssues(): Promise<Issue[]>
+  fetchCandidateIssues(activeStates?: string[]): Promise<Issue[]>
   fetchIssuesByStates(states: string[]): Promise<Issue[]>
   fetchIssueStatesByIds(ids: string[]): Promise<Issue[]>
   moveIssueToState(issueId: string, state: string): Promise<void>

@@ -1,5 +1,57 @@
 import { expect, test } from "bun:test"
-import { GitHubProjectClient, normalizeProjectItem } from "./github-project-client"
+import type { TrackerConfig } from "../domain/types"
+import {
+  buildStatusFilter,
+  GitHubProjectClient,
+  type GraphqlPayload,
+  normalizeProjectItem,
+} from "./github-project-client"
+
+function makeConfig(owner = "tomoasleep", number = 4): TrackerConfig {
+  return { kind: "github_project", github_project: { owner, number }, file: null, schedule: null }
+}
+
+type GraphqlRunnerCall = {
+  query: string
+  variables: Record<string, string | number | string[]>
+}
+
+function recordRunner(handler: (call: GraphqlRunnerCall) => GraphqlPayload): {
+  calls: GraphqlRunnerCall[]
+  run: (
+    query: string,
+    variables: Record<string, string | number | string[]>,
+  ) => Promise<GraphqlPayload>
+} {
+  const calls: GraphqlRunnerCall[] = []
+  const run = async (
+    query: string,
+    variables: Record<string, string | number | string[]>,
+  ): Promise<GraphqlPayload> => {
+    calls.push({ query, variables })
+    return handler({ query, variables })
+  }
+  return { calls, run }
+}
+
+function itemsResponse(
+  nodes: unknown[],
+  opts: { hasNextPage?: boolean; endCursor?: string | null } = {},
+) {
+  return {
+    data: {
+      repositoryOwner: {
+        projectV2: {
+          url: "https://github.com/users/tomoasleep/projects/4",
+          items: {
+            pageInfo: { hasNextPage: opts.hasNextPage ?? false, endCursor: opts.endCursor ?? null },
+            nodes,
+          },
+        },
+      },
+    },
+  }
+}
 
 test("DraftIssue は project item URL を生成する", () => {
   const normalized = normalizeProjectItem(
@@ -218,7 +270,9 @@ test("fetchCandidateIssues は noTui ログに tracker 操作を出す", async (
 
   expect(writes.join("\n")).toContain("tracker resolveOwner @me")
   expect(writes.join("\n")).toContain("tracker query operation=viewer")
-  expect(writes.join("\n")).toContain("tracker query operation=project_items after=start")
+  expect(writes.join("\n")).toContain(
+    "tracker query operation=project_items filter=none after=start",
+  )
   expect(writes.join("\n")).toContain("tracker items page count=0 hasNextPage=false")
 })
 
@@ -773,4 +827,126 @@ test("fetchIssueDescription は issueNodeId がない場合は元の description
   })
 
   expect(description).toBe("Fallback description")
+})
+
+test("buildStatusFilter は英数字のみの値をそのまま使う", () => {
+  expect(buildStatusFilter("Ready")).toBe("Status:Ready")
+})
+
+test("buildStatusFilter はスペース含む値をクォートする", () => {
+  expect(buildStatusFilter("In progress")).toBe('Status:"In progress"')
+})
+
+test("fetchCandidateIssues は active_states ごとに Status filter クエリを発行する", async () => {
+  const { calls, run } = recordRunner(({ query, variables }) => {
+    if (query.includes("rateLimit")) {
+      const filter = String(variables.filter ?? "")
+      if (filter === "Status:Ready") {
+        return itemsResponse([
+          {
+            id: "PVTI_ready",
+            databaseId: 1,
+            content: { __typename: "DraftIssue", title: "R", body: null },
+            fieldValues: { nodes: [{ field: { name: "Status" }, name: "Ready" }] },
+          },
+        ])
+      }
+      if (filter === 'Status:"In progress"') {
+        return itemsResponse([
+          {
+            id: "PVTI_progress",
+            databaseId: 2,
+            content: { __typename: "DraftIssue", title: "P", body: null },
+            fieldValues: { nodes: [{ field: { name: "Status" }, name: "In progress" }] },
+          },
+        ])
+      }
+      throw new Error(`unexpected_filter:${filter}`)
+    }
+    throw new Error(`unexpected_query:${query.slice(0, 40)}`)
+  })
+
+  const client = new GitHubProjectClient(makeConfig(), run)
+  const issues = await client.fetchCandidateIssues(["Ready", "In progress"])
+
+  const filterCalls = calls.filter((c) => "filter" in c.variables)
+  expect(filterCalls).toHaveLength(2)
+  expect(filterCalls[0]?.variables).toMatchObject({ filter: "Status:Ready" })
+  expect(filterCalls[1]?.variables).toMatchObject({ filter: 'Status:"In progress"' })
+  expect(issues.map((i) => i.id)).toEqual(["PVTI_ready", "PVTI_progress"])
+})
+
+test("fetchCandidateIssues は同じ ID が複数 state に現れたら重複排除する", async () => {
+  const { run } = recordRunner(({ variables }) => {
+    return itemsResponse([
+      {
+        id: "PVTI_dup",
+        databaseId: 9,
+        content: { __typename: "DraftIssue", title: "D", body: null },
+        fieldValues: { nodes: [{ field: { name: "Status" }, name: String(variables.filter) }] },
+      },
+    ])
+  })
+
+  const client = new GitHubProjectClient(makeConfig(), run)
+  const issues = await client.fetchCandidateIssues(["Ready", "In progress"])
+
+  expect(issues).toHaveLength(1)
+})
+
+test("fetchCandidateIssues は activeStates 未指定で全件取得にフォールバックする", async () => {
+  const { calls, run } = recordRunner(() => {
+    return itemsResponse([
+      {
+        id: "PVTI_a",
+        databaseId: 1,
+        content: { __typename: "DraftIssue", title: "A", body: null },
+        fieldValues: { nodes: [{ field: { name: "Status" }, name: "Backlog" }] },
+      },
+    ])
+  })
+
+  const client = new GitHubProjectClient(makeConfig(), run)
+  const issues = await client.fetchCandidateIssues()
+
+  expect(issues.map((i) => i.id)).toEqual(["PVTI_a"])
+  const itemsCall = calls.find((c) => c.query.includes("items("))
+  expect(itemsCall?.variables).toMatchObject({ filter: "" })
+})
+
+test("fetchCandidateIssues は items に query filter を含むクエリを発行する", async () => {
+  const { calls, run } = recordRunner(() => itemsResponse([]))
+
+  const client = new GitHubProjectClient(makeConfig(), run)
+  await client.fetchCandidateIssues(["Ready"])
+
+  const itemsCall = calls.find((c) => c.query.includes("items("))
+  expect(itemsCall?.query).toContain("query:$filter")
+})
+
+test("fetchCandidateIssues は rateLimit をログ出力する", async () => {
+  const writes: string[] = []
+  const { run } = recordRunner(({ query }) => {
+    if (!query.includes("rateLimit")) {
+      throw new Error(`unexpected_query:${query.slice(0, 40)}`)
+    }
+    return {
+      data: {
+        rateLimit: { cost: 1, remaining: 4999, resetAt: "2026-07-08T00:00:00Z" },
+        repositoryOwner: {
+          projectV2: {
+            url: "https://github.com/users/tomoasleep/projects/4",
+            items: { pageInfo: { hasNextPage: false, endCursor: null }, nodes: [] },
+          },
+        },
+      },
+    }
+  })
+
+  const client = new GitHubProjectClient(makeConfig(), run, (line) => writes.push(line))
+  await client.fetchCandidateIssues(["Ready"])
+
+  expect(writes.join("\n")).toContain(
+    "tracker rateLimit cost=1 remaining=4999 resetAt=2026-07-08T00:00:00Z",
+  )
 })
