@@ -83,6 +83,29 @@ export async function ensureWorkspace(
       ? await resolveRepositoryRootForGwq(issue.repository, runCommand, runGit)
       : await resolveRepositoryRoot(issue.repository, runGit)
 
+  if (config.provider === "none") {
+    const warningKey = "none-concurrency"
+    if (!emittedWorkspaceWarnings.has(warningKey)) {
+      emittedWorkspaceWarnings.add(warningKey)
+      logLine(
+        onLog,
+        "workspace warning provider=none で並列実行すると同じディレクトリで競合する可能性があります",
+      )
+    }
+    const result: WorkspaceResult = {
+      key: sanitizeWorkspaceKey(issue.identifier),
+      branch: null,
+      path: repositoryRoot,
+      repositoryRoot,
+      createdNow: false,
+    }
+    logLine(
+      onLog,
+      `workspace ready key=${result.key} created=false path=${result.path} branch=none`,
+    )
+    return result
+  }
+
   if (config.provider === "gwq") {
     const result = await ensureGwqWorkspace(issue, config, repositoryRoot, runCommand, onLog)
     logLine(
