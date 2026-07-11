@@ -356,9 +356,9 @@ test("e2e: claude report_file モード — herdr-symphony report で完了報�
                                │┌▌ test-claude-ID-e2e-test-TS-TS ────────────────────────────────────────────────────────────────────────────────┐
        · workspace             ││╭─── Claude Code VERSION ────────────────────────────────────────────────────────────────────────────────────────────────────────╮ │
          main                  │││                                                    │ What's new                                                                 │ │
-                               │││                    Welcome back!                   │ Fixed hook events not streaming during SessionStart hooks in headless ses… │ │
-       ○ test-claude-ID│││                                                    │ Added a warning when your login is about to expire, so you can re-authent… │ │
-         master                │││                       ▐▛███▜▌                      │ Added a grey ⏸ badge to the footer when in manual permission mode, making… │ │
+                               │││                    Welcome back!                   │ Added directory path suggestions to \`/cd\`, matching \`/add-dir\` behavior    │ │
+       ○ test-claude-ID│││                                                    │ Added a \`/doctor\` check that proposes trimming checked-in \`CLAUDE.md\` fil… │ │
+         master                │││                       ▐▛███▜▌                      │ \`/commit-push-pr\` now auto-allows \`git push\` to the repo's configured pus… │ │
                                │││                      ▝▜█████▛▘                     │ /release-notes for more                                                    │ │
                                │││                        ▘▘ ▝▝                       │                                                                            │ │
                                │││                                                    │                                                                            │ │
