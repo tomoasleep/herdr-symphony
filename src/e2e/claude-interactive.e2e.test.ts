@@ -1,10 +1,9 @@
-import { afterEach, expect, test } from "bun:test"
-import { spawnSync } from "node:child_process"
+import { expect, test } from "bun:test"
 import { launchTerminal, type Session } from "tuistory"
 import {
+  containerCommand,
   createHerdrIsolation,
   createSessionManager,
-  directCommand,
   execInContainer,
   normalizeScreenOutput,
 } from "../test-utils/e2e-helpers"
@@ -18,14 +17,6 @@ import {
 } from "../test-utils/e2e-scenario-config"
 
 const { register } = createSessionManager()
-
-afterEach(async () => {
-  await execInContainer("", ["herdr", "server", "stop"], 10_000).catch(() => {})
-  await new Promise((resolve) => setTimeout(resolve, 1000))
-})
-
-const HERDR_AVAILABLE = spawnSync("herdr", ["--version"], { stdio: "ignore" }).status === 0
-const CLAUDE_AVAILABLE = spawnSync("claude", ["--version"], { stdio: "ignore" }).status === 0
 
 function newRunId(): string {
   return `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`
@@ -56,21 +47,22 @@ function claudeReportFileMockResponses(): MockResponse[] {
 async function captureAgentScreen(
   scenarioSession: Session,
   herdrSession: Session,
+  containerId: string,
 ): Promise<string> {
   await scenarioSession.waitForText(/agent pane=\S+/, { timeout: 30_000 })
   const scenarioOutput = await scenarioSession.text({ trimEnd: true })
   const paneId = scenarioOutput.match(/agent pane=(\S+)/)?.[1]
   if (!paneId) throw new Error("agent pane id not found")
 
-  await execInContainer("", ["herdr", "agent", "focus", paneId], 10_000)
-  await execInContainer("", ["herdr", "pane", "zoom", paneId, "--on"], 10_000)
+  await execInContainer(containerId, ["herdr", "agent", "focus", paneId], 10_000)
+  await execInContainer(containerId, ["herdr", "pane", "zoom", paneId, "--on"], 10_000)
   const deadline = Date.now() + 60_000
   let screen = ""
   while (Date.now() < deadline) {
     screen = normalizeScreenOutput(await herdrSession.text({ immediate: true }))
     if (/WARNING: Claude Code running in Bypass Permissions mode/.test(screen)) {
-      await execInContainer("", ["herdr", "pane", "send-keys", paneId, "Down"], 10_000)
-      await execInContainer("", ["herdr", "pane", "send-keys", paneId, "Enter"], 10_000)
+      await execInContainer(containerId, ["herdr", "pane", "send-keys", paneId, "Down"], 10_000)
+      await execInContainer(containerId, ["herdr", "pane", "send-keys", paneId, "Enter"], 10_000)
       await new Promise((resolve) => setTimeout(resolve, 500))
       continue
     }
@@ -100,18 +92,14 @@ async function captureAgentScreen(
 }
 
 test("e2e: claude 対話モード — agent の画面全体を確認できる", async () => {
-  if (!HERDR_AVAILABLE) throw new Error("herdr binary not found on PATH")
-  if (!CLAUDE_AVAILABLE) throw new Error("claude binary not found on PATH")
   const projectRoot = process.cwd()
 
   const herdr = await createHerdrIsolation("e2e-claude")
 
-  await execInContainer("", ["herdr", "server", "stop"], 10_000).catch(() => {})
-
   try {
     const herdrSession = register(
       await launchTerminal({
-        ...directCommand(["herdr"]),
+        ...containerCommand(herdr.containerId, ["herdr"]),
         cwd: projectRoot,
         cols: 160,
         rows: 40,
@@ -136,9 +124,13 @@ test("e2e: claude 対話モード — agent の画面全体を確認できる", 
 
     const scenarioSession = register(
       await launchTerminal({
-        ...directCommand(["bun", "run", "/workspace/src/test-utils/e2e-scenario.ts"], {
-          SCENARIO_CONFIG_PATH: containerPath,
-        }),
+        ...containerCommand(
+          herdr.containerId,
+          ["bun", "run", "/workspace/src/test-utils/e2e-scenario.ts"],
+          {
+            SCENARIO_CONFIG_PATH: containerPath,
+          },
+        ),
         cwd: projectRoot,
         cols: 200,
         rows: 36,
@@ -146,7 +138,7 @@ test("e2e: claude 対話モード — agent の画面全体を確認できる", 
       }),
     )
 
-    const agentScreen = await captureAgentScreen(scenarioSession, herdrSession)
+    const agentScreen = await captureAgentScreen(scenarioSession, herdrSession, herdr.containerId)
 
     expect(agentScreen).toMatchInlineSnapshot(`
       "
@@ -197,18 +189,14 @@ test("e2e: claude 対話モード — agent の画面全体を確認できる", 
 }, 120_000)
 
 test("e2e: claude report 未送信の idle — agent の画面全体を確認できる", async () => {
-  if (!HERDR_AVAILABLE) throw new Error("herdr binary not found on PATH")
-  if (!CLAUDE_AVAILABLE) throw new Error("claude binary not found on PATH")
   const projectRoot = process.cwd()
 
   const herdr = await createHerdrIsolation("e2e-claude-reminder")
 
-  await execInContainer("", ["herdr", "server", "stop"], 10_000).catch(() => {})
-
   try {
     const herdrSession = register(
       await launchTerminal({
-        ...directCommand(["herdr"]),
+        ...containerCommand(herdr.containerId, ["herdr"]),
         cwd: projectRoot,
         cols: 160,
         rows: 40,
@@ -233,9 +221,13 @@ test("e2e: claude report 未送信の idle — agent の画面全体を確認で
 
     const scenarioSession = register(
       await launchTerminal({
-        ...directCommand(["bun", "run", "/workspace/src/test-utils/e2e-scenario.ts"], {
-          SCENARIO_CONFIG_PATH: containerPath,
-        }),
+        ...containerCommand(
+          herdr.containerId,
+          ["bun", "run", "/workspace/src/test-utils/e2e-scenario.ts"],
+          {
+            SCENARIO_CONFIG_PATH: containerPath,
+          },
+        ),
         cwd: projectRoot,
         cols: 200,
         rows: 36,
@@ -243,7 +235,7 @@ test("e2e: claude report 未送信の idle — agent の画面全体を確認で
       }),
     )
 
-    const agentScreen = await captureAgentScreen(scenarioSession, herdrSession)
+    const agentScreen = await captureAgentScreen(scenarioSession, herdrSession, herdr.containerId)
 
     expect(agentScreen).toMatchInlineSnapshot(`
       "
@@ -294,18 +286,14 @@ test("e2e: claude report 未送信の idle — agent の画面全体を確認で
 }, 150_000)
 
 test("e2e: claude report_file モード — herdr-symphony report で完了報告する", async () => {
-  if (!HERDR_AVAILABLE) throw new Error("herdr binary not found on PATH")
-  if (!CLAUDE_AVAILABLE) throw new Error("claude binary not found on PATH")
   const projectRoot = process.cwd()
 
   const herdr = await createHerdrIsolation("e2e-claude-report-file")
 
-  await execInContainer("", ["herdr", "server", "stop"], 10_000).catch(() => {})
-
   try {
     const herdrSession = register(
       await launchTerminal({
-        ...directCommand(["herdr"]),
+        ...containerCommand(herdr.containerId, ["herdr"]),
         cwd: projectRoot,
         cols: 160,
         rows: 40,
@@ -331,9 +319,13 @@ test("e2e: claude report_file モード — herdr-symphony report で完了報�
 
     const scenarioSession = register(
       await launchTerminal({
-        ...directCommand(["bun", "run", "/workspace/src/test-utils/e2e-scenario.ts"], {
-          SCENARIO_CONFIG_PATH: containerPath,
-        }),
+        ...containerCommand(
+          herdr.containerId,
+          ["bun", "run", "/workspace/src/test-utils/e2e-scenario.ts"],
+          {
+            SCENARIO_CONFIG_PATH: containerPath,
+          },
+        ),
         cwd: projectRoot,
         cols: 200,
         rows: 36,
@@ -341,15 +333,12 @@ test("e2e: claude report_file モード — herdr-symphony report で完了報�
       }),
     )
 
-    const agentScreen = await captureAgentScreen(scenarioSession, herdrSession)
+    const agentScreen = await captureAgentScreen(scenarioSession, herdrSession, herdr.containerId)
 
     expect(agentScreen).toMatchInlineSnapshot(`
       "
       │ 1 Z     +
       │┌ test-claude-ID-e2e-test-TS-TS ─┐
-      ││ ▐▛███▜▌   Claude Code VERSION                                                                                                     │
-      ││▝▜█████▛▘  Opus 4.8 (1M context) · API Usage Billing                                                                                │
-      ││  ▘▘ ▝▝    TEMP_DIR                                                                        │
       ││                                                                                                                                    │
       ││                                                                                                                                    │
       ││❯ Test prompt for test-claude-ID                                                                                          │
@@ -375,14 +364,6 @@ test("e2e: claude report_file モード — herdr-symphony report で完了報�
       ││❯                                                                                                                                   │
       ││─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────── │
       ││  ⏵⏵ bypass permissions on (shift+tab to cycle) · ← for agents                                                                      │
-      ││                                                                                                                                    │
-      ││                                                                                                                                    │
-      ││                                                                                                                                    │
-      ││                                                                                                                                    │
-      ││                                                                                                                                    │
-      ││                                                                                                                                    │
-      ││                                                                                                                                    │
-      ││                                                                                                                                    │
       ││                                                                                                                                    │
       │└────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘"
     `)

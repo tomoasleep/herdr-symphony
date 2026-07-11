@@ -69,7 +69,7 @@ export async function writeScenarioConfig(
 ): Promise<{ hostPath: string; containerPath: string }> {
   const filename = `scenario-${randomId()}.json`
   const hostPath = join(sharedDir, filename)
-  const containerPath = hostPath
+  const containerPath = join("/tmp/shared", filename)
   await writeFile(hostPath, `${JSON.stringify(config)}\n`)
   return { hostPath, containerPath }
 }

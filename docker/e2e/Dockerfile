@@ -63,9 +63,4 @@ RUN case "$TARGETARCH" in amd64) opencode_arch=x64 ;; arm64) opencode_arch=arm64
     && chmod +x /home/agent/.opencode/bin/opencode \
     && rm -rf /tmp/opencode*
 ENV PATH="/home/agent/.opencode/bin:${PATH}"
-
-COPY --chown=agent:agent package.json bun.lock /workspace/
 WORKDIR /workspace
-RUN bun install --frozen-lockfile
-
-COPY --chown=agent:agent . /workspace/
