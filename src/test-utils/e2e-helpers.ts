@@ -155,7 +155,7 @@ export async function createHerdrIsolation(prefix: string): Promise<HerdrIsolati
     cleanup: async () => {
       await runDocker(["stop", containerId], 30_000).catch(() => {})
       await runDocker(["rm", "-f", containerId], 30_000).catch(() => {})
-      await rm(sharedDir, { recursive: true, force: true })
+      await rm(sharedDir, { recursive: true, force: true }).catch(() => {})
     },
   }
 }
