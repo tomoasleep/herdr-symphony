@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test"
-import { stripHerdrEnv } from "./e2e-helpers"
+import { normalizeOutput, stripHerdrEnv } from "./e2e-helpers"
 
 test("stripHerdrEnv は HERDR_ プレフィックスの変数だけ除去する", () => {
   const src = {
@@ -16,4 +16,8 @@ test("stripHerdrEnv は HERDR_ プレフィックスの変数だけ除去する"
 test("stripHerdrEnv は HERDR_ 以外をすべて残す", () => {
   const got = stripHerdrEnv({ PATH: "/usr/bin", FOO: "bar", ANTHROPIC_BASE_URL: "http://x" })
   expect(got).toEqual({ PATH: "/usr/bin", FOO: "bar", ANTHROPIC_BASE_URL: "http://x" })
+})
+
+test("normalizeOutput は new と menu の間の可変スペースを正規化する", () => {
+  expect(normalizeOutput("new                 menu│")).toBe("new menu│")
 })

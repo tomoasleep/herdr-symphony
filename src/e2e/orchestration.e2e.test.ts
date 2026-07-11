@@ -85,7 +85,7 @@ test("e2e: herdr TUI + service log — agent が herdr 上で実行されて suc
                                │
                                │
                                │
-       new               menu│
+       new menu│
       ─────────────────────────│
        agents           grouped│
                                │

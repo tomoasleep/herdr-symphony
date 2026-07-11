@@ -67,6 +67,7 @@ const DYNAMIC_REPLACEMENTS: Array<[RegExp, string]> = [
   [/│ \/release-notes[^\n]*?│\s*│/g, "│ CLAUDE_WHATS_NEW_LINE │"],
   [/┌▌/g, "┌"],
   [/● menu/g, "menu"],
+  [/new\s+menu/g, "new menu"],
 ]
 
 export function normalizeOutput(text: string): string {
