@@ -61,6 +61,8 @@ const DYNAMIC_REPLACEMENTS: Array<[RegExp, string]> = [
   [/│ Fixed [^\n]*?│\s*│/g, "│ CLAUDE_WHATS_NEW_LINE │"],
   [/│ Auto mode[^\n]*?│\s*│/g, "│ CLAUDE_WHATS_NEW_LINE │"],
   [/│ \/release-notes[^\n]*?│\s*│/g, "│ CLAUDE_WHATS_NEW_LINE │"],
+  [/┌▌/g, "┌"],
+  [/● menu/g, "menu"],
   [/\btest-claude-[0-9a-z]+/g, "test-claude-ID"],
   [/\bplain-probe-[0-9a-z]+/g, "plain-probe-ID"],
   [/\bprobe-[0-9a-z]+/g, "probe-ID"],

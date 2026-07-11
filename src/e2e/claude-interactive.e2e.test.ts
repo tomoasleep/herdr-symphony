@@ -138,7 +138,7 @@ test("e2e: claude 対話モード — agent の画面全体を確認できる", 
     expect(agentScreen).toMatchInlineSnapshot(`
       "
        spaces                  │ 1 Z     +
-                               │┌▌ test-claude-ID-e2e-test-TS-TS ────────────────────────────────────────────────────────────────────────────────┐
+                               │┌ test-claude-ID-e2e-test-TS-TS ────────────────────────────────────────────────────────────────────────────────┐
        · workspace             ││❯ あなたは herdr-symphony の agent です。                                                                                          ▕│
          main                  ││  実タスクは agmsg で届きます。                                                                                                    ▕│
                                ││  最初に /opt/agmsg/scripts/actas-claim.sh "$PWD" claude-code "test-claude-ID-e2e-test-TS-TS"                  ▕│
@@ -156,7 +156,7 @@ test("e2e: claude 対話モード — agent の画面全体を確認できる", 
                                ││  -e2e-test-TS-TS","toAgent":"herdr-symphony","issueId":"test-issue-claude","ackOf":"reminder"}' を実行してください。    ▐│
                                ││  完了時は、ユーザーへの完了報告と同等の内容を summary に入れて report してください。                                              ▐│
                                ││  done: /opt/agmsg/scripts/send.sh herdr-symphony-test-claude-ID-e2e-test-TS-TS                                ▐│
-       new               ● menu││  test-claude-ID-e2e-test-TS-TS herdr-symphony '{"kind":"herdr-symphony.report","runId":"test-claude-ID ▐│
+       new               menu││  test-claude-ID-e2e-test-TS-TS herdr-symphony '{"kind":"herdr-symphony.report","runId":"test-claude-ID ▐│
       ─────────────────────────││  ID-e2e-test-TS-TS","toAgent":"herdr-symphony","issueId":"test-issue-claude","status":"done","summary":"対応内容:      ▐│
        agents           grouped││  ...。検証: ...。補足: ...。"}'                                                                                                   ▐│
                                ││  pending: /opt/agmsg/scripts/send.sh herdr-symphony-test-claude-ID-e2e-test-TS-TS                             ▐│
@@ -245,7 +245,7 @@ test("e2e: claude report 未送信の idle — agent の画面全体を確認で
     expect(agentScreen).toMatchInlineSnapshot(`
       "
        spaces                  │ 1 Z     +
-                               │┌▌ test-claude-ID-e2e-test-TS-TS ────────────────────────────────────────────────────────────────────────────────┐
+                               │┌ test-claude-ID-e2e-test-TS-TS ────────────────────────────────────────────────────────────────────────────────┐
        · workspace             ││❯ あなたは herdr-symphony の agent です。                                                                                          ▕│
          main                  ││  実タスクは agmsg で届きます。                                                                                                    ▕│
                                ││  最初に /opt/agmsg/scripts/actas-claim.sh "$PWD" claude-code "test-claude-ID-e2e-test-TS-TS"                  ▕│
@@ -263,7 +263,7 @@ test("e2e: claude report 未送信の idle — agent の画面全体を確認で
                                ││  -e2e-test-TS-TS","toAgent":"herdr-symphony","issueId":"test-issue-claude","ackOf":"reminder"}' を実行してください。    ▐│
                                ││  完了時は、ユーザーへの完了報告と同等の内容を summary に入れて report してください。                                              ▐│
                                ││  done: /opt/agmsg/scripts/send.sh herdr-symphony-test-claude-ID-e2e-test-TS-TS                                ▐│
-       new               ● menu││  test-claude-ID-e2e-test-TS-TS herdr-symphony '{"kind":"herdr-symphony.report","runId":"test-claude-ID ▐│
+       new               menu││  test-claude-ID-e2e-test-TS-TS herdr-symphony '{"kind":"herdr-symphony.report","runId":"test-claude-ID ▐│
       ─────────────────────────││  ID-e2e-test-TS-TS","toAgent":"herdr-symphony","issueId":"test-issue-claude","status":"done","summary":"対応内容:      ▐│
        agents           grouped││  ...。検証: ...。補足: ...。"}'                                                                                                   ▐│
                                ││  pending: /opt/agmsg/scripts/send.sh herdr-symphony-test-claude-ID-e2e-test-TS-TS                             ▐│
@@ -353,7 +353,7 @@ test("e2e: claude report_file モード — herdr-symphony report で完了報�
     expect(agentScreen).toMatchInlineSnapshot(`
       "
        spaces                  │ 1 Z     +
-                               │┌▌ test-claude-ID-e2e-test-TS-TS ────────────────────────────────────────────────────────────────────────────────┐
+                               │┌ test-claude-ID-e2e-test-TS-TS ────────────────────────────────────────────────────────────────────────────────┐
        · workspace             ││╭─── Claude Code VERSION ────────────────────────────────────────────────────────────────────────────────────────────────────────╮ │
          main                  │││                                                    │ WHAT_NEW │ │
                                │││                    Welcome back!                   │ CLAUDE_WHATS_NEW_LINE │
@@ -371,7 +371,7 @@ test("e2e: claude report_file モード — herdr-symphony report で完了報�
                                ││  ## 完了報告                                                                                                                       │
                                ││                                                                                                                                    │
                                ││  ユーザーに依頼された作業が完了したら、以下のコマンドを実行してください。                                                          │
-       new               ● menu││                                                                                                                                    │
+       new               menu││                                                                                                                                    │
       ─────────────────────────││      herdr-symphony report --status done --summary "やった作業の要約"                                                              │
        agents           grouped││                                                                                                                                    │
                                ││  background task / subagent / task の完了待ちなら、以下のコマンドを実行してください。                                              │
