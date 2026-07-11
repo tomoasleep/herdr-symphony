@@ -361,3 +361,28 @@ test("herdr_agent.close_pane_after_done_ms に null を指定すると無効に�
 
   expect(config.work.herdrAgent.closePaneAfterDoneMs).toBeNull()
 })
+
+test("opencode.interactive: true を解決できる", () => {
+  const config = resolveConfig({
+    tracker: { kind: "file", file: { base_dir: "/issues" } },
+    work: {
+      runner: "herdr_agent",
+      herdr_agent: {
+        agent: "opencode",
+        opencode: {
+          interactive: true,
+        },
+      },
+    },
+  })
+
+  expect(config.work.herdrAgent.opencode.interactive).toBe(true)
+})
+
+test("opencode.interactive 未指定時は false になる", () => {
+  const config = resolveConfig({
+    tracker: { kind: "file", file: { base_dir: "/issues" } },
+  })
+
+  expect(config.work.herdrAgent.opencode.interactive).toBe(false)
+})

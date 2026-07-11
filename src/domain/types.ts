@@ -66,6 +66,7 @@ export type AgentConfig = {
 export type HerdrAgentOpencodeConfig = {
   model: string | null
   agent: string | null
+  interactive: boolean
 }
 
 export type ClaudeMessenger = "agmsg" | "report_file"
@@ -109,7 +110,7 @@ export type WorkspaceConfig = {
 export type ResolvedHerdrAgentRunnerConfig = {
   kind: "herdr_agent"
   agent: "opencode" | "claude"
-  opencode: { model: string | null; agent: string | null }
+  opencode: { model: string | null; agent: string | null; interactive: boolean }
   claude: {
     model: string | null
     permissionMode: string | null

@@ -129,8 +129,9 @@ work:
 | 設定 | 型 | デフォルト | 説明 |
 |------|-----|-----------|------|
 | `agent` | `"opencode"` | `"opencode"` | 起動する Agent 種別（将来拡張予定）|
-| `opencode.model` | string (Liquid) | null | `opencode run --model` |
-| `opencode.agent` | string (Liquid) | null | `opencode run --agent` |
+| `opencode.model` | string (Liquid) | null | `opencode --model` |
+| `opencode.agent` | string (Liquid) | null | `opencode --agent` |
+| `opencode.interactive` | boolean | `false` | `true` で TUI (interactive mode) で起動。完了報告は `herdr-symphony report` コマンドを使用 |
 | `claude.model` | string (Liquid) | null | `claude --model` |
 | `claude.permission_mode` | string (Liquid) | null | `claude --permission-mode` (`bypassPermissions` の場合は `--dangerously-skip-permissions` も付与) |
 | `claude.messenger` | `"agmsg"` \| `"report_file"` | `"agmsg"` | Claude との完了判定通信方式 |

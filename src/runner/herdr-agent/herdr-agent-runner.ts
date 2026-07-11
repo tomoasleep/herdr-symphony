@@ -208,7 +208,10 @@ export class HerdrAgentRunner implements Runner {
 
     const argv = this.buildAgentArgv({ ...options, content })
 
-    const effectiveReportPath = options.agentKind === "claude" ? options.reportPath : undefined
+    const useReportPath =
+      options.agentKind === "claude" ||
+      (options.agentKind === "opencode" && options.interactive === true)
+    const effectiveReportPath = useReportPath ? options.reportPath : undefined
 
     const agent = await this.client.startAgent(agentName, {
       workspaceId: workspace.id,
@@ -615,6 +618,20 @@ export class HerdrAgentRunner implements Runner {
       }
 
       argv.push(options.content)
+      return argv
+    }
+
+    if (options.interactive) {
+      const argv: string[] = ["opencode"]
+
+      if (options.model) {
+        argv.push("--model", options.model)
+      }
+      if (options.agent) {
+        argv.push("--agent", options.agent)
+      }
+
+      argv.push("--prompt", options.content)
       return argv
     }
 
