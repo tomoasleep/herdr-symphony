@@ -1,10 +1,33 @@
 import { expect, test } from "bun:test"
 import {
+  containerCommand,
   normalizeLogOutput,
   normalizeOutput,
   normalizeScreenOutput,
   stripHerdrEnv,
 } from "./e2e-helpers"
+
+test("containerCommand はTTYとコンテナ環境変数を指定する", () => {
+  expect(
+    containerCommand("container-id", ["bun", "run", "scenario.ts"], {
+      SCENARIO_CONFIG_PATH: "/tmp/shared/scenario.json",
+    }),
+  ).toEqual({
+    command: "docker",
+    args: [
+      "exec",
+      "-it",
+      "-e",
+      "TERM=xterm-truecolor",
+      "-e",
+      "SCENARIO_CONFIG_PATH=/tmp/shared/scenario.json",
+      "container-id",
+      "bun",
+      "run",
+      "scenario.ts",
+    ],
+  })
+})
 
 test("stripHerdrEnv は HERDR_ プレフィックスの変数だけ除去する", () => {
   const src = {
@@ -31,6 +54,14 @@ test("normalizeScreenOutput は agent pane の上枠線を正規化する", () =
   expect(normalizeScreenOutput("│┌ test-claude-ID-e2e-test-TS-TS ───┐")).toBe(
     "│┌ test-claude-ID-e2e-test-TS-TS ─┐",
   )
+})
+
+test("normalizeScreenOutput は Claude welcome画面を除外する", () => {
+  expect(
+    normalizeScreenOutput(
+      "││╭─── Claude Code VERSION ───╮ │\n│││ Welcome back! │\n││╰────────────────────────────╯ │\n",
+    ),
+  ).toBe("")
 })
 
 test("normalizeOutput は running reconciliation の繰り返しを畳む", () => {

@@ -92,6 +92,11 @@ export function normalizeScreenOutput(text: string): string {
   for (const [pattern, replacement] of DYNAMIC_REPLACEMENTS) {
     result = result.replace(pattern, replacement)
   }
+  result = result.replace(/││╭─── Claude Code VERSION[\s\S]*?╯ │\n/g, "")
+  result = result.replace(
+    /││ ▐▛███▜▌ {3}Claude Code VERSION[^\n]*\n││▝▜█████▛▘ {2}Opus 4\.8 \(1M context\) · API Usage Billing[^\n]*\n││ {2}▘▘ ▝▝ {4}TEMP_DIR[^\n]*\n/g,
+    "",
+  )
   result = result.replace(/▕/g, "▐")
   return result
     .split("\n")
@@ -109,31 +114,16 @@ export async function captureOutput(session: Session): Promise<string> {
 }
 
 export type HerdrIsolation = {
+  containerId: string
   sharedDir: string
   cleanup: () => Promise<void>
 }
 
-export async function createHerdrIsolation(prefix: string): Promise<HerdrIsolation> {
-  const shortId = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`
-  const sharedDir = `/tmp/herdr-e2e-${prefix}-${shortId}`
+type CommandResult = { stdout: string; stderr: string; exitCode: number }
 
-  await mkdir(sharedDir, { recursive: true })
-
-  return {
-    sharedDir,
-    cleanup: async () => {
-      await rm(sharedDir, { recursive: true, force: true }).catch(() => {})
-    },
-  }
-}
-
-export async function execInContainer(
-  _containerId: string,
-  command: string[],
-  timeoutMs = 30_000,
-): Promise<{ stdout: string; stderr: string; exitCode: number }> {
+function runCommand(command: string, args: string[], timeoutMs = 30_000): Promise<CommandResult> {
   return new Promise((resolve, reject) => {
-    const child = spawn(command[0]!, command.slice(1), { stdio: ["ignore", "pipe", "pipe"] })
+    const child = spawn(command, args, { stdio: ["ignore", "pipe", "pipe"] })
     let stdout = ""
     let stderr = ""
     child.stdout.on("data", (chunk) => {
@@ -144,7 +134,7 @@ export async function execInContainer(
     })
     const timer = setTimeout(() => {
       child.kill("SIGKILL")
-      reject(new Error(`${command.join(" ")} timed out after ${timeoutMs}ms`))
+      reject(new Error(`${command} ${args.join(" ")} timed out after ${timeoutMs}ms`))
     }, timeoutMs)
     child.on("close", (code) => {
       clearTimeout(timer)
@@ -154,16 +144,80 @@ export async function execInContainer(
   })
 }
 
-export function directCommand(
+function runDocker(args: string[], timeoutMs = 30_000): Promise<CommandResult> {
+  return runCommand("docker", args, timeoutMs)
+}
+
+let imageReady: Promise<void> | undefined
+
+async function ensureE2EImage(): Promise<void> {
+  const result = await runDocker(["image", "inspect", "herdr-e2e:latest"])
+  if (result.exitCode === 0) return
+
+  const build = await runDocker(
+    ["build", "-f", "docker/e2e/Dockerfile", "-t", "herdr-e2e:latest", process.cwd()],
+    300_000,
+  )
+  if (build.exitCode !== 0) throw new Error(`docker build failed: ${build.stderr}`)
+}
+
+export async function createHerdrIsolation(prefix: string): Promise<HerdrIsolation> {
+  imageReady ??= ensureE2EImage()
+  await imageReady
+
+  const shortId = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`
+  const containerName = `herdr-e2e-${prefix}-${shortId}`
+  const sharedDir = `/tmp/herdr-e2e-${prefix}-${shortId}`
+  const projectRoot = process.cwd()
+
+  await mkdir(sharedDir, { recursive: true })
+
+  const result = await runDocker([
+    "run",
+    "-d",
+    "--name",
+    containerName,
+    "--add-host=host.docker.internal:host-gateway",
+    "-v",
+    `${projectRoot}:/workspace`,
+    "-v",
+    `${sharedDir}:/tmp/shared`,
+    "-e",
+    "AGMSG_SCRIPTS_DIR=/opt/agmsg/scripts",
+    "herdr-e2e:latest",
+    "sleep",
+    "infinity",
+  ])
+  if (result.exitCode !== 0) throw new Error(`docker run failed: ${result.stderr}`)
+
+  const containerId = result.stdout.trim()
+
+  return {
+    containerId,
+    sharedDir,
+    cleanup: async () => {
+      await runDocker(["rm", "-f", containerId]).catch(() => {})
+      await rm(sharedDir, { recursive: true, force: true }).catch(() => {})
+    },
+  }
+}
+
+export async function execInContainer(
+  containerId: string,
+  command: string[],
+  timeoutMs = 30_000,
+): Promise<CommandResult> {
+  return runDocker(["exec", containerId, ...command], timeoutMs)
+}
+
+export function containerCommand(
+  containerId: string,
   command: string[],
   env?: Record<string, string>,
 ): { command: string; args: string[] } {
-  if (env) {
-    const envArgs: string[] = []
-    for (const [key, value] of Object.entries(env)) {
-      envArgs.push(`${key}=${value}`)
-    }
-    return { command: "env", args: [...envArgs, ...command] }
+  const envArgs = ["-e", "TERM=xterm-truecolor"]
+  for (const [key, value] of Object.entries(env ?? {})) {
+    envArgs.push("-e", `${key}=${value}`)
   }
-  return { command: command[0]!, args: command.slice(1) }
+  return { command: "docker", args: ["exec", "-it", ...envArgs, containerId, ...command] }
 }
