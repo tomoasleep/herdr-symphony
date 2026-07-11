@@ -8,6 +8,7 @@ jobs:
   debug:
     name: E2E debug experiments
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
 
@@ -34,9 +35,9 @@ jobs:
       - name: Experiment B - E2E with TERM=xterm-truecolor
         env:
           DEBUG_TERM: "xterm-truecolor"
-        run: bun test src/e2e 2>&1 || true
+        run: bun test src/e2e 2>&1 | head -200 || true
 
       - name: Experiment C - E2E with stty cols/rows
         env:
           DEBUG_STTY: "1"
-        run: bun test src/e2e 2>&1 || true
+        run: bun test src/e2e 2>&1 | head -200 || true
