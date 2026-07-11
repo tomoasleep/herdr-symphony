@@ -5,10 +5,23 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { startHerdrSymphony } from "./app"
 import type { Issue, ServiceConfig } from "./domain/types"
+import { createLogger } from "./logging/create-logger"
+import type { LogLevel } from "./logging/types"
 import { isActiveState } from "./orchestrator/scheduling"
-import type { Runner, RunnerHandle, RunnerPollResult, RunnerResult } from "./runner/types"
+import type { Runner, RunnerHandle } from "./runner/types"
 import { SymphonyService } from "./service"
 import type { IssueTrackerClient } from "./tracker/types"
+
+function makeTestLogger(minLevel: LogLevel = "debug") {
+  const entries: { level: LogLevel; line: string }[] = []
+  return {
+    logger: createLogger({ minLevel, sink: (level, line) => entries.push({ level, line }) }),
+    get lines() {
+      return entries.map((e) => e.line)
+    },
+    entries,
+  }
+}
 
 function makeIssue(): Issue {
   return {
@@ -82,9 +95,9 @@ function makeMockRunner(): Runner {
     async startIssue(issue): Promise<RunnerHandle> {
       return { sessionId: "test-session", issueId: issue.id }
     },
-    async pollCompletion(): Promise<RunnerPollResult> {
+    async pollCompletion() {
       return {
-        state: "done",
+        state: "done" as const,
         result: { status: "succeeded", error: null, responseText: "Done" },
       }
     },
@@ -126,21 +139,22 @@ describe("startHerdrSymphony", () => {
       `---\ntracker:\n  kind: file\n  file:\n    base_dir: ${tmpDir}\nwork:\n  active_states: [Ready]\n  running_state: "In progress"\n  success_state: "Done"\n---\nFix the issue\n`,
     )
 
-    const logs: string[] = []
-    let _refreshCount = 0
+    const testLogger = makeTestLogger("debug")
     let service: SymphonyService | undefined
 
     await startHerdrSymphony(
       join(tmpDir, "WORKFLOW.md"),
       {
-        writeLog: (line) => logs.push(line),
+        logLevel: "debug",
         storageConfig: { databasePath: join(tmpDir, "test.db") },
       },
       {
-        createService: (config, template, options, input) => {
+        createService: (config, template, _options, input) => {
           const s = new SymphonyService(config, template, {
-            ...options,
-            ...input,
+            logLevel: "debug",
+            logger: testLogger.logger,
+            workflowId: input.workflowId,
+            workflowName: input.workflowName,
             storage: input.storage ?? undefined,
             tracker: makeMockTracker([makeIssue()]),
             runner: makeMockRunner(),
@@ -153,10 +167,6 @@ describe("startHerdrSymphony", () => {
             }),
             claimIssue: () => true,
             releaseIssue: () => {},
-            writeLog: (line) => {
-              logs.push(line)
-              if (line.includes("done TEST-1")) _refreshCount++
-            },
           })
           service = s
           return s
@@ -169,8 +179,8 @@ describe("startHerdrSymphony", () => {
 
     await service?.reconcileRunning()
 
-    expect(logs.some((l) => l.includes("start TEST-1"))).toBe(true)
-    expect(logs.some((l) => l.includes("done TEST-1"))).toBe(true)
+    expect(testLogger.lines.some((l) => l.includes("start TEST-1"))).toBe(true)
+    expect(testLogger.lines.some((l) => l.includes("done TEST-1"))).toBe(true)
   })
 
   test("ポーリング中に refresh が reject してもプロセスが継続しエラーを記録する", async () => {
@@ -202,12 +212,13 @@ describe("startHerdrSymphony", () => {
     try {
       await startHerdrSymphony(
         join(tmpDir, "WORKFLOW.md"),
-        { storageConfig: { databasePath: join(tmpDir, "test.db") } },
+        { logLevel: "info", storageConfig: { databasePath: join(tmpDir, "test.db") } },
         {
-          createService: (config, template, options, input) => {
+          createService: (config, template, _options, input) => {
             return new SymphonyService(config, template, {
-              ...options,
-              ...input,
+              logLevel: "info",
+              workflowId: input.workflowId,
+              workflowName: input.workflowName,
               storage: input.storage ?? undefined,
               tracker,
               runner: makeMockRunner(),

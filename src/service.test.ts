@@ -4,6 +4,8 @@ import { mkdir } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import type { Issue, ServiceConfig } from "./domain/types"
+import { createLogger } from "./logging/create-logger"
+import type { Logger, LogLevel } from "./logging/types"
 import { isActiveState } from "./orchestrator/scheduling"
 import type {
   Runner,
@@ -164,6 +166,21 @@ function makeMockWorkspace(
   })
 }
 
+function makeTestLogger(minLevel: LogLevel = "debug"): {
+  logger: Logger
+  lines: string[]
+  entries: { level: LogLevel; line: string }[]
+} {
+  const entries: { level: LogLevel; line: string }[] = []
+  return {
+    logger: createLogger({ minLevel, sink: (level, line) => entries.push({ level, line }) }),
+    get lines() {
+      return entries.map((e) => e.line)
+    },
+    entries,
+  }
+}
+
 describe("SymphonyService", () => {
   const tmpDirs: string[] = []
 
@@ -180,11 +197,11 @@ describe("SymphonyService", () => {
     const runner = makeMockRunner()
     const config = makeConfig()
 
-    const logs: string[] = []
+    const testLogger = makeTestLogger()
     const service = new SymphonyService(config, "Fix the bug.", {
       tracker,
       runner,
-      writeLog: (line) => logs.push(line),
+      logger: testLogger.logger,
       ensureWorkspace: makeMockWorkspace("/tmp/ws-test-1"),
       claimIssue: () => true,
       releaseIssue: () => {},
@@ -194,7 +211,7 @@ describe("SymphonyService", () => {
     await service.waitForDispatches()
     await service.reconcileRunning()
 
-    expect(logs.some((l) => l.includes("done TEST-1"))).toBe(true)
+    expect(testLogger.lines.some((l) => l.includes("done TEST-1"))).toBe(true)
     service.shutdown()
   })
 
@@ -204,11 +221,11 @@ describe("SymphonyService", () => {
     const runner = makeMockRunner({ status: "failed", error: "agent error" })
     const config = makeConfig({ failureState: "Blocked" })
 
-    const logs: string[] = []
+    const testLogger = makeTestLogger()
     const service = new SymphonyService(config, "Fix the bug.", {
       tracker,
       runner,
-      writeLog: (line) => logs.push(line),
+      logger: testLogger.logger,
       ensureWorkspace: makeMockWorkspace("/tmp/ws-test-2"),
       claimIssue: () => true,
       releaseIssue: () => {},
@@ -218,7 +235,7 @@ describe("SymphonyService", () => {
     await service.waitForDispatches()
     await service.reconcileRunning()
 
-    expect(logs.some((l) => l.includes("done TEST-1 status=failed"))).toBe(true)
+    expect(testLogger.lines.some((l) => l.includes("done TEST-1 status=failed"))).toBe(true)
     service.shutdown()
   })
 
@@ -239,7 +256,7 @@ describe("SymphonyService", () => {
     const service = new SymphonyService(config, "prompt", {
       tracker,
       runner: makeMockRunner(),
-      writeLog: () => {},
+      logger: makeTestLogger().logger,
       ensureWorkspace: makeMockWorkspace("/tmp/ws-test-3"),
       claimIssue: () => true,
       releaseIssue: () => {},
@@ -269,7 +286,7 @@ describe("SymphonyService", () => {
     const service = new SymphonyService(config, "prompt", {
       tracker,
       runner,
-      writeLog: () => {},
+      logger: makeTestLogger().logger,
       ensureWorkspace: makeMockWorkspace(tmpDir),
       claimIssue: () => true,
       releaseIssue: () => {},
@@ -290,12 +307,13 @@ describe("SymphonyService", () => {
   test("候補がない場合は何もしない", async () => {
     const tracker = makeMockTrackerClient([])
     const config = makeConfig()
-    const logs: string[] = []
+
+    const testLogger = makeTestLogger()
 
     const service = new SymphonyService(config, "prompt", {
       tracker,
       runner: makeMockRunner(),
-      writeLog: (line) => logs.push(line),
+      logger: testLogger.logger,
       ensureWorkspace: makeMockWorkspace("/tmp/ws-test-5"),
       claimIssue: () => true,
       releaseIssue: () => {},
@@ -305,7 +323,7 @@ describe("SymphonyService", () => {
     await service.waitForDispatches()
     await service.reconcileRunning()
 
-    expect(logs.some((l) => l.includes("idle"))).toBe(true)
+    expect(testLogger.lines.some((l) => l.includes("idle"))).toBe(true)
     service.shutdown()
   })
 
@@ -326,7 +344,7 @@ describe("SymphonyService", () => {
     const service = new SymphonyService(config, "prompt", {
       tracker,
       runner,
-      writeLog: () => {},
+      logger: makeTestLogger().logger,
       ensureWorkspace: makeMockWorkspace(tmpDir),
       claimIssue: () => true,
       releaseIssue: () => {},
@@ -355,7 +373,7 @@ describe("SymphonyService", () => {
     const service = new SymphonyService(config, "prompt", {
       tracker,
       runner,
-      writeLog: () => {},
+      logger: makeTestLogger().logger,
       ensureWorkspace: makeMockWorkspace(tmpDir),
       claimIssue: () => true,
       releaseIssue: () => {},
@@ -394,7 +412,7 @@ describe("SymphonyService", () => {
     const service = new SymphonyService(config, "Fix the bug.", {
       tracker,
       runner,
-      writeLog: () => {},
+      logger: makeTestLogger().logger,
       ensureWorkspace: makeMockWorkspace(tmpDir),
       claimIssue: () => true,
       releaseIssue: () => {},
@@ -427,7 +445,7 @@ describe("SymphonyService", () => {
     const service = new SymphonyService(config, "Fix the bug.", {
       tracker,
       runner,
-      writeLog: () => {},
+      logger: makeTestLogger().logger,
       ensureWorkspace: makeMockWorkspace(tmpDir),
       claimIssue: () => true,
       releaseIssue: () => {},
@@ -452,7 +470,7 @@ describe("SymphonyService", () => {
     const runner = makeMockRunner()
     const config = makeConfig()
 
-    const logs: string[] = []
+    const testLogger = makeTestLogger()
     const storage: Storage = {
       completed: {
         save() {},
@@ -491,7 +509,7 @@ describe("SymphonyService", () => {
       tracker,
       runner,
       storage,
-      writeLog: (line) => logs.push(line),
+      logger: testLogger.logger,
       ensureWorkspace: async () => {
         throw new Error("workspace creation failed")
       },
@@ -504,7 +522,111 @@ describe("SymphonyService", () => {
     await service.reconcileRunning()
     await new Promise((resolve) => setTimeout(resolve, 10))
 
-    expect(logs.some((l) => l.includes("dispatch unhandled error"))).toBe(true)
+    expect(testLogger.lines.some((l) => l.includes("dispatch unhandled error"))).toBe(true)
+    service.shutdown()
+  })
+
+  test("info レベルで start/done が出力される", async () => {
+    const issue = makeIssue()
+    const tracker = makeMockTrackerClient([issue])
+    const runner = makeMockRunner()
+    const config = makeConfig()
+
+    const testLogger = makeTestLogger("info")
+    const service = new SymphonyService(config, "Fix the bug.", {
+      tracker,
+      runner,
+      logger: testLogger.logger,
+      ensureWorkspace: makeMockWorkspace("/tmp/ws-test-info"),
+      claimIssue: () => true,
+      releaseIssue: () => {},
+    })
+
+    await service.refresh()
+    await service.waitForDispatches()
+    await service.reconcileRunning()
+
+    expect(testLogger.lines.some((l) => l.includes("start TEST-1"))).toBe(true)
+    expect(testLogger.lines.some((l) => l.includes("done TEST-1"))).toBe(true)
+    service.shutdown()
+  })
+
+  test("minLevel=info で debug ログがフィルタされる", async () => {
+    const issue = makeIssue()
+    const tracker = makeMockTrackerClient([issue])
+    const runner = makeMockRunner()
+    const config = makeConfig()
+
+    const testLogger = makeTestLogger("info")
+    const service = new SymphonyService(config, "Fix the bug.", {
+      tracker,
+      runner,
+      logger: testLogger.logger,
+      ensureWorkspace: makeMockWorkspace("/tmp/ws-test-filter"),
+      claimIssue: () => true,
+      releaseIssue: () => {},
+    })
+
+    await service.refresh()
+    await service.waitForDispatches()
+    await service.reconcileRunning()
+
+    expect(testLogger.entries.some((e) => e.level === "debug")).toBe(false)
+    expect(testLogger.entries.some((e) => e.level === "info")).toBe(true)
+    service.shutdown()
+  })
+
+  test("minLevel=debug で debug ログが出力される", async () => {
+    const issue = makeIssue()
+    const tracker = makeMockTrackerClient([issue])
+    const runner = makeMockRunner()
+    const config = makeConfig()
+
+    const testLogger = makeTestLogger("debug")
+    const service = new SymphonyService(config, "Fix the bug.", {
+      tracker,
+      runner,
+      logger: testLogger.logger,
+      ensureWorkspace: makeMockWorkspace("/tmp/ws-test-debug"),
+      claimIssue: () => true,
+      releaseIssue: () => {},
+    })
+
+    await service.refresh()
+    await service.waitForDispatches()
+    await service.reconcileRunning()
+
+    expect(testLogger.entries.some((e) => e.level === "debug")).toBe(true)
+    expect(testLogger.lines.some((l) => l.includes("tracker fetchCandidateIssues"))).toBe(true)
+    service.shutdown()
+  })
+
+  test("dispatch error が warn レベルで出力される", async () => {
+    const issue = makeIssue()
+    const tracker = makeMockTrackerClient([issue])
+    const runner = makeMockRunner()
+    const config = makeConfig()
+
+    const testLogger = makeTestLogger("debug")
+    const service = new SymphonyService(config, "Fix the bug.", {
+      tracker,
+      runner,
+      logger: testLogger.logger,
+      ensureWorkspace: async () => {
+        throw new Error("workspace creation failed")
+      },
+      claimIssue: () => true,
+      releaseIssue: () => {},
+    })
+
+    await service.refresh()
+    await service.waitForDispatches()
+    await service.reconcileRunning()
+    await new Promise((resolve) => setTimeout(resolve, 10))
+
+    expect(
+      testLogger.entries.some((e) => e.level === "warn" && e.line.includes("dispatch error")),
+    ).toBe(true)
     service.shutdown()
   })
 })

@@ -34,15 +34,8 @@ test("normalizeScreenOutput は agent pane の上枠線を正規化する", () =
 })
 
 test("normalizeOutput は running reconciliation の繰り返しを畳む", () => {
-  const reconciliation = [
-    "tracker fetchIssueStatesByIds start ids=1",
-    "tracker fetchCandidateIssues start",
-    "tracker scanStateDirectories start",
-    "tracker scanStateDirectories done count=1",
-    "tracker fetchCandidateIssues done count=1",
-    "reconcile running=1 refreshed=1",
-  ].join("\n")
-  expect(normalizeLogOutput(`${reconciliation}\n${reconciliation}`)).toBe(reconciliation)
+  const line = "reconcile running=1 refreshed=1"
+  expect(normalizeLogOutput(`${line}\n${line}`)).toBe(line)
 })
 
 test("normalizeLogOutput は各行の先頭スペースを除去する", () => {

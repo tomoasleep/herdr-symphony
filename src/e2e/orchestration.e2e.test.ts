@@ -113,36 +113,11 @@ test("e2e: herdr TUI + service log — agent が herdr 上で実行されて suc
     ).toMatchInlineSnapshot(`
       "
       MOCK_URL=http://MOCK_URL
-      reconcile running=0
-      tracker fetchCandidateIssues start
-      tracker fetchCandidateIssues start
-      tracker scanStateDirectories start
-      tracker scanStateDirectories done count=1
-      tracker fetchCandidateIssues done count=1
-      tracker fetchCandidateIssues done count=1
-      refresh candidates=1 dispatchable=1 running=0 retrying=0
       start test/repo#1 state=Ready
-      runtime resolved issue=test/repo#1 runner=herdr_agent workspaceProvider=git
-      workspace ready path=TEMP_DIR createdNow=false branch=none
       runner start kind=herdr_agent workspace=TEMP_DIR model=mock/agent-model
       [test/repo#1] [agent_started] agent_started
-      dispatch started issue=test/repo#1 sessionId=PANE_ID
-      tracker fetchIssueStatesByIds start ids=1
-      tracker fetchCandidateIssues start
-      tracker scanStateDirectories start
-      tracker scanStateDirectories done count=1
-      tracker fetchCandidateIssues done count=1
       reconcile running=1 refreshed=1
       [test/repo#1] [agent_status] agent_status
-      tracker moveIssueToState start issue=test-issue-1 state=Done
-      tracker moveIssueToState issue=test-issue-1 state=Done
-      tracker fetchCandidateIssues start
-      tracker scanStateDirectories start
-      tracker scanStateDirectories done count=1
-      tracker fetchCandidateIssues done count=1
-      tracker moveIssueToState done issue=test-issue-1 from=Ready to=Done
-      tracker moveIssueToState done issue=test-issue-1 state=Done
-      runner done issue=test/repo#1 status=succeeded error=none
       done test/repo#1 status=succeeded"
     `)
   } finally {

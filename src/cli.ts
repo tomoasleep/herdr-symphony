@@ -1,8 +1,11 @@
 import path from "node:path"
 import { type StartOptions, startHerdrSymphony } from "./app"
+import type { LogLevel } from "./logging/types"
 import { type ReportStatus, writeReport } from "./report/write-report"
 import { formatError } from "./utils/error"
 import { loadWorkflow } from "./workflow/load-workflow"
+
+const VALID_LOG_LEVELS: ReadonlySet<string> = new Set(["debug", "info", "warn", "error"])
 
 type CliDependencies = {
   cwd?: string
@@ -71,7 +74,7 @@ export async function runCli(argv: string[], deps: CliDependencies = {}): Promis
       return 0
     }
 
-    await start(workflowPaths, {})
+    await start(workflowPaths, { logLevel: parsed.logLevel ?? undefined })
     return 0
   } catch (error) {
     write(`${formatError(error)}\n`)
@@ -85,6 +88,7 @@ type ParsedArgs = {
   report: boolean
   reportStatus: ReportStatus | null
   reportSummary: string | null
+  logLevel: LogLevel | null
   workflowPaths: string[]
   positionalPaths: string[]
 }
@@ -95,6 +99,7 @@ function parseArgs(argv: string[]): ParsedArgs {
   let report = false
   let reportStatus: ReportStatus | null = null
   let reportSummary: string | null = null
+  let logLevel: LogLevel | null = null
   const workflowPaths: string[] = []
   const positionalPaths: string[] = []
 
@@ -161,6 +166,23 @@ function parseArgs(argv: string[]): ParsedArgs {
       continue
     }
 
+    if (arg === "--log-level") {
+      const level = argv[index + 1]
+      if (level && VALID_LOG_LEVELS.has(level)) {
+        logLevel = level as LogLevel
+      }
+      index += 1
+      continue
+    }
+
+    if (arg.startsWith("--log-level=")) {
+      const level = arg.slice("--log-level=".length)
+      if (VALID_LOG_LEVELS.has(level)) {
+        logLevel = level as LogLevel
+      }
+      continue
+    }
+
     if (arg.startsWith("-")) {
       continue
     }
@@ -168,7 +190,16 @@ function parseArgs(argv: string[]): ParsedArgs {
     positionalPaths.push(arg)
   }
 
-  return { help, validate, report, reportStatus, reportSummary, workflowPaths, positionalPaths }
+  return {
+    help,
+    validate,
+    report,
+    reportStatus,
+    reportSummary,
+    logLevel,
+    workflowPaths,
+    positionalPaths,
+  }
 }
 
 function resolveWorkflowPaths(
@@ -207,6 +238,7 @@ function usage(): string {
     "Options:",
     "  -w, --workflow <path>  Use a workflow file",
     "  -h, --help             Show help",
+    "  --log-level <level>    Log level (debug / info / warn / error)",
     "  --status <status>      Report status (done / pending / failed)",
     "  --summary <text>       Report summary text",
   ].join("\n")

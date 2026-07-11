@@ -69,6 +69,62 @@ describe("runCli", () => {
     expect(receivedPaths).toEqual(["/a/WORKFLOW.md", "/b/WORKFLOW.md"])
   })
 
+  test("--log-level debug を start に渡す", async () => {
+    let receivedOptions: { logLevel?: string } | undefined
+    const code = await runCli(["--log-level", "debug"], {
+      cwd: "/test",
+      env: {},
+      start: async (_paths, options) => {
+        receivedOptions = options
+      },
+      write: () => {},
+    })
+    expect(code).toBe(0)
+    expect(receivedOptions?.logLevel).toBe("debug")
+  })
+
+  test("--log-level=info 形式も対応する", async () => {
+    let receivedOptions: { logLevel?: string } | undefined
+    const code = await runCli(["--log-level=info"], {
+      cwd: "/test",
+      env: {},
+      start: async (_paths, options) => {
+        receivedOptions = options
+      },
+      write: () => {},
+    })
+    expect(code).toBe(0)
+    expect(receivedOptions?.logLevel).toBe("info")
+  })
+
+  test("--log-level 未指定時は logLevel は undefined", async () => {
+    let receivedOptions: { logLevel?: string } | undefined
+    const code = await runCli([], {
+      cwd: "/test",
+      env: {},
+      start: async (_paths, options) => {
+        receivedOptions = options
+      },
+      write: () => {},
+    })
+    expect(code).toBe(0)
+    expect(receivedOptions?.logLevel).toBeUndefined()
+  })
+
+  test("--log-level に無効な値を指定した場合は無視される", async () => {
+    let receivedOptions: { logLevel?: string } | undefined
+    const code = await runCli(["--log-level", "verbose"], {
+      cwd: "/test",
+      env: {},
+      start: async (_paths, options) => {
+        receivedOptions = options
+      },
+      write: () => {},
+    })
+    expect(code).toBe(0)
+    expect(receivedOptions?.logLevel).toBeUndefined()
+  })
+
   test("workflow 未指定時は WORKFLOW_PATH 環境変数を使う", async () => {
     let receivedPaths: string[] = []
     const code = await runCli([], {

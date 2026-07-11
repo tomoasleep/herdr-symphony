@@ -1,5 +1,6 @@
 import path from "node:path"
 import { resolveConfig } from "./config/resolve-config"
+import type { LogLevel } from "./logging/types"
 import { GlobalClaimRegistry } from "./orchestrator/global-claim-registry"
 import { SymphonyService } from "./service"
 import { createStorage, DEFAULT_STORAGE_CONFIG } from "./storage/create-storage"
@@ -7,7 +8,7 @@ import type { Storage } from "./storage/types"
 import { loadWorkflow } from "./workflow/load-workflow"
 
 export type StartOptions = {
-  writeLog?: (line: string) => void
+  logLevel?: LogLevel
   storageConfig?: Partial<{
     databasePath: string
     completedRetention: number
@@ -55,7 +56,7 @@ export async function startHerdrSymphony(
     deps.createService ??
     ((config, promptTemplate, runtimeOptions, input) =>
       new SymphonyService(config, promptTemplate, {
-        ...runtimeOptions,
+        logLevel: runtimeOptions.logLevel ?? "info",
         workflowId: input.workflowId,
         workflowName: input.workflowName,
         storage: input.storage ?? undefined,
