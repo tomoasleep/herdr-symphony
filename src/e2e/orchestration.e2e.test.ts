@@ -5,6 +5,7 @@ import {
   captureOutput,
   createHerdrIsolation,
   createSessionManager,
+  debugExecArgs,
   execInContainer,
 } from "../test-utils/e2e-helpers"
 import { plainResponse, writeScenarioConfig } from "../test-utils/e2e-scenario-config"
@@ -23,7 +24,7 @@ test("e2e: herdr TUI + service log — agent が herdr 上で実行されて suc
     const herdrSession = register(
       await launchTerminal({
         command: "docker",
-        args: ["exec", "-it", herdr.containerId, "herdr"],
+        args: debugExecArgs(herdr.containerId, ["herdr"]),
         cwd: projectRoot,
         cols: 160,
         rows: 40,
@@ -48,16 +49,11 @@ test("e2e: herdr TUI + service log — agent が herdr 上で実行されて suc
     const scenarioSession = register(
       await launchTerminal({
         command: "docker",
-        args: [
-          "exec",
-          "-it",
-          "-e",
-          `SCENARIO_CONFIG_PATH=${containerPath}`,
+        args: debugExecArgs(
           herdr.containerId,
-          "bun",
-          "run",
-          "/workspace/src/test-utils/e2e-scenario.ts",
-        ],
+          ["bun", "run", "/workspace/src/test-utils/e2e-scenario.ts"],
+          { SCENARIO_CONFIG_PATH: containerPath },
+        ),
         cwd: projectRoot,
         cols: 200,
         rows: 36,

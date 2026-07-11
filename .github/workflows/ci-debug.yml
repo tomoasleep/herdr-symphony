@@ -1,0 +1,42 @@
+name: CI Debug
+
+on:
+  push:
+    branches: [configure-ci]
+
+jobs:
+  debug:
+    name: E2E debug experiments
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.9
+
+      - run: bun install --frozen-lockfile
+
+      - name: Install herdr
+        run: curl -fsSL https://herdr.dev/install.sh | sh
+
+      - name: Install claude-code
+        run: npm install -g @anthropic-ai/claude-code
+
+      - name: Add herdr to PATH
+        run: echo "$HOME/.local/bin" >> $GITHUB_PATH
+
+      - run: bun run test:e2e:build
+
+      - name: Experiment A - stty size inside container via tuistory
+        run: bun run tmp/debug-stty.ts
+
+      - name: Experiment B - E2E with TERM=xterm-truecolor
+        env:
+          DEBUG_TERM: "xterm-truecolor"
+        run: bun test src/e2e 2>&1 || true
+
+      - name: Experiment C - E2E with stty cols/rows
+        env:
+          DEBUG_STTY: "1"
+        run: bun test src/e2e 2>&1 || true

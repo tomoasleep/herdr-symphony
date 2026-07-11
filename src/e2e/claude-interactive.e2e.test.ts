@@ -4,6 +4,7 @@ import { launchTerminal, type Session } from "tuistory"
 import {
   createHerdrIsolation,
   createSessionManager,
+  debugExecArgs,
   execInContainer,
   normalizeScreenOutput,
 } from "../test-utils/e2e-helpers"
@@ -90,7 +91,7 @@ test("e2e: claude 対話モード — agent の画面全体を確認できる", 
     const herdrSession = register(
       await launchTerminal({
         command: "docker",
-        args: ["exec", "-it", herdr.containerId, "herdr"],
+        args: debugExecArgs(herdr.containerId, ["herdr"]),
         cwd: projectRoot,
         cols: 160,
         rows: 40,
@@ -116,16 +117,11 @@ test("e2e: claude 対話モード — agent の画面全体を確認できる", 
     const scenarioSession = register(
       await launchTerminal({
         command: "docker",
-        args: [
-          "exec",
-          "-it",
-          "-e",
-          `SCENARIO_CONFIG_PATH=${containerPath}`,
+        args: debugExecArgs(
           herdr.containerId,
-          "bun",
-          "run",
-          "/workspace/src/test-utils/e2e-scenario.ts",
-        ],
+          ["bun", "run", "/workspace/src/test-utils/e2e-scenario.ts"],
+          { SCENARIO_CONFIG_PATH: containerPath },
+        ),
         cwd: projectRoot,
         cols: 200,
         rows: 36,
@@ -197,7 +193,7 @@ test("e2e: claude report 未送信の idle — agent の画面全体を確認で
     const herdrSession = register(
       await launchTerminal({
         command: "docker",
-        args: ["exec", "-it", herdr.containerId, "herdr"],
+        args: debugExecArgs(herdr.containerId, ["herdr"]),
         cwd: projectRoot,
         cols: 160,
         rows: 40,
@@ -223,16 +219,11 @@ test("e2e: claude report 未送信の idle — agent の画面全体を確認で
     const scenarioSession = register(
       await launchTerminal({
         command: "docker",
-        args: [
-          "exec",
-          "-it",
-          "-e",
-          `SCENARIO_CONFIG_PATH=${containerPath}`,
+        args: debugExecArgs(
           herdr.containerId,
-          "bun",
-          "run",
-          "/workspace/src/test-utils/e2e-scenario.ts",
-        ],
+          ["bun", "run", "/workspace/src/test-utils/e2e-scenario.ts"],
+          { SCENARIO_CONFIG_PATH: containerPath },
+        ),
         cwd: projectRoot,
         cols: 200,
         rows: 36,
@@ -304,7 +295,7 @@ test("e2e: claude report_file モード — herdr-symphony report で完了報�
     const herdrSession = register(
       await launchTerminal({
         command: "docker",
-        args: ["exec", "-it", herdr.containerId, "herdr"],
+        args: debugExecArgs(herdr.containerId, ["herdr"]),
         cwd: projectRoot,
         cols: 160,
         rows: 40,
@@ -331,16 +322,11 @@ test("e2e: claude report_file モード — herdr-symphony report で完了報�
     const scenarioSession = register(
       await launchTerminal({
         command: "docker",
-        args: [
-          "exec",
-          "-it",
-          "-e",
-          `SCENARIO_CONFIG_PATH=${containerPath}`,
+        args: debugExecArgs(
           herdr.containerId,
-          "bun",
-          "run",
-          "/workspace/src/test-utils/e2e-scenario.ts",
-        ],
+          ["bun", "run", "/workspace/src/test-utils/e2e-scenario.ts"],
+          { SCENARIO_CONFIG_PATH: containerPath },
+        ),
         cwd: projectRoot,
         cols: 200,
         rows: 36,

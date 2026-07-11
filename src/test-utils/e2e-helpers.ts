@@ -1,6 +1,7 @@
 import { afterEach } from "bun:test"
 import { spawn } from "node:child_process"
 import { mkdir, rm } from "node:fs/promises"
+import type { LaunchOptions } from "tuistory"
 import type { Session } from "tuistory"
 
 export function stripHerdrEnv(src: NodeJS.ProcessEnv): Record<string, string> {
@@ -170,4 +171,23 @@ export async function execInContainer(
   timeoutMs = 30_000,
 ): Promise<{ stdout: string; stderr: string; exitCode: number }> {
   return runDocker(["exec", containerId, ...command], timeoutMs)
+}
+
+export function debugExecArgs(containerId: string, command: string[], env?: Record<string, string>): string[] {
+  const debugTerm = process.env.DEBUG_TERM
+  const debugStty = process.env.DEBUG_STTY
+
+  const extraArgs: string[] = []
+  if (debugTerm) {
+    extraArgs.push("-e", `TERM=${debugTerm}`)
+  }
+  if (env) {
+    for (const [key, value] of Object.entries(env)) {
+      extraArgs.push("-e", `${key}=${value}`)
+    }
+  }
+  if (debugStty) {
+    return ["exec", "-it", ...extraArgs, containerId, "bash", "-c", `stty cols 160 rows 40 && ${command.join(" ")}`]
+  }
+  return ["exec", "-it", ...extraArgs, containerId, ...command]
 }
