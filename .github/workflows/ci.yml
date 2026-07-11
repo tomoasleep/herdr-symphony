@@ -49,6 +49,15 @@ jobs:
 
       - run: bun install --frozen-lockfile
 
+      - name: Install herdr
+        run: curl -fsSL https://herdr.dev/install.sh | sh
+
+      - name: Install claude-code
+        run: npm install -g @anthropic-ai/claude-code
+
+      - name: Add herdr to PATH
+        run: echo "$HOME/.local/bin" >> $GITHUB_PATH
+
       - run: bun run test:e2e:build
 
       - run: bun run test:e2e
