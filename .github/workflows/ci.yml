@@ -46,5 +46,8 @@ jobs:
       - name: Build E2E Docker image
         run: docker build -f docker/e2e/Dockerfile -t herdr-e2e:latest .
 
-      - name: Run E2E tests in container
-        run: docker run --rm -v "$PWD:/workspace" -w /workspace herdr-e2e:latest bun test src/e2e
+      - name: Run orchestration E2E test
+        run: docker run --rm herdr-e2e:latest bun test src/e2e/orchestration.e2e.test.ts
+
+      - name: Run Claude E2E tests
+        run: docker run --rm herdr-e2e:latest bun test src/e2e/claude-interactive.e2e.test.ts
