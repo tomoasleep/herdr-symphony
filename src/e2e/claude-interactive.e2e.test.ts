@@ -355,11 +355,11 @@ test("e2e: claude report_file モード — herdr-symphony report で完了報�
        spaces                  │ 1 Z     +
                                │┌▌ test-claude-ID-e2e-test-TS-TS ────────────────────────────────────────────────────────────────────────────────┐
        · workspace             ││╭─── Claude Code VERSION ────────────────────────────────────────────────────────────────────────────────────────────────────────╮ │
-         main                  │││                                                    │ What's new                                                                 │ │
-                               │││                    Welcome back!                   │ Added directory path suggestions to \`/cd\`, matching \`/add-dir\` behavior    │ │
-       ○ test-claude-ID│││                                                    │ Added a \`/doctor\` check that proposes trimming checked-in \`CLAUDE.md\` fil… │ │
-         master                │││                       ▐▛███▜▌                      │ \`/commit-push-pr\` now auto-allows \`git push\` to the repo's configured pus… │ │
-                               │││                      ▝▜█████▛▘                     │ /release-notes for more                                                    │ │
+         main                  │││                                                    │ WHAT_NEW │ │
+                               │││                    Welcome back!                   │ CLAUDE_WHATS_NEW_LINE │
+       ○ test-claude-ID│││                                                    │ CLAUDE_WHATS_NEW_LINE │
+         master                │││                       ▐▛███▜▌                      │ CLAUDE_WHATS_NEW_LINE │
+                               │││                      ▝▜█████▛▘                     │ CLAUDE_WHATS_NEW_LINE │
                                │││                        ▘▘ ▝▝                       │                                                                            │ │
                                │││                                                    │                                                                            │ │
                                │││      Opus 4.8 (1M context) · API Usage Billing     │                                                                            │ │
