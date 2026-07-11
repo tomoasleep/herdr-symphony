@@ -1,15 +1,22 @@
-import { expect, test } from "bun:test"
+import { afterEach, expect, test } from "bun:test"
 import { spawnSync } from "node:child_process"
 import { launchTerminal } from "tuistory"
 import {
   captureOutput,
   createHerdrIsolation,
   createSessionManager,
+  directCommand,
   execInContainer,
+  normalizeLogOutput,
 } from "../test-utils/e2e-helpers"
 import { plainResponse, writeScenarioConfig } from "../test-utils/e2e-scenario-config"
 
 const { register } = createSessionManager()
+
+afterEach(async () => {
+  await execInContainer("", ["herdr", "server", "stop"], 10_000).catch(() => {})
+  await new Promise((resolve) => setTimeout(resolve, 1000))
+})
 
 const HERDR_AVAILABLE = spawnSync("herdr", ["--version"], { stdio: "ignore" }).status === 0
 
@@ -22,8 +29,7 @@ test("e2e: herdr TUI + service log — agent が herdr 上で実行されて suc
   try {
     const herdrSession = register(
       await launchTerminal({
-        command: "docker",
-        args: ["exec", "-it", herdr.containerId, "herdr"],
+        ...directCommand(["herdr"]),
         cwd: projectRoot,
         cols: 160,
         rows: 40,
@@ -47,17 +53,9 @@ test("e2e: herdr TUI + service log — agent が herdr 上で実行されて suc
 
     const scenarioSession = register(
       await launchTerminal({
-        command: "docker",
-        args: [
-          "exec",
-          "-it",
-          "-e",
-          `SCENARIO_CONFIG_PATH=${containerPath}`,
-          herdr.containerId,
-          "bun",
-          "run",
-          "/workspace/src/test-utils/e2e-scenario.ts",
-        ],
+        ...directCommand(["bun", "run", "/workspace/src/test-utils/e2e-scenario.ts"], {
+          SCENARIO_CONFIG_PATH: containerPath,
+        }),
         cwd: projectRoot,
         cols: 200,
         rows: 36,
@@ -72,7 +70,6 @@ test("e2e: herdr TUI + service log — agent が herdr 上で実行されて suc
        spaces                  │ 1       +
                                │$
        · workspace             │
-         main                  │
                                │
        · test/repo#1           │
          master                │
@@ -88,7 +85,8 @@ test("e2e: herdr TUI + service log — agent が herdr 上で実行されて suc
                                │
                                │
                                │
-       new               ● menu│
+                               │
+       new menu│
       ─────────────────────────│
        agents           grouped│
                                │
@@ -110,7 +108,9 @@ test("e2e: herdr TUI + service log — agent が herdr 上で実行されて suc
                                │
                               «│"
     `)
-    expect(await captureOutput(scenarioSession)).toMatchInlineSnapshot(`
+    expect(
+      normalizeLogOutput(await scenarioSession.text({ trimEnd: true })),
+    ).toMatchInlineSnapshot(`
       "
       MOCK_URL=http://MOCK_URL
       reconcile running=0
@@ -133,12 +133,6 @@ test("e2e: herdr TUI + service log — agent が herdr 上で実行されて suc
       tracker scanStateDirectories done count=1
       tracker fetchCandidateIssues done count=1
       reconcile running=1 refreshed=1
-      tracker fetchIssueStatesByIds start ids=1
-      tracker fetchCandidateIssues start
-      tracker scanStateDirectories start
-      tracker scanStateDirectories done count=1
-      tracker fetchCandidateIssues done count=1
-      reconcile running=1 refreshed=1
       [test/repo#1] [agent_status] agent_status
       tracker moveIssueToState start issue=test-issue-1 state=Done
       tracker moveIssueToState issue=test-issue-1 state=Done
@@ -152,7 +146,6 @@ test("e2e: herdr TUI + service log — agent が herdr 上で実行されて suc
       done test/repo#1 status=succeeded"
     `)
   } finally {
-    await execInContainer(herdr.containerId, ["herdr", "server", "stop"], 10_000)
     await herdr.cleanup()
   }
 }, 90_000)

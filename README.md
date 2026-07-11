@@ -164,7 +164,7 @@ agmsg が必要です（`~/.agents/skills/agmsg/scripts/send.sh` が存在する
 
 ```yaml
 workspace:
-  provider: gwq              # "gwq" または "git" (デフォルト: gwq)
+  provider: gwq              # "gwq", "git", または "none" (デフォルト: gwq)
   reuse_existing: true       # 既存 worktree を再利用 (デフォルト: true)
   create_if_missing: true    # 存在しない場合は作成 (デフォルト: true)
   branch: '...'              # branch 名 (Liquid 可)
@@ -172,6 +172,8 @@ workspace:
     command: gwq             # gwq コマンド (デフォルト: gwq)
     create_branch: true      # gwq add -b を使う (デフォルト: true)
 ```
+
+`provider: none` を指定すると worktree を作成せず、リポジトリルート（`git rev-parse --show-toplevel`）で直接作業します。ブランチの checkout 等は行いません。並列実行時は同じディレクトリで競合する可能性があるため警告が出力されます。
 
 ### 状態遷移
 

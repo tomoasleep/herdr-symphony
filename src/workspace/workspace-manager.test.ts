@@ -494,4 +494,89 @@ describe("ensureWorkspace", () => {
       ).rejects.toThrow("ghq repository not found: tomoasleep/fairy")
     })
   })
+
+  describe("none provider", () => {
+    const issue = {
+      id: "1",
+      identifier: "ABC/123",
+      title: "task",
+      description: null,
+      priority: 1,
+      state: "Backlog",
+      repository: "/repos/fairy",
+      fields: {
+        Worktree: "feature/abc-123",
+      },
+      url: null,
+      labels: [],
+      blockedBy: [],
+      createdAt: null,
+      updatedAt: null,
+    }
+
+    test("worktree を作らず repositoryRoot を返す", async () => {
+      const calls: Array<{ command: string; args: string[]; cwd: string }> = []
+      const runner = async (command: string, args: string[], cwd: string) => {
+        calls.push({ command, args, cwd })
+        if (args[0] === "rev-parse") {
+          return { exitCode: 0, stdout: "/repos/fairy\n", stderr: "" }
+        }
+        throw new Error(`unexpected command: ${command} ${args.join(" ")}`)
+      }
+
+      const result = await ensureWorkspace(issue, makeWorkspaceConfig({ provider: "none" }), {
+        runGit: runner,
+      })
+
+      expect(result.path).toBe("/repos/fairy")
+      expect(result.repositoryRoot).toBe("/repos/fairy")
+      expect(result.branch).toBeNull()
+      expect(result.createdNow).toBeFalse()
+      expect(calls).toHaveLength(1)
+      expect(calls[0]).toEqual({
+        command: "git",
+        args: ["rev-parse", "--show-toplevel"],
+        cwd: "/repos/fairy",
+      })
+    })
+
+    test("worktree add や gwq add は呼ばれない", async () => {
+      const calls: Array<{ command: string; args: string[]; cwd: string }> = []
+      const runner = async (command: string, args: string[], cwd: string) => {
+        calls.push({ command, args, cwd })
+        if (args[0] === "rev-parse") {
+          return { exitCode: 0, stdout: "/repos/fairy\n", stderr: "" }
+        }
+        throw new Error(`unexpected command: ${command} ${args.join(" ")}`)
+      }
+
+      await ensureWorkspace(issue, makeWorkspaceConfig({ provider: "none" }), {
+        runGit: runner,
+      })
+
+      const worktreeAddCalls = calls.filter((c) => c.args[0] === "worktree" && c.args[1] === "add")
+      const gwqAddCalls = calls.filter((c) => c.command === "gwq" && c.args[0] === "add")
+      expect(worktreeAddCalls).toHaveLength(0)
+      expect(gwqAddCalls).toHaveLength(0)
+    })
+
+    test("repository が未設定なら cwd を基準に解決する", async () => {
+      const calls: Array<{ command: string; args: string[]; cwd: string }> = []
+      const noRepoIssue = { ...issue, repository: null }
+      const runner = async (command: string, args: string[], cwd: string) => {
+        calls.push({ command, args, cwd })
+        if (args[0] === "rev-parse") {
+          return { exitCode: 0, stdout: "/repos/fairy\n", stderr: "" }
+        }
+        throw new Error(`unexpected command: ${command} ${args.join(" ")}`)
+      }
+
+      const result = await ensureWorkspace(noRepoIssue, makeWorkspaceConfig({ provider: "none" }), {
+        runGit: runner,
+      })
+
+      expect(result.path).toBe("/repos/fairy")
+      expect(calls[0]?.cwd).toBe(process.cwd())
+    })
+  })
 })

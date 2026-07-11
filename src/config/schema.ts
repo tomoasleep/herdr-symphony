@@ -262,7 +262,7 @@ export function resolveConfigFromSchema(input: unknown): ServiceConfig {
       workspace: {
         provider:
           typeof work.workspace?.provider === "string"
-            ? (work.workspace.provider.trim() as "git" | "gwq")
+            ? (work.workspace.provider.trim() as "git" | "gwq" | "none")
             : "gwq",
         reuseExisting: work.workspace?.reuse_existing !== false,
         createIfMissing: work.workspace?.create_if_missing !== false,
@@ -324,7 +324,11 @@ export function validateDispatchConfig(config: ServiceConfig): void {
     )
   }
 
-  if (config.work.workspace.provider !== "git" && config.work.workspace.provider !== "gwq") {
+  if (
+    config.work.workspace.provider !== "git" &&
+    config.work.workspace.provider !== "gwq" &&
+    config.work.workspace.provider !== "none"
+  ) {
     throw new WorkflowError(
       ErrorCode.UNSUPPORTED_WORKSPACE_PROVIDER,
       `unsupported workspace provider: ${config.work.workspace.provider}`,

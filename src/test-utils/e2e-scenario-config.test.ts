@@ -208,7 +208,7 @@ test("writeScenarioConfig は sharedDir/scenario-*.json に書き hostPath/conta
     })
     expect(hostPath.startsWith(dir)).toBe(true)
     expect(hostPath).toMatch(/scenario-[a-z0-9]+\.json$/)
-    expect(containerPath).toMatch(/^\/tmp\/shared\/scenario-[a-z0-9]+\.json$/)
+    expect(containerPath).toBe(hostPath)
 
     const content = await readFile(hostPath, "utf8")
     const parsed = JSON.parse(content)

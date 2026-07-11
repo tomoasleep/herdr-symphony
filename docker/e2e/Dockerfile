@@ -54,7 +54,9 @@ RUN printf '%s\n' \
 RUN mkdir -p /home/agent/.claude && \
     printf '%s\n' '{"theme":"dark","hasCompletedOnboarding":true}' > /home/agent/.claude/settings.json
 
-RUN curl -fsSL https://github.com/anomalyco/opencode/releases/download/v1.17.13/opencode-linux-arm64.tar.gz -o /tmp/opencode.tar.gz \
+ARG TARGETARCH
+RUN case "$TARGETARCH" in amd64) opencode_arch=x64 ;; arm64) opencode_arch=arm64 ;; *) exit 1 ;; esac \
+    && curl -fsSL "https://github.com/anomalyco/opencode/releases/download/v1.17.13/opencode-linux-${opencode_arch}.tar.gz" -o /tmp/opencode.tar.gz \
     && tar xzf /tmp/opencode.tar.gz -C /tmp \
     && mkdir -p /home/agent/.opencode/bin \
     && mv /tmp/opencode /home/agent/.opencode/bin/opencode \
@@ -62,4 +64,8 @@ RUN curl -fsSL https://github.com/anomalyco/opencode/releases/download/v1.17.13/
     && rm -rf /tmp/opencode*
 ENV PATH="/home/agent/.opencode/bin:${PATH}"
 
+COPY --chown=agent:agent package.json bun.lock /workspace/
 WORKDIR /workspace
+RUN bun install --frozen-lockfile
+
+COPY --chown=agent:agent . /workspace/

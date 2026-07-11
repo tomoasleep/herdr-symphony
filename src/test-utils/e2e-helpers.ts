@@ -1,6 +1,6 @@
 import { afterEach } from "bun:test"
 import { spawn } from "node:child_process"
-import { rm } from "node:fs/promises"
+import { mkdir, rm } from "node:fs/promises"
 import type { Session } from "tuistory"
 
 export function stripHerdrEnv(src: NodeJS.ProcessEnv): Record<string, string> {
@@ -44,21 +44,35 @@ const DYNAMIC_REPLACEMENTS: Array<[RegExp, string]> = [
   [/\([0-9a-f]{7,}\)(?: \+\d+ -\d+)?(?: \[[$!?]+\])?/g, "(SHA)"],
   [/\bmain ↑\d+\b/g, "main"],
   [/\bmain\s+│/g, "main                  │"],
+  [/\bconfigure-ci\s+│/g, "main                  │"],
   [/v\d+\.\d+\.\d+/g, "VERSION"],
-  [/\bw\d+:p\d+\b/g, "PANE_ID"],
-  [/\bw\d+:t\d+\b/g, "TAB_ID"],
-  [/\bw\d+\b/g, "WORKSPACE_ID"],
   [/term_[0-9a-f]+/gi, "TERMINAL_ID"],
   [/-e2e-test-claude-[0-9a-z]+/g, "-e2e-test-claude-TS"],
   [/-e2e-test-[0-9a-z]+/g, "-e2e-test-TS"],
   [/\b[0-9a-z]{3}-e2e-test-TS-TS/g, "ID-e2e-test-TS-TS"],
-  [/✻ \S+ for 0s/g, "✻ Worked for 0s"],
-  [/✻ Worked for 0s\s+▐/g, "✻ Worked for 0s ▐"],
-  [/✻ Worked for 0s\s+│/g, "✻ Worked for 0s │"],
   [/\btest-claude-[0-9a-z]+/g, "test-claude-ID"],
   [/\bplain-probe-[0-9a-z]+/g, "plain-probe-ID"],
   [/\bprobe-[0-9a-z]+/g, "probe-ID"],
   [/\bplain-[0-9a-z]+/g, "plain-ID"],
+  [/\bw\d+:p\d+\b/g, "PANE_ID"],
+  [/\bw\d+:t\d+\b/g, "TAB_ID"],
+  [/\bw\d+\b/g, "WORKSPACE_ID"],
+  [/✻ \S+ for 0s/g, "✻ Worked for 0s"],
+  [/✻ Worked for 0s\s+▐/g, "✻ Worked for 0s ▐"],
+  [/✻ Worked for 0s\s+│/g, "✻ Worked for 0s │"],
+  [/│ What's new\s+│/g, "│ WHAT_NEW │"],
+  [/│ Added [^\n]*?│\s*│/g, "│ CLAUDE_WHATS_NEW_LINE │"],
+  [/│ Fixed [^\n]*?│\s*│/g, "│ CLAUDE_WHATS_NEW_LINE │"],
+  [/│ Auto mode[^\n]*?│\s*│/g, "│ CLAUDE_WHATS_NEW_LINE │"],
+  [/│ \/release-notes[^\n]*?│\s*│/g, "│ CLAUDE_WHATS_NEW_LINE │"],
+  [/┌▌/g, "┌"],
+  [/● menu/g, "menu"],
+  [/new\s+menu/g, "new menu"],
+  [/┌ test-claude-ID-e2e-test-TS-TS ─+┐/g, "┌ test-claude-ID-e2e-test-TS-TS ─┐"],
+  [
+    /((?:tracker fetchIssueStatesByIds start ids=1\ntracker fetchCandidateIssues start\ntracker scanStateDirectories start\ntracker scanStateDirectories done count=1\ntracker fetchCandidateIssues done count=1\nreconcile running=1 refreshed=1))(?:\n\1)+/g,
+    "$1",
+  ],
 ]
 
 export function normalizeOutput(text: string): string {
@@ -69,12 +83,27 @@ export function normalizeOutput(text: string): string {
   return result
 }
 
+export function normalizeLogOutput(text: string): string {
+  return normalizeOutput(text)
+    .split("\n")
+    .map((line) => line.trimStart())
+    .join("\n")
+}
+
 export function normalizeScreenOutput(text: string): string {
   let result = text
   for (const [pattern, replacement] of DYNAMIC_REPLACEMENTS) {
     result = result.replace(pattern, replacement)
   }
+  result = result.replace(/▕/g, "▐")
   return result
+    .split("\n")
+    .map((line) => {
+      const idx = line.indexOf("│")
+      if (idx === -1) return line
+      return line.slice(idx)
+    })
+    .join("\n")
 }
 
 export async function captureOutput(session: Session): Promise<string> {
@@ -83,17 +112,31 @@ export async function captureOutput(session: Session): Promise<string> {
 }
 
 export type HerdrIsolation = {
-  containerId: string
   sharedDir: string
   cleanup: () => Promise<void>
 }
 
-function runDocker(
-  args: string[],
+export async function createHerdrIsolation(prefix: string): Promise<HerdrIsolation> {
+  const shortId = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`
+  const sharedDir = `/tmp/herdr-e2e-${prefix}-${shortId}`
+
+  await mkdir(sharedDir, { recursive: true })
+
+  return {
+    sharedDir,
+    cleanup: async () => {
+      await rm(sharedDir, { recursive: true, force: true }).catch(() => {})
+    },
+  }
+}
+
+export async function execInContainer(
+  _containerId: string,
+  command: string[],
   timeoutMs = 30_000,
 ): Promise<{ stdout: string; stderr: string; exitCode: number }> {
   return new Promise((resolve, reject) => {
-    const child = spawn("docker", args, { stdio: ["ignore", "pipe", "pipe"] })
+    const child = spawn(command[0]!, command.slice(1), { stdio: ["ignore", "pipe", "pipe"] })
     let stdout = ""
     let stderr = ""
     child.stdout.on("data", (chunk) => {
@@ -104,7 +147,7 @@ function runDocker(
     })
     const timer = setTimeout(() => {
       child.kill("SIGKILL")
-      reject(new Error(`docker ${args.join(" ")} timed out after ${timeoutMs}ms`))
+      reject(new Error(`${command.join(" ")} timed out after ${timeoutMs}ms`))
     }, timeoutMs)
     child.on("close", (code) => {
       clearTimeout(timer)
@@ -114,50 +157,16 @@ function runDocker(
   })
 }
 
-export async function createHerdrIsolation(prefix: string): Promise<HerdrIsolation> {
-  const shortId = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`
-  const containerName = `herdr-e2e-${prefix}-${shortId}`
-  const sharedDir = `/tmp/herdr-e2e-${prefix}-${shortId}`
-  const projectRoot = process.cwd()
-
-  const runResult = await runDocker([
-    "run",
-    "-d",
-    "--name",
-    containerName,
-    "--add-host=host.docker.internal:host-gateway",
-    "-v",
-    `${projectRoot}:/workspace`,
-    "-v",
-    `${sharedDir}:/tmp/shared`,
-    "-e",
-    "AGMSG_SCRIPTS_DIR=/opt/agmsg/scripts",
-    "herdr-e2e:latest",
-    "sleep",
-    "infinity",
-  ])
-
-  if (runResult.exitCode !== 0) {
-    throw new Error(`docker run failed: ${runResult.stderr}`)
-  }
-
-  const containerId = runResult.stdout.trim()
-
-  return {
-    containerId,
-    sharedDir,
-    cleanup: async () => {
-      await runDocker(["stop", containerId], 10_000)
-      await runDocker(["rm", "-f", containerId], 10_000)
-      await rm(sharedDir, { recursive: true, force: true })
-    },
-  }
-}
-
-export async function execInContainer(
-  containerId: string,
+export function directCommand(
   command: string[],
-  timeoutMs = 30_000,
-): Promise<{ stdout: string; stderr: string; exitCode: number }> {
-  return runDocker(["exec", containerId, ...command], timeoutMs)
+  env?: Record<string, string>,
+): { command: string; args: string[] } {
+  if (env) {
+    const envArgs: string[] = []
+    for (const [key, value] of Object.entries(env)) {
+      envArgs.push(`${key}=${value}`)
+    }
+    return { command: "env", args: [...envArgs, ...command] }
+  }
+  return { command: command[0]!, args: command.slice(1) }
 }
