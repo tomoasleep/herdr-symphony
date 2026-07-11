@@ -44,6 +44,7 @@ const DYNAMIC_REPLACEMENTS: Array<[RegExp, string]> = [
   [/\([0-9a-f]{7,}\)(?: \+\d+ -\d+)?(?: \[[$!?]+\])?/g, "(SHA)"],
   [/\bmain ↑\d+\b/g, "main"],
   [/\bmain\s+│/g, "main                  │"],
+  [/\bconfigure-ci\s+│/g, "main                  │"],
   [/v\d+\.\d+\.\d+/g, "VERSION"],
   [/\bw\d+:p\d+\b/g, "PANE_ID"],
   [/\bw\d+:t\d+\b/g, "TAB_ID"],
@@ -152,8 +153,8 @@ export async function createHerdrIsolation(prefix: string): Promise<HerdrIsolati
     containerId,
     sharedDir,
     cleanup: async () => {
-      await runDocker(["stop", containerId], 10_000)
-      await runDocker(["rm", "-f", containerId], 10_000)
+      await runDocker(["stop", containerId], 30_000).catch(() => {})
+      await runDocker(["rm", "-f", containerId], 30_000).catch(() => {})
       await rm(sharedDir, { recursive: true, force: true })
     },
   }
