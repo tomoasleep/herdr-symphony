@@ -36,3 +36,15 @@ jobs:
 
       - name: Run unit & integration tests
         run: bun test $(find src -name "*.test.ts" -not -name "*.e2e.test.ts" | sort)
+
+  e2e:
+    name: E2E tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build E2E Docker image
+        run: docker build -f docker/e2e/Dockerfile -t herdr-e2e:latest .
+
+      - name: Run E2E tests in container
+        run: docker run --rm -v "$PWD:/workspace" -w /workspace herdr-e2e:latest bun test src/e2e

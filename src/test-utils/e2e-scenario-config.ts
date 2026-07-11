@@ -59,8 +59,6 @@ export const scenarioConfigSchema = z.object({
 export type ScenarioConfig = z.infer<typeof scenarioConfigSchema>
 export type MockResponse = z.infer<typeof mockResponseSchema>
 
-const SHARED_MOUNT = "/tmp/shared"
-
 function randomId(): string {
   return `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`
 }
@@ -71,7 +69,7 @@ export async function writeScenarioConfig(
 ): Promise<{ hostPath: string; containerPath: string }> {
   const filename = `scenario-${randomId()}.json`
   const hostPath = join(sharedDir, filename)
-  const containerPath = join(SHARED_MOUNT, filename)
+  const containerPath = hostPath
   await writeFile(hostPath, `${JSON.stringify(config)}\n`)
   return { hostPath, containerPath }
 }
