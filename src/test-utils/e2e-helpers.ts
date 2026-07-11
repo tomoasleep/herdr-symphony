@@ -1,6 +1,6 @@
 import { afterEach } from "bun:test"
 import { spawn } from "node:child_process"
-import { rm } from "node:fs/promises"
+import { mkdir, rm } from "node:fs/promises"
 import type { Session } from "tuistory"
 
 export function stripHerdrEnv(src: NodeJS.ProcessEnv): Record<string, string> {
@@ -125,6 +125,8 @@ export async function createHerdrIsolation(prefix: string): Promise<HerdrIsolati
   const containerName = `herdr-e2e-${prefix}-${shortId}`
   const sharedDir = `/tmp/herdr-e2e-${prefix}-${shortId}`
   const projectRoot = process.cwd()
+
+  await mkdir(sharedDir, { recursive: true })
 
   const runResult = await runDocker([
     "run",
