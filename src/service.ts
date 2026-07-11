@@ -1,6 +1,8 @@
 import { rm } from "node:fs/promises"
 import { join } from "node:path"
 import type { Issue, ResolvedIssueRuntimeConfig, ServiceConfig } from "./domain/types"
+import { createLogger } from "./logging/create-logger"
+import type { Logger, LogLevel } from "./logging/types"
 import { OrchestratorState } from "./orchestrator/orchestrator"
 import { createRunner } from "./runner/create-runner"
 import type { Runner, RunnerHandle, RunnerPollResult, RunnerResult } from "./runner/types"
@@ -43,7 +45,8 @@ type DispatchContext = {
 type ServiceDependencies = {
   tracker?: IssueTrackerClient
   runner?: Runner
-  writeLog?: (line: string) => void
+  logLevel?: LogLevel
+  logger?: Logger
   claimIssue?: (issueId: string) => boolean
   releaseIssue?: (issueId: string) => void
   workflowId?: string
@@ -80,7 +83,8 @@ export class SymphonyService {
   private readonly fetchIssueDescription: NonNullable<ServiceDependencies["fetchIssueDescription"]>
   private readonly workflowId: string
   private readonly workflowName: string
-  private readonly writeLog: (line: string) => void
+  private readonly logger: Logger
+  private readonly logLevel: LogLevel
   private readonly logRepository: LogRepository | undefined
   private stopped = false
   private readonly pendingDispatches = new Set<Promise<void>>()
@@ -93,20 +97,29 @@ export class SymphonyService {
     this.config = config
     this.template = template
     this.state = new OrchestratorState(config, deps.storage, deps.workflowId)
-    this.writeLog = deps.writeLog ?? ((line: string) => console.log(line))
+    this.logLevel = deps.logLevel ?? "info"
+    this.logger =
+      deps.logger ??
+      createLogger({
+        minLevel: this.logLevel,
+        sink: (level, line) => {
+          if (level === "error") console.error(line)
+          else console.log(line)
+        },
+      })
     this.workflowId = deps.workflowId ?? "default"
     this.workflowName = deps.workflowName ?? "WORKFLOW.md"
     this.logRepository = deps.storage?.logs
-    this.tracker = deps.tracker ?? createTrackerClient(config.tracker, template, this.writeLog)
+    const subSystemLog = (line: string) => this.logger.debug(line)
+    this.tracker = deps.tracker ?? createTrackerClient(config.tracker, template, subSystemLog)
     this.runner = deps.runner ?? createRunner(config)
     this.ensureWorkspaceFn =
       deps.ensureWorkspace ??
-      ((issue, workspaceConfig) =>
-        ensureWorkspace(issue, workspaceConfig, { onLog: this.writeLog }))
+      ((issue, workspaceConfig) => ensureWorkspace(issue, workspaceConfig, { onLog: subSystemLog }))
     this.runHookFn =
       deps.runHook ??
       ((script, cwd, timeoutMs, failOnError) =>
-        runHook(script, cwd, timeoutMs, failOnError, this.writeLog))
+        runHook(script, cwd, timeoutMs, failOnError, subSystemLog))
     this.resolveRuntimeConfigFn = deps.resolveRuntimeConfig ?? resolveIssueRuntimeConfig
     this.renderPromptFn = deps.renderPrompt ?? renderPrompt
     this.claimIssue = deps.claimIssue ?? (() => true)
@@ -134,7 +147,7 @@ export class SymphonyService {
     this.config = config
     this.template = template
     this.state.updateConfig(config)
-    this.tracker = createTrackerClient(config.tracker, template, this.writeLog)
+    this.tracker = createTrackerClient(config.tracker, template, (line) => this.logger.debug(line))
     this.runner = createRunner(config)
   }
 
@@ -190,33 +203,33 @@ export class SymphonyService {
       return
     }
 
-    this.debugLog("tracker fetchCandidateIssues start")
+    this.logger.debug("tracker fetchCandidateIssues start")
     const candidates = await this.tracker.fetchCandidateIssues(this.config.work.activeStates)
     if (this.stopped) {
       return
     }
 
-    this.debugLog(`tracker fetchCandidateIssues done count=${candidates.length}`)
+    this.logger.debug(`tracker fetchCandidateIssues done count=${candidates.length}`)
     const dispatchable = this.state.dispatchable(candidates, this.tracker)
-    this.debugLog(
+    this.logger.debug(
       `refresh candidates=${candidates.length} dispatchable=${dispatchable.length} running=${this.state.running.size} retrying=${this.state.retryAttempts.size}`,
     )
     if (dispatchable.length === 0) {
-      this.debugLog("idle no dispatchable issues")
+      this.logger.info("idle no dispatchable issues")
     }
     for (const issue of dispatchable) {
       if (this.stopped) {
         break
       }
       if (!this.claimIssue(issue.id)) {
-        this.debugLog(`dispatch skipped issue=${issue.identifier} reason=claimed_elsewhere`)
+        this.logger.debug(`dispatch skipped issue=${issue.identifier} reason=claimed_elsewhere`)
         continue
       }
       const promise = this.dispatch(issue)
       this.pendingDispatches.add(promise)
       void promise
         .catch((error) => {
-          this.debugLog(
+          this.logger.debug(
             `dispatch unhandled error issue=${issue.identifier} error=${formatError(error)}`,
           )
         })
@@ -237,7 +250,7 @@ export class SymphonyService {
 
     const ids = [...this.state.running.keys()]
     if (ids.length === 0) {
-      this.debugLog("reconcile running=0")
+      this.logger.debug("reconcile running=0")
       await this.pollDispatches()
       return
     }
@@ -247,7 +260,7 @@ export class SymphonyService {
       this.releaseIssue(issueId)
       this.dispatchContexts.delete(issueId)
     }
-    this.debugLog(`reconcile running=${ids.length} refreshed=${refreshed.length}`)
+    this.logger.info(`reconcile running=${ids.length} refreshed=${refreshed.length}`)
 
     await this.pollDispatches()
   }
@@ -299,7 +312,9 @@ export class SymphonyService {
         try {
           await this.appendAgentLog(workspace.path, result.responseText)
         } catch (e) {
-          this.debugLog(`appendAgentLog failed issue=${issue.identifier} error=${formatError(e)}`)
+          this.logger.warn(
+            `appendAgentLog failed issue=${issue.identifier} error=${formatError(e)}`,
+          )
         }
       }
 
@@ -315,7 +330,7 @@ export class SymphonyService {
           )
           await this.updateItemDescription(finalizedIssue, updatedDescription)
         } catch (e) {
-          this.debugLog(
+          this.logger.warn(
             `updateItemDescription failed issue=${issue.identifier} error=${formatError(e)}`,
           )
         }
@@ -329,7 +344,7 @@ export class SymphonyService {
     })
     this.releaseIssue(issueId)
 
-    this.debugLog(
+    this.logger.debug(
       `runner done issue=${issue.identifier} status=${result.status} error=${result.error ?? "none"}`,
     )
     this.persistLog(
@@ -338,17 +353,17 @@ export class SymphonyService {
       "done",
       `status=${result.status}${result.error ? ` error=${result.error}` : ""}`,
     )
-    this.writeLog(`done ${finalizedIssue.identifier} status=${result.status}`)
+    this.logger.info(`done ${finalizedIssue.identifier} status=${result.status}`)
 
     if (this.config.hooks.afterRun) {
-      this.debugLog(`hook after_run start cwd=${workspace.path}`)
+      this.logger.debug(`hook after_run start cwd=${workspace.path}`)
       await this.runHookFn(
         this.config.hooks.afterRun,
         workspace.path,
         this.config.hooks.timeoutMs,
         false,
       )
-      this.debugLog(`hook after_run done cwd=${workspace.path}`)
+      this.logger.debug(`hook after_run done cwd=${workspace.path}`)
     }
   }
 
@@ -361,7 +376,7 @@ export class SymphonyService {
     try {
       runningIssue = await this.moveToRunningState(issue)
       this.state.markRunning(runningIssue, null, null)
-      this.writeLog(`start ${runningIssue.identifier} state=${runningIssue.state}`)
+      this.logger.info(`start ${runningIssue.identifier} state=${runningIssue.state}`)
       this.persistLog(
         runningIssue.id,
         runningIssue.identifier,
@@ -370,23 +385,23 @@ export class SymphonyService {
       )
 
       const runtimeConfig = await this.resolveRuntimeConfigFn(runningIssue, this.config.work, null)
-      this.debugLog(
+      this.logger.debug(
         `runtime resolved issue=${runtimeConfig.issue.identifier} runner=${runtimeConfig.runner.kind} workspaceProvider=${runtimeConfig.workspace.provider}`,
       )
       const workspace = await this.ensureWorkspaceFn(runtimeConfig.issue, runtimeConfig.workspace)
       this.state.setWorkspacePath(issue.id, workspace.path)
-      this.debugLog(
+      this.logger.debug(
         `workspace ready path=${workspace.path} createdNow=${workspace.createdNow} branch=${workspace.branch ?? "none"}`,
       )
       if (this.config.hooks.beforeRun) {
-        this.debugLog(`hook before_run start cwd=${workspace.path}`)
+        this.logger.debug(`hook before_run start cwd=${workspace.path}`)
         await this.runHookFn(
           this.config.hooks.beforeRun,
           workspace.path,
           this.config.hooks.timeoutMs,
           true,
         )
-        this.debugLog(`hook before_run done cwd=${workspace.path}`)
+        this.logger.debug(`hook before_run done cwd=${workspace.path}`)
       }
 
       const content = await this.renderPromptFn(this.template, runtimeConfig.issue, null)
@@ -419,7 +434,7 @@ export class SymphonyService {
       const runnerPermissionMode =
         runtimeConfig.runner.agent === "claude" ? runtimeConfig.runner.claude.permissionMode : null
       const runnerOnBlocked = runtimeConfig.runner.onBlocked
-      this.debugLog(
+      this.logger.info(
         `runner start kind=${runtimeConfig.runner.kind} workspace=${workspace.path}` +
           (runnerAgent ? ` agent=${runnerAgent}` : "") +
           (runnerModel ? ` model=${runnerModel}` : ""),
@@ -442,7 +457,7 @@ export class SymphonyService {
         onEvent: (event) => {
           this.state.markEvent(issue.id)
           const message = "message" in event ? event.message : event.event
-          this.writeLog(this.formatEventLog(runningIssue.identifier, event.event, message))
+          this.logger.info(this.formatEventLog(runningIssue.identifier, event.event, message))
         },
       })
 
@@ -455,12 +470,12 @@ export class SymphonyService {
         reportPath,
       })
 
-      this.debugLog(
+      this.logger.debug(
         `dispatch started issue=${runningIssue.identifier} sessionId=${handle.sessionId}`,
       )
     } catch (error) {
       const errorMessage = formatError(error)
-      this.debugLog(`dispatch error issue=${issue.identifier} error=${errorMessage}`)
+      this.logger.warn(`dispatch error issue=${issue.identifier} error=${errorMessage}`)
       this.persistLog(runningIssue.id, runningIssue.identifier, "retry", `error=${errorMessage}`)
       const retry = this.state.scheduleFailureRetry(runningIssue, 1, errorMessage)
       this.releaseIssue(retry.issueId)
@@ -472,11 +487,11 @@ export class SymphonyService {
       return issue
     }
 
-    this.debugLog(
+    this.logger.debug(
       `tracker moveIssueToState start issue=${issue.id} state=${this.config.work.runningState}`,
     )
     await this.tracker.moveIssueToState(issue.id, this.config.work.runningState)
-    this.debugLog(
+    this.logger.debug(
       `tracker moveIssueToState done issue=${issue.id} state=${this.config.work.runningState}`,
     )
     return {
@@ -497,9 +512,9 @@ export class SymphonyService {
     }
 
     try {
-      this.debugLog(`tracker moveIssueToState start issue=${issue.id} state=${targetState}`)
+      this.logger.debug(`tracker moveIssueToState start issue=${issue.id} state=${targetState}`)
       await this.tracker.moveIssueToState(issue.id, targetState)
-      this.debugLog(`tracker moveIssueToState done issue=${issue.id} state=${targetState}`)
+      this.logger.debug(`tracker moveIssueToState done issue=${issue.id} state=${targetState}`)
       return {
         ...issue,
         state: targetState,
@@ -509,7 +524,7 @@ export class SymphonyService {
         },
       }
     } catch (error) {
-      this.debugLog(
+      this.logger.debug(
         `tracker moveIssueToState failed issue=${issue.id} state=${targetState} error=${formatError(error)}`,
       )
       return issue
@@ -531,10 +546,6 @@ export class SymphonyService {
     }
     const continuation = " ".repeat(prefix.length)
     return lines.map((line, i) => (i === 0 ? prefix : continuation) + line).join("\n")
-  }
-
-  private debugLog(line: string): void {
-    this.writeLog(line)
   }
 
   private persistLog(
