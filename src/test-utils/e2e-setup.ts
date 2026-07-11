@@ -58,7 +58,7 @@ export function makeOpencodeServiceConfig(trackerDir: string): ServiceConfig {
       runner: "herdr_agent",
       herdrAgent: {
         agent: "opencode",
-        opencode: { model: "mock/agent-model", agent: null },
+        opencode: { model: "mock/agent-model", agent: null, interactive: false },
         claude: {
           model: null,
           permissionMode: null,
@@ -115,7 +115,7 @@ export function makeClaudeServiceConfig(
       runner: "herdr_agent",
       herdrAgent: {
         agent: "claude",
-        opencode: { model: null, agent: null },
+        opencode: { model: null, agent: null, interactive: false },
         claude: {
           model: null,
           permissionMode: null,

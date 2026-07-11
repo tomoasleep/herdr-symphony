@@ -115,6 +115,7 @@ const WorkspaceSchema = z.object({
 const HerdrAgentOpencodeSchema = z.object({
   model: z.string().optional().nullable(),
   agent: z.string().optional().nullable(),
+  interactive: z.boolean().optional(),
 })
 
 const HerdrAgentClaudeSchema = z.object({
@@ -239,6 +240,7 @@ export function resolveConfigFromSchema(input: unknown): ServiceConfig {
             typeof herdrAgentRaw?.opencode?.agent === "string"
               ? herdrAgentRaw.opencode.agent
               : null,
+          interactive: herdrAgentRaw?.opencode?.interactive === true,
         },
         claude: {
           model:

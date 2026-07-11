@@ -23,6 +23,7 @@ export type RunnerOptions = {
   timeoutMs?: number | null
   closePaneAfterDoneMs?: number | null
   workflowName?: string
+  interactive?: boolean
   agmsg?: {
     team: string
     orchestratorAgent: string

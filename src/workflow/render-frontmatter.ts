@@ -54,7 +54,7 @@ export async function resolveIssueConfig(issue: Issue, attempt: number | null): 
       runner: null,
       herdrAgent: {
         agent: "opencode",
-        opencode: { model: null, agent: null },
+        opencode: { model: null, agent: null, interactive: false },
         claude: {
           model: null,
           permissionMode: null,
@@ -139,6 +139,7 @@ export async function resolveIssueRuntimeConfig(
       opencode: {
         agent: normalizeOverride(rendered.opencode.agent),
         model: normalizeOverride(rendered.opencode.model),
+        interactive: work.herdrAgent.opencode.interactive,
       },
       claude: {
         model: normalizeOverride(rendered.claude.model),

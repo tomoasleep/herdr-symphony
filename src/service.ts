@@ -423,6 +423,10 @@ export class SymphonyService {
         } else {
           agmsg = { team: "herdr-symphony", orchestratorAgent: "herdr-symphony" }
         }
+      } else if (runtimeConfig.runner.opencode.interactive) {
+        reportPath = join(workspace.path, ".herdr-symphony-report.json")
+        await rm(reportPath, { force: true })
+        finalContent = `${content}${CLAUDE_REPORT_INSTRUCTION}`
       }
 
       const runnerTimeoutMs = runtimeConfig.runner.turnTimeoutMs
@@ -451,6 +455,7 @@ export class SymphonyService {
         timeoutMs: runnerTimeoutMs,
         closePaneAfterDoneMs: runtimeConfig.runner.closePaneAfterDoneMs,
         workflowName: this.workflowName,
+        interactive: runtimeConfig.runner.opencode.interactive,
         agmsg,
         reportPath,
         reminderGracePeriodMs: runtimeConfig.runner.claude.reminderGracePeriodMs,

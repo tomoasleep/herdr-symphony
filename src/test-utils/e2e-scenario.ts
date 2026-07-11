@@ -103,6 +103,10 @@ async function runOpencode(config: ScenarioConfig, controller: AbortController):
   const workspacePath = await prepareWorkspace(tmpdir(), "opencode")
 
   const serviceConfig = makeOpencodeServiceConfig(trackerDir)
+  const interactive = config.interactive ?? false
+  if (interactive) {
+    serviceConfig.work.herdrAgent.opencode.interactive = true
+  }
   const herdrClient = wrapHerdrClientWithEnv(createHerdrClient(), {})
   const runner = new HerdrAgentRunner(serviceConfig, { herdrClient })
   const service = new SymphonyService(serviceConfig, "Test prompt for {{ issue.identifier }}", {
@@ -122,7 +126,7 @@ async function runOpencode(config: ScenarioConfig, controller: AbortController):
       runner: {
         kind: "herdr_agent",
         agent: "opencode",
-        opencode: { model: "mock/agent-model", agent: null },
+        opencode: { model: "mock/agent-model", agent: null, interactive },
         claude: {
           model: null,
           permissionMode: null,
@@ -194,7 +198,7 @@ async function runClaude(config: ScenarioConfig, controller: AbortController): P
       runner: {
         kind: "herdr_agent",
         agent: "claude",
-        opencode: { model: null, agent: null },
+        opencode: { model: null, agent: null, interactive: false },
         claude: {
           model: null,
           permissionMode: "bypassPermissions",

@@ -36,7 +36,7 @@ function makeWorkConfig(overrides: Partial<WorkConfig> = {}): WorkConfig {
     runner: "herdr_agent",
     herdrAgent: {
       agent: "opencode",
-      opencode: { model: null, agent: null },
+      opencode: { model: null, agent: null, interactive: false },
       claude: {
         model: null,
         permissionMode: null,
@@ -79,6 +79,7 @@ test("opencode model/agent を Liquid で解決できる", async () => {
       opencode: {
         model: '{{ issue.fields["Model"] | default: "openai/gpt-5.4" }}',
         agent: '{{ issue.fields["Agent"] | default: "build" }}',
+        interactive: false,
       },
       claude: {
         model: null,
@@ -146,7 +147,7 @@ test("workspaceLabel を Liquid で解決できる", async () => {
   const config = makeWorkConfig({
     herdrAgent: {
       agent: "opencode",
-      opencode: { model: null, agent: null },
+      opencode: { model: null, agent: null, interactive: false },
       claude: {
         model: null,
         permissionMode: null,
@@ -169,7 +170,7 @@ test("claude permissionMode を Liquid で解決できる", async () => {
   const config = makeWorkConfig({
     herdrAgent: {
       agent: "claude",
-      opencode: { model: null, agent: null },
+      opencode: { model: null, agent: null, interactive: false },
       claude: {
         model: null,
         permissionMode: '{{ issue.fields["PermissionMode"] | default: "acceptEdits" }}',
@@ -192,7 +193,7 @@ test("claude permissionMode が null のときは null になる", async () => {
   const config = makeWorkConfig({
     herdrAgent: {
       agent: "claude",
-      opencode: { model: null, agent: null },
+      opencode: { model: null, agent: null, interactive: false },
       claude: {
         model: null,
         permissionMode: null,
@@ -215,7 +216,7 @@ test("claude messenger が runner に引き継がれる", async () => {
   const config = makeWorkConfig({
     herdrAgent: {
       agent: "claude",
-      opencode: { model: null, agent: null },
+      opencode: { model: null, agent: null, interactive: false },
       claude: {
         model: null,
         permissionMode: null,
@@ -238,7 +239,7 @@ test("turnTimeoutMs が引き継がれる", async () => {
   const config = makeWorkConfig({
     herdrAgent: {
       agent: "opencode",
-      opencode: { model: null, agent: null },
+      opencode: { model: null, agent: null, interactive: false },
       claude: {
         model: null,
         permissionMode: null,
@@ -261,7 +262,7 @@ test("closePaneAfterDoneMs が引き継がれる", async () => {
   const config = makeWorkConfig({
     herdrAgent: {
       agent: "opencode",
-      opencode: { model: null, agent: null },
+      opencode: { model: null, agent: null, interactive: false },
       claude: {
         model: null,
         permissionMode: null,
@@ -284,7 +285,7 @@ test("onBlocked が runner に引き継がれる", async () => {
   const config = makeWorkConfig({
     herdrAgent: {
       agent: "opencode",
-      opencode: { model: null, agent: null },
+      opencode: { model: null, agent: null, interactive: false },
       claude: {
         model: null,
         permissionMode: null,
