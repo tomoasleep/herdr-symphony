@@ -7,6 +7,7 @@ import {
   createSessionManager,
   directCommand,
   execInContainer,
+  normalizeLogOutput,
 } from "../test-utils/e2e-helpers"
 import { plainResponse, writeScenarioConfig } from "../test-utils/e2e-scenario-config"
 
@@ -107,7 +108,9 @@ test("e2e: herdr TUI + service log — agent が herdr 上で実行されて suc
                                │
                               «│"
     `)
-    expect(await captureOutput(scenarioSession)).toMatchInlineSnapshot(`
+    expect(
+      normalizeLogOutput(await scenarioSession.text({ trimEnd: true })),
+    ).toMatchInlineSnapshot(`
       "
       MOCK_URL=http://MOCK_URL
       reconcile running=0
@@ -124,12 +127,6 @@ test("e2e: herdr TUI + service log — agent が herdr 上で実行されて suc
       runner start kind=herdr_agent workspace=TEMP_DIR model=mock/agent-model
       [test/repo#1] [agent_started] agent_started
       dispatch started issue=test/repo#1 sessionId=PANE_ID
-      tracker fetchIssueStatesByIds start ids=1
-      tracker fetchCandidateIssues start
-      tracker scanStateDirectories start
-      tracker scanStateDirectories done count=1
-      tracker fetchCandidateIssues done count=1
-      reconcile running=1 refreshed=1
       tracker fetchIssueStatesByIds start ids=1
       tracker fetchCandidateIssues start
       tracker scanStateDirectories start

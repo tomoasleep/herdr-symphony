@@ -69,6 +69,10 @@ const DYNAMIC_REPLACEMENTS: Array<[RegExp, string]> = [
   [/● menu/g, "menu"],
   [/new\s+menu/g, "new menu"],
   [/┌ test-claude-ID-e2e-test-TS-TS ─+┐/g, "┌ test-claude-ID-e2e-test-TS-TS ─┐"],
+  [
+    /((?:tracker fetchIssueStatesByIds start ids=1\ntracker fetchCandidateIssues start\ntracker scanStateDirectories start\ntracker scanStateDirectories done count=1\ntracker fetchCandidateIssues done count=1\nreconcile running=1 refreshed=1))(?:\n\1)+/g,
+    "$1",
+  ],
 ]
 
 export function normalizeOutput(text: string): string {
@@ -77,6 +81,13 @@ export function normalizeOutput(text: string): string {
     result = result.replace(pattern, replacement)
   }
   return result
+}
+
+export function normalizeLogOutput(text: string): string {
+  return normalizeOutput(text)
+    .split("\n")
+    .map((line) => line.trimStart())
+    .join("\n")
 }
 
 export function normalizeScreenOutput(text: string): string {

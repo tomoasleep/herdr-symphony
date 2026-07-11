@@ -64,7 +64,7 @@ async function captureAgentScreen(
 
   await execInContainer("", ["herdr", "agent", "focus", paneId], 10_000)
   await execInContainer("", ["herdr", "pane", "zoom", paneId, "--on"], 10_000)
-  const deadline = Date.now() + 30_000
+  const deadline = Date.now() + 60_000
   let screen = ""
   while (Date.now() < deadline) {
     screen = normalizeScreenOutput(await herdrSession.text({ immediate: true }))

@@ -1,5 +1,10 @@
 import { expect, test } from "bun:test"
-import { normalizeOutput, normalizeScreenOutput, stripHerdrEnv } from "./e2e-helpers"
+import {
+  normalizeLogOutput,
+  normalizeOutput,
+  normalizeScreenOutput,
+  stripHerdrEnv,
+} from "./e2e-helpers"
 
 test("stripHerdrEnv は HERDR_ プレフィックスの変数だけ除去する", () => {
   const src = {
@@ -26,4 +31,20 @@ test("normalizeScreenOutput は agent pane の上枠線を正規化する", () =
   expect(normalizeScreenOutput("│┌ test-claude-ID-e2e-test-TS-TS ───┐")).toBe(
     "│┌ test-claude-ID-e2e-test-TS-TS ─┐",
   )
+})
+
+test("normalizeOutput は running reconciliation の繰り返しを畳む", () => {
+  const reconciliation = [
+    "tracker fetchIssueStatesByIds start ids=1",
+    "tracker fetchCandidateIssues start",
+    "tracker scanStateDirectories start",
+    "tracker scanStateDirectories done count=1",
+    "tracker fetchCandidateIssues done count=1",
+    "reconcile running=1 refreshed=1",
+  ].join("\n")
+  expect(normalizeLogOutput(`${reconciliation}\n${reconciliation}`)).toBe(reconciliation)
+})
+
+test("normalizeLogOutput は各行の先頭スペースを除去する", () => {
+  expect(normalizeLogOutput("  first\nsecond\n")).toBe("first\nsecond")
 })
