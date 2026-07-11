@@ -151,7 +151,7 @@ test("e2e: claude 対話モード — agent の画面全体を確認できる", 
     expect(agentScreen).toMatchInlineSnapshot(`
       "
       │ 1 Z     +
-      │┌ test-claude-ID-e2e-test-TS-TS ────────────────────────────────────────────────────────────────────────────────┐
+      │┌ test-claude-ID-e2e-test-TS-TS ─┐
       ││❯ あなたは herdr-symphony の agent です。                                                                                          ▐│
       ││  実タスクは agmsg で届きます。                                                                                                    ▐│
       ││  最初に /opt/agmsg/scripts/actas-claim.sh "$PWD" claude-code "test-claude-ID-e2e-test-TS-TS"                  ▐│
@@ -248,7 +248,7 @@ test("e2e: claude report 未送信の idle — agent の画面全体を確認で
     expect(agentScreen).toMatchInlineSnapshot(`
       "
       │ 1 Z     +
-      │┌ test-claude-ID-e2e-test-TS-TS ────────────────────────────────────────────────────────────────────────────────┐
+      │┌ test-claude-ID-e2e-test-TS-TS ─┐
       ││❯ あなたは herdr-symphony の agent です。                                                                                          ▐│
       ││  実タスクは agmsg で届きます。                                                                                                    ▐│
       ││  最初に /opt/agmsg/scripts/actas-claim.sh "$PWD" claude-code "test-claude-ID-e2e-test-TS-TS"                  ▐│
@@ -346,7 +346,7 @@ test("e2e: claude report_file モード — herdr-symphony report で完了報�
     expect(agentScreen).toMatchInlineSnapshot(`
       "
       │ 1 Z     +
-      │┌ test-claude-ID-e2e-test-TS-TS ────────────────────────────────────────────────────────────────────────────────┐
+      │┌ test-claude-ID-e2e-test-TS-TS ─┐
       ││ ▐▛███▜▌   Claude Code VERSION                                                                                                     │
       ││▝▜█████▛▘  Opus 4.8 (1M context) · API Usage Billing                                                                                │
       ││  ▘▘ ▝▝    TEMP_DIR                                                                        │

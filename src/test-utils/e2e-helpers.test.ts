@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test"
-import { normalizeOutput, stripHerdrEnv } from "./e2e-helpers"
+import { normalizeOutput, normalizeScreenOutput, stripHerdrEnv } from "./e2e-helpers"
 
 test("stripHerdrEnv は HERDR_ プレフィックスの変数だけ除去する", () => {
   const src = {
@@ -20,4 +20,10 @@ test("stripHerdrEnv は HERDR_ 以外をすべて残す", () => {
 
 test("normalizeOutput は new と menu の間の可変スペースを正規化する", () => {
   expect(normalizeOutput("new                 menu│")).toBe("new menu│")
+})
+
+test("normalizeScreenOutput は agent pane の上枠線を正規化する", () => {
+  expect(normalizeScreenOutput("│┌ test-claude-ID-e2e-test-TS-TS ───┐")).toBe(
+    "│┌ test-claude-ID-e2e-test-TS-TS ─┐",
+  )
 })
