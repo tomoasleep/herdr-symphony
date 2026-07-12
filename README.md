@@ -98,6 +98,7 @@ tracker:
 
 ```yaml
 work:
+  if: '{{ issue.fields["Agent"] == "build" }}'
   active_states: [Ready]
   running_state: "In progress"
   success_state: "In review"
@@ -176,6 +177,37 @@ workspace:
 
 `provider: none` を指定すると worktree を作成せず、リポジトリルート（`git rev-parse --show-toplevel`）で直接作業します。ブランチの checkout 等は行いません。並列実行時は同じディレクトリで競合する可能性があるため警告が出力されます。
 
+### work.if（条件付き dispatch）
+
+`work.if` に Liquid テンプレートを指定すると、条件を満たす Issue のみ dispatch されます。複数の workflow ファイルを運用し、Issue のフィールド値で実行する workflow を切り替えたい場合に便利です。
+
+```yaml
+work:
+  if: '{{ issue.fields["Agent"] == "build" }}'
+```
+
+テンプレートをレンダリングした結果が以下のいずれかの場合、dispatch されません（偽と判定）:
+
+- 空文字列
+- `"false"`（case-insensitive）
+- `"0"`
+
+それ以外の非空文字列は真と判定され、dispatch されます。未指定時はすべての Issue が dispatch されます（デフォルト）。
+
+複数 workflow を切り替える例:
+
+```yaml
+# WORKFLOW.build.md — Agent が "build" の Issue のみ処理
+work:
+  if: '{{ issue.fields["Agent"] == "build" }}'
+```
+
+```yaml
+# WORKFLOW.plan.md — Agent が "plan" の Issue のみ処理
+work:
+  if: '{{ issue.fields["Agent"] == "plan" }}'
+```
+
 ### 状態遷移
 
 - `work.running_state` を設定すると、dispatch 開始時に tracker の Status を更新する
@@ -185,15 +217,16 @@ workspace:
 ## 動作フロー
 
 1. poll tick で tracker から候補 Issue を取得
-2. orchestrator が dispatchable な Issue を選出
-3. `gwq add` で worktree を作成
-4. `herdr workspace create` で Herdr workspace を作成
-5. `herdr agent start` で `opencode run` または Claude bootstrap prompt を Herdr pane 内で起動
+2. `work.if` 条件で Issue をフィルタ（未設定時はすべて通過）
+3. orchestrator が dispatchable な Issue を選出
+4. `gwq add` で worktree を作成
+5. `herdr workspace create` で Herdr workspace を作成
+6. `herdr agent start` で `opencode run` または Claude bootstrap prompt を Herdr pane 内で起動
    - agent name は `{issue.identifier}-{workflowName}-{timestamp}`（複数 workflow や再実行での name 衝突を回避）
-6. Claude の場合は agmsg で `herdr-symphony.task` を送り、`ackOf=task` を待つ
-7. Agent 完了を検知（opencode は Herdr の状態、claude は agmsg の `herdr-symphony.report`）
-8. セッション履歴から Agent の最終報告を取得（opencode は `opencode export`、claude は agmsg report。取得失敗時は pane 読み取りにフォールバック）
-9. tracker の Status を success/failure state へ更新
-10. reporter で結果を記録
+7. Claude の場合は agmsg で `herdr-symphony.task` を送り、`ackOf=task` を待つ
+8. Agent 完了を検知（opencode は Herdr の状態、claude は agmsg の `herdr-symphony.report`）
+9. セッション履歴から Agent の最終報告を取得（opencode は `opencode export`、claude は agmsg report。取得失敗時は pane 読み取りにフォールバック）
+10. tracker の Status を success/failure state へ更新
+11. reporter で結果を記録
 
 Agent の実行状況は Herdr のサイドバーで確認できる。

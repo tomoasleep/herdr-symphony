@@ -12,7 +12,7 @@ import type { IssueTrackerClient } from "./tracker/types"
 import { appendAgentLog as appendAgentLogImpl } from "./utils/append-agent-log"
 import { appendAgentLogToDescription } from "./utils/append-agent-log-to-description"
 import { formatError } from "./utils/error"
-import { resolveIssueRuntimeConfig } from "./workflow/render-frontmatter"
+import { evaluateIfCondition, resolveIssueRuntimeConfig } from "./workflow/render-frontmatter"
 import { renderPrompt } from "./workflow/render-prompt"
 import type { WorkspaceResult } from "./workspace/workspace-manager"
 import { ensureWorkspace, runHook } from "./workspace/workspace-manager"
@@ -204,12 +204,24 @@ export class SymphonyService {
     }
 
     this.logger.debug("tracker fetchCandidateIssues start")
-    const candidates = await this.tracker.fetchCandidateIssues(this.config.work.activeStates)
+    const rawCandidates = await this.tracker.fetchCandidateIssues(this.config.work.activeStates)
     if (this.stopped) {
       return
     }
 
-    this.logger.debug(`tracker fetchCandidateIssues done count=${candidates.length}`)
+    this.logger.debug(`tracker fetchCandidateIssues done count=${rawCandidates.length}`)
+
+    const ifTemplate = this.config.work.if
+    const candidates: Issue[] = []
+    for (const issue of rawCandidates) {
+      const ok = await evaluateIfCondition(ifTemplate, issue, null)
+      if (ok) {
+        candidates.push(issue)
+      } else {
+        this.logger.debug(`dispatch skipped issue=${issue.identifier} reason=if_condition`)
+      }
+    }
+
     const dispatchable = this.state.dispatchable(candidates, this.tracker)
     this.logger.debug(
       `refresh candidates=${candidates.length} dispatchable=${dispatchable.length} running=${this.state.running.size} retrying=${this.state.retryAttempts.size}`,

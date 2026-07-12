@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test"
 import type { Issue, WorkConfig } from "../domain/types"
-import { resolveIssueRuntimeConfig } from "./render-frontmatter"
+import { evaluateIfCondition, resolveIssueRuntimeConfig } from "./render-frontmatter"
 
 function makeIssue(): Issue {
   return {
@@ -27,6 +27,7 @@ function makeIssue(): Issue {
 
 function makeWorkConfig(overrides: Partial<WorkConfig> = {}): WorkConfig {
   return {
+    if: null,
     activeStates: ["Ready"],
     terminalStates: ["Done"],
     runningState: null,
@@ -302,4 +303,33 @@ test("onBlocked が runner に引き継がれる", async () => {
   const result = await resolveIssueRuntimeConfig(makeIssue(), config, null)
 
   expect(result.runner.onBlocked).toBe("fail")
+})
+
+test("evaluateIfCondition: ifTemplate が null なら常に true", async () => {
+  const result = await evaluateIfCondition(null, makeIssue(), null)
+  expect(result).toBe(true)
+})
+
+test("evaluateIfCondition: 条件が一致すれば true", async () => {
+  const issue = makeIssue()
+  const result = await evaluateIfCondition('{{ issue.fields["Agent"] == "build" }}', issue, null)
+  expect(result).toBe(true)
+})
+
+test("evaluateIfCondition: 条件が不一致なら false", async () => {
+  const issue = makeIssue()
+  const result = await evaluateIfCondition('{{ issue.fields["Agent"] == "plan" }}', issue, null)
+  expect(result).toBe(false)
+})
+
+test("evaluateIfCondition: 空文字列レンダリングなら false", async () => {
+  const issue = { ...makeIssue(), fields: { ...makeIssue().fields, Agent: null } }
+  const result = await evaluateIfCondition("{{ issue.fields.Agent }}", issue, null)
+  expect(result).toBe(false)
+})
+
+test("evaluateIfCondition: true/false 以外の非空文字列は true", async () => {
+  const issue = { ...makeIssue(), fields: { ...makeIssue().fields, Agent: "review" } }
+  const result = await evaluateIfCondition("{{ issue.fields.Agent }}", issue, null)
+  expect(result).toBe(true)
 })
