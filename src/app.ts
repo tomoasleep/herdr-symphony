@@ -1,6 +1,7 @@
 import path from "node:path"
 import { resolveConfig } from "./config/resolve-config"
-import type { LogLevel } from "./logging/types"
+import { createLogger } from "./logging/create-logger"
+import type { Logger, LogLevel } from "./logging/types"
 import { GlobalClaimRegistry } from "./orchestrator/global-claim-registry"
 import { SymphonyService } from "./service"
 import { createStorage, DEFAULT_STORAGE_CONFIG } from "./storage/create-storage"
@@ -30,6 +31,7 @@ type StartDependencies = {
     },
   ) => SymphonyService
   schedule?: (callback: () => void, intervalMs: number) => () => void
+  logger?: Logger
 }
 
 export async function startHerdrSymphony(
@@ -72,6 +74,16 @@ export async function startHerdrSymphony(
       }
     })
 
+  const logger =
+    deps.logger ??
+    createLogger({
+      minLevel: options.logLevel ?? "info",
+      sink: (level, line) => {
+        if (level === "error") console.error(line)
+        else console.log(line)
+      },
+    })
+
   const runtimes = await Promise.all(
     workflowPaths.map(async (currentWorkflowPath) => {
       const workflow = await loadWorkflowImpl(currentWorkflowPath)
@@ -110,6 +122,9 @@ export async function startHerdrSymphony(
   }
 
   for (const runtime of runtimes) {
+    logger.info(
+      `loaded ${runtime.workflowName} polling=${formatInterval(runtime.config.polling.intervalMs)}`,
+    )
     await runtime.service.startupCleanup()
     await runtime.service.refresh()
     await runtime.service.waitForDispatches()
@@ -143,4 +158,10 @@ export async function startHerdrSymphony(
   }
   process.on("SIGINT", () => void handleSignal())
   process.on("SIGTERM", () => void handleSignal())
+}
+
+function formatInterval(ms: number): string {
+  if (ms >= 60_000) return `${Math.round(ms / 60_000)}m`
+  if (ms >= 1_000) return `${Math.round(ms / 1_000)}s`
+  return `${ms}ms`
 }
