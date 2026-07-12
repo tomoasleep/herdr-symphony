@@ -156,46 +156,46 @@ test("e2e: opencode interactive — report file で完了報告する", async ()
 
     expect(agentScreen).toMatchInlineSnapshot(`
       "
-      │ 1 Z     +
-      │┌ test/repo#ID-e2e-test-TS ─┐
-      ││  ┃                                                                                                                                 │
-      ││  ┃  Test prompt for test/repo#ID                                                E2E Test                                 │
-      ││  ┃  ## 完了報告                                                                                                                    │
-      ││  ┃                                                                                        Context                                  │
-      ││  ┃  ユーザーに依頼された作業が完了したら、以下のコマンドを実行してください。              2,509 tokens                             │
-      ││  ┃                                                                                        2% used                                  │
-      ││  ┃      herdr-symphony report --status done --summary "やった作業の要約"                  $0.00 spent                              │
-      ││  ┃                                                                                                                                 │
-      ││  ┃  background task / subagent / task の完了待ちなら、                                    LSP                                      │
-      ││  ┃  以下のコマンドを実行してください。                                                    LSPs are disabled                        │
-      ││  ┃                                                                                                                                 │
-      ││  ┃      herdr-symphony report --status pending --summary "待機中の内容"                                                            │
-      ││  ┃                                                                                                                                 │
-      ││  ┃  失敗した場合は、以下のコマンドを実行してください。                                                                             │
-      ││  ┃                                                                                                                                 │
-      ││  ┃      herdr-symphony report --status failed --summary "失敗理由"                                                                 │
-      ││  ┃                                                                                                                                 │
-      ││                                                                                                                                    │
-      ││     Writing report file.                                                                                                           │
-      ││                                                                                                                                    │
-      ││  ┃                                                                                                                                 │
-      ││  ┃  $ herdr-symphony report --status done --summary 'Task completed successfully.'                                                 │
-      ││  ┃                                                                                                                                 │
-      ││  ┃  (no output)                                                                                                                    │
-      ││  ┃                                                                                                                                 │
-      ││                                                                                                                                    │
-      ││     Task completed successfully.                                                                                                   │
-      ││                                                                                                                                    │
-      ││     ▣  Build · Agent Model · TIME                                                                                                  │
-      ││                                                                                                                                    │
-      ││  ┃                                                                                                                                 │
-      ││  ┃                                                                                                                                 │
-      ││  ┃                                                                                        TEMP_DIR       │
-      ││  ┃  Build auto · Agent Model Mock                                                         opencode:master                          │
-      ││  ╹▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀                                             │
-      ││                                                             2.5K (2%)  ctrl+p commands    • OpenCode 1.17.13                       │
-      ││                                                                                                                                    │
-      │└─┘"
+      │ 1       +
+      │
+      │  ┃                                                                                          E2E Test
+      │  ┃  Test prompt for test/repo#ID
+      │  ┃  ## 完了報告                                                                             Context
+      │  ┃                                                                                          2,509 tokens
+      │  ┃  ユーザーに依頼された作業が完了したら、以下のコマンドを実行してください。                2% used
+      │  ┃                                                                                          $0.00 spent
+      │  ┃      herdr-symphony report --status done --summary "やった作業の要約"
+      │  ┃                                                                                          LSP
+      │  ┃  background task / subagent / task の完了待ちなら、以下のコマンドを実行してください。    LSPs are disabled
+      │  ┃
+      │  ┃      herdr-symphony report --status pending --summary "待機中の内容"
+      │  ┃
+      │  ┃  失敗した場合は、以下のコマンドを実行してください。
+      │  ┃
+      │  ┃      herdr-symphony report --status failed --summary "失敗理由"
+      │  ┃
+      │
+      │     Writing report file.
+      │
+      │  ┃
+      │  ┃  $ herdr-symphony report --status done --summary 'Task completed successfully.'
+      │  ┃
+      │  ┃  (no output)
+      │  ┃
+      │
+      │     Task completed successfully.
+      │
+      │     ▣  Build · Agent Model · TIME
+      │
+      │
+      │
+      │  ┃
+      │  ┃
+      │  ┃                                                                                          TEMP_DIR
+      │  ┃  Build auto · Agent Model Mock                                                           opencode:master
+      │  ╹▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀
+      │                                                               2.5K (2%)  ctrl+p commands    • OpenCode 1.17.13
+      │"
     `)
   } finally {
     await herdr.cleanup()

@@ -64,6 +64,14 @@ test("normalizeScreenOutput は Claude welcome画面を除外する", () => {
   ).toBe("")
 })
 
+test("normalizeScreenOutput は root pane を閉じた後の Claude welcome画面を除外する", () => {
+  expect(normalizeScreenOutput("│╭─ Claude Code VERSION ─╮\r\n││ Welcome back! │\r\n│╰─╯")).toBe("")
+})
+
+test("normalizeScreenOutput は改行された Claude agent名の動的な断片を正規化する", () => {
+  expect(normalizeScreenOutput("│ 7-e2e-test-TS-TS")).toBe("│ ID-e2e-test-TS-TS")
+})
+
 test("normalizeOutput は running reconciliation の繰り返しを畳む", () => {
   const line = "reconcile running=1 refreshed=1"
   expect(normalizeLogOutput(`${line}\n${line}`)).toBe(line)
