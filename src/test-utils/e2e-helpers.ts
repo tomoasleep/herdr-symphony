@@ -50,6 +50,7 @@ const DYNAMIC_REPLACEMENTS: Array<[RegExp, string]> = [
   [/-e2e-test-claude-[0-9a-z]+/g, "-e2e-test-claude-TS"],
   [/-e2e-test-[0-9a-z]+/g, "-e2e-test-TS"],
   [/\b[0-9a-z]{3}-e2e-test-TS-TS/g, "ID-e2e-test-TS-TS"],
+  [/\b[0-9a-z]-e2e-test-TS-TS/g, "ID-e2e-test-TS-TS"],
   [/\btest-claude-[0-9a-z]+/g, "test-claude-ID"],
   [/\bplain-probe-[0-9a-z]+/g, "plain-probe-ID"],
   [/\bprobe-[0-9a-z]+/g, "probe-ID"],
@@ -96,6 +97,7 @@ export function normalizeScreenOutput(text: string): string {
   }
   result = result.replace(/││╭─── Claude Code VERSION[\s\S]*?╯ │\n/g, "")
   result = result.replace(/││[^\n]*Claude Code VERSION[^\n]*\n(?:││[^\n]*\n){0,2}/g, "")
+  result = result.replace(/│╭─ Claude Code VERSION[\s\S]*?│╰─╯(?:\n|$)/g, "")
   result = result.replace(/▕/g, "▐")
   result = result.replace(/─+/g, "─")
   return result

@@ -142,46 +142,46 @@ test("e2e: claude 対話モード — agent の画面全体を確認できる", 
 
     expect(agentScreen).toMatchInlineSnapshot(`
       "
-      │ 1 Z     +
-      │┌ test-claude-ID-e2e-test-TS-TS ─┐
-      ││❯ あなたは herdr-symphony の agent です。                                                                                          ▐│
-      ││  実タスクは agmsg で届きます。                                                                                                    ▐│
-      ││  最初に /opt/agmsg/scripts/actas-claim.sh "$PWD" claude-code "test-claude-ID-e2e-test-TS-TS"                  ▐│
-      ││  "$CLAUDE_CODE_SESSION_ID" を実行して、この agent identity を claim してください。                                                ▐│
-      ││  claim に失敗した場合は task ack を返さず、作業を開始しないでください。                                                           ▐│
-      ││  team は herdr-symphony-test-claude-ID-e2e-test-TS-TS、あなたの agent 名と runId は                           ▐│
-      ││  test-claude-ID-e2e-test-TS-TS、issueId は test-issue-claude です。                                           ▐│
-      ││  herdr-symphony.task を受け取ったら、runId と toAgent が自分宛てか確認してください。違う場合は無視してください。                  ▐│
-      ││  task を受け取ったら、まず /opt/agmsg/scripts/send.sh herdr-symphony-test-claude-ID-e2e-test-TS-TS            ▐│
-      ││  test-claude-ID-e2e-test-TS-TS herdr-symphony '{"kind":"herdr-symphony.ack","runId":"test-claude-ID ▐│
-      ││  -e2e-test-TS-TS","toAgent":"herdr-symphony","issueId":"test-issue-claude","ackOf":"task"}' を実行し、その後            ▐│
-      ││  task.prompt を実行してください。                                                                                                 ▐│
-      ││  reminder を受け取ったら、まず /opt/agmsg/scripts/send.sh herdr-symphony-test-claude-ID-e2e-test-TS-TS        ▐│
-      ││  test-claude-ID-e2e-test-TS-TS herdr-symphony '{"kind":"herdr-symphony.ack","runId":"test-claude-ID ▐│
-      ││  -e2e-test-TS-TS","toAgent":"herdr-symphony","issueId":"test-issue-claude","ackOf":"reminder"}' を実行してください。    ▐│
-      ││  完了時は、ユーザーへの完了報告と同等の内容を summary に入れて report してください。                                              ▐│
-      ││  done: /opt/agmsg/scripts/send.sh herdr-symphony-test-claude-ID-e2e-test-TS-TS                                ▐│
-      ││  test-claude-ID-e2e-test-TS-TS herdr-symphony '{"kind":"herdr-symphony.report","runId":"test-claude-ID ▐│
-      ││  ID-e2e-test-TS-TS","toAgent":"herdr-symphony","issueId":"test-issue-claude","status":"done","summary":"対応内容:      ▐│
-      ││  ...。検証: ...。補足: ...。"}'                                                                                                   ▐│
-      ││  pending: /opt/agmsg/scripts/send.sh herdr-symphony-test-claude-ID-e2e-test-TS-TS                             ▐│
-      ││  test-claude-ID-e2e-test-TS-TS herdr-symphony                                                                 ▐│
-      ││  '{"kind":"herdr-symphony.report","runId":"test-claude-ID-e2e-test-TS-TS","toAgent":"herdr-symphony","issueId ▐│
-      ││  ":"test-issue-claude","status":"pending","summary":"待機中の内容"}'                                                              ▐│
-      ││  failed: /opt/agmsg/scripts/send.sh herdr-symphony-test-claude-ID-e2e-test-TS-TS                              ▐│
-      ││  test-claude-ID-e2e-test-TS-TS herdr-symphony '{"kind":"herdr-symphony.report","runId":"test-claude-ID ▐│
-      ││  ID-e2e-test-TS-TS","toAgent":"herdr-symphony","issueId":"test-issue-claude","status":"failed","summary":"失敗理由"}'  ▐│
-      ││                                                                                                                                   ▐│
-      ││● Task completed successfully.                                                                                                     ▐│
-      ││                                                                                                                                   ▐│
-      ││✻ Worked for 0s ▐│
-      ││                                                                                                                                   ▐│
-      ││─▐│
-      ││❯                                                                                                                                  ▐│
-      ││─▐│
-      ││  ⏵⏵ bypass permissions on (shift+tab to cycle) · ← for agents                                                                     ▐│
-      ││                                                                                                                                   ▐│
-      │└─┘"
+      │ 1       +
+      │╰─╯▐
+      │                                                                                                                                     ▐
+      │                                                                                                                                     ▐
+      │❯ あなたは herdr-symphony の agent です。                                                                                            ▐
+      │  実タスクは agmsg で届きます。                                                                                                      ▐
+      │  最初に /opt/agmsg/scripts/actas-claim.sh "$PWD" claude-code "test-claude-ID-e2e-test-TS-TS"                    ▐
+      │  "$CLAUDE_CODE_SESSION_ID" を実行して、この agent identity を claim してください。                                                  ▐
+      │  claim に失敗した場合は task ack を返さず、作業を開始しないでください。                                                             ▐
+      │  team は herdr-symphony-test-claude-ID-e2e-test-TS-TS、あなたの agent 名と runId は                             ▐
+      │  test-claude-ID-e2e-test-TS-TS、issueId は test-issue-claude です。                                             ▐
+      │  herdr-symphony.task を受け取ったら、runId と toAgent が自分宛てか確認してください。違う場合は無視してください。                    ▐
+      │  task を受け取ったら、まず /opt/agmsg/scripts/send.sh herdr-symphony-test-claude-ID-e2e-test-TS-TS              ▐
+      │  test-claude-ID-e2e-test-TS-TS herdr-symphony '{"kind":"herdr-symphony.ack","runId":"test-claude-ID-e ▐
+      │  2e-test-claude-ID","toAgent":"herdr-symphony","issueId":"test-issue-claude","ackOf":"task"}' を実行し、その後 task.prompt    ▐
+      │  を実行してください。                                                                                                               ▐
+      │  reminder を受け取ったら、まず /opt/agmsg/scripts/send.sh herdr-symphony-test-claude-ID-e2e-test-TS-TS          ▐
+      │  test-claude-ID-e2e-test-TS-TS herdr-symphony '{"kind":"herdr-symphony.ack","runId":"test-claude-ID-e ▐
+      │  2e-test-claude-ID","toAgent":"herdr-symphony","issueId":"test-issue-claude","ackOf":"reminder"}' を実行してください。        ▐
+      │  完了時は、ユーザーへの完了報告と同等の内容を summary に入れて report してください。                                                ▐
+      │  done: /opt/agmsg/scripts/send.sh herdr-symphony-test-claude-ID-e2e-test-TS-TS                                  ▐
+      │  test-claude-ID-e2e-test-TS-TS herdr-symphony '{"kind":"herdr-symphony.report","runId":"test-claude-ID ▐
+      │  ID-e2e-test-TS-TS","toAgent":"herdr-symphony","issueId":"test-issue-claude","status":"done","summary":"対応内容:          ▐
+      │  ...。検証: ...。補足: ...。"}'                                                                                                     ▐
+      │  pending: /opt/agmsg/scripts/send.sh herdr-symphony-test-claude-ID-e2e-test-TS-TS                               ▐
+      │  test-claude-ID-e2e-test-TS-TS herdr-symphony '{"kind":"herdr-symphony.report","runId":"test-claude-ID ▐
+      │  ID-e2e-test-TS-TS","toAgent":"herdr-symphony","issueId":"test-issue-claude","status":"pending","summary":"待機中の内容"}' ▐
+      │  failed: /opt/agmsg/scripts/send.sh herdr-symphony-test-claude-ID-e2e-test-TS-TS                                ▐
+      │  test-claude-ID-e2e-test-TS-TS herdr-symphony '{"kind":"herdr-symphony.report","runId":"test-claude-ID ▐
+      │  ID-e2e-test-TS-TS","toAgent":"herdr-symphony","issueId":"test-issue-claude","status":"failed","summary":"失敗理由"}'      ▐
+      │                                                                                                                                     ▐
+      │● Task completed successfully.                                                                                                       ▐
+      │                                                                                                                                     ▐
+      │✻ Worked for 0s ▐
+      │                                                                                                                                     ▐
+      │─▐
+      │❯                                                                                                                                    ▐
+      │─▐
+      │  ⏵⏵ bypass permissions on (shift+tab to cycle) · ← for agents                                                                       ▐
+      │                                                                                                                                     ▐"
     `)
   } finally {
     await herdr.cleanup()
@@ -239,46 +239,46 @@ test("e2e: claude report 未送信の idle — agent の画面全体を確認で
 
     expect(agentScreen).toMatchInlineSnapshot(`
       "
-      │ 1 Z     +
-      │┌ test-claude-ID-e2e-test-TS-TS ─┐
-      ││❯ あなたは herdr-symphony の agent です。                                                                                          ▐│
-      ││  実タスクは agmsg で届きます。                                                                                                    ▐│
-      ││  最初に /opt/agmsg/scripts/actas-claim.sh "$PWD" claude-code "test-claude-ID-e2e-test-TS-TS"                  ▐│
-      ││  "$CLAUDE_CODE_SESSION_ID" を実行して、この agent identity を claim してください。                                                ▐│
-      ││  claim に失敗した場合は task ack を返さず、作業を開始しないでください。                                                           ▐│
-      ││  team は herdr-symphony-test-claude-ID-e2e-test-TS-TS、あなたの agent 名と runId は                           ▐│
-      ││  test-claude-ID-e2e-test-TS-TS、issueId は test-issue-claude です。                                           ▐│
-      ││  herdr-symphony.task を受け取ったら、runId と toAgent が自分宛てか確認してください。違う場合は無視してください。                  ▐│
-      ││  task を受け取ったら、まず /opt/agmsg/scripts/send.sh herdr-symphony-test-claude-ID-e2e-test-TS-TS            ▐│
-      ││  test-claude-ID-e2e-test-TS-TS herdr-symphony '{"kind":"herdr-symphony.ack","runId":"test-claude-ID ▐│
-      ││  -e2e-test-TS-TS","toAgent":"herdr-symphony","issueId":"test-issue-claude","ackOf":"task"}' を実行し、その後            ▐│
-      ││  task.prompt を実行してください。                                                                                                 ▐│
-      ││  reminder を受け取ったら、まず /opt/agmsg/scripts/send.sh herdr-symphony-test-claude-ID-e2e-test-TS-TS        ▐│
-      ││  test-claude-ID-e2e-test-TS-TS herdr-symphony '{"kind":"herdr-symphony.ack","runId":"test-claude-ID ▐│
-      ││  -e2e-test-TS-TS","toAgent":"herdr-symphony","issueId":"test-issue-claude","ackOf":"reminder"}' を実行してください。    ▐│
-      ││  完了時は、ユーザーへの完了報告と同等の内容を summary に入れて report してください。                                              ▐│
-      ││  done: /opt/agmsg/scripts/send.sh herdr-symphony-test-claude-ID-e2e-test-TS-TS                                ▐│
-      ││  test-claude-ID-e2e-test-TS-TS herdr-symphony '{"kind":"herdr-symphony.report","runId":"test-claude-ID ▐│
-      ││  ID-e2e-test-TS-TS","toAgent":"herdr-symphony","issueId":"test-issue-claude","status":"done","summary":"対応内容:      ▐│
-      ││  ...。検証: ...。補足: ...。"}'                                                                                                   ▐│
-      ││  pending: /opt/agmsg/scripts/send.sh herdr-symphony-test-claude-ID-e2e-test-TS-TS                             ▐│
-      ││  test-claude-ID-e2e-test-TS-TS herdr-symphony                                                                 ▐│
-      ││  '{"kind":"herdr-symphony.report","runId":"test-claude-ID-e2e-test-TS-TS","toAgent":"herdr-symphony","issueId ▐│
-      ││  ":"test-issue-claude","status":"pending","summary":"待機中の内容"}'                                                              ▐│
-      ││  failed: /opt/agmsg/scripts/send.sh herdr-symphony-test-claude-ID-e2e-test-TS-TS                              ▐│
-      ││  test-claude-ID-e2e-test-TS-TS herdr-symphony '{"kind":"herdr-symphony.report","runId":"test-claude-ID ▐│
-      ││  ID-e2e-test-TS-TS","toAgent":"herdr-symphony","issueId":"test-issue-claude","status":"failed","summary":"失敗理由"}'  ▐│
-      ││                                                                                                                                   ▐│
-      ││● Task completed successfully.                                                                                                     ▐│
-      ││                                                                                                                                   ▐│
-      ││✻ Worked for 0s ▐│
-      ││                                                                                                                                   ▐│
-      ││─▐│
-      ││❯                                                                                                                                  ▐│
-      ││─▐│
-      ││  ⏵⏵ bypass permissions on (shift+tab to cycle) · ← for agents                                                                     ▐│
-      ││                                                                                                                                   ▐│
-      │└─┘"
+      │ 1       +
+      │╰─╯▐
+      │                                                                                                                                     ▐
+      │                                                                                                                                     ▐
+      │❯ あなたは herdr-symphony の agent です。                                                                                            ▐
+      │  実タスクは agmsg で届きます。                                                                                                      ▐
+      │  最初に /opt/agmsg/scripts/actas-claim.sh "$PWD" claude-code "test-claude-ID-e2e-test-TS-TS"                    ▐
+      │  "$CLAUDE_CODE_SESSION_ID" を実行して、この agent identity を claim してください。                                                  ▐
+      │  claim に失敗した場合は task ack を返さず、作業を開始しないでください。                                                             ▐
+      │  team は herdr-symphony-test-claude-ID-e2e-test-TS-TS、あなたの agent 名と runId は                             ▐
+      │  test-claude-ID-e2e-test-TS-TS、issueId は test-issue-claude です。                                             ▐
+      │  herdr-symphony.task を受け取ったら、runId と toAgent が自分宛てか確認してください。違う場合は無視してください。                    ▐
+      │  task を受け取ったら、まず /opt/agmsg/scripts/send.sh herdr-symphony-test-claude-ID-e2e-test-TS-TS              ▐
+      │  test-claude-ID-e2e-test-TS-TS herdr-symphony '{"kind":"herdr-symphony.ack","runId":"test-claude-ID-e ▐
+      │  2e-test-claude-ID","toAgent":"herdr-symphony","issueId":"test-issue-claude","ackOf":"task"}' を実行し、その後 task.prompt    ▐
+      │  を実行してください。                                                                                                               ▐
+      │  reminder を受け取ったら、まず /opt/agmsg/scripts/send.sh herdr-symphony-test-claude-ID-e2e-test-TS-TS          ▐
+      │  test-claude-ID-e2e-test-TS-TS herdr-symphony '{"kind":"herdr-symphony.ack","runId":"test-claude-ID-e ▐
+      │  2e-test-claude-ID","toAgent":"herdr-symphony","issueId":"test-issue-claude","ackOf":"reminder"}' を実行してください。        ▐
+      │  完了時は、ユーザーへの完了報告と同等の内容を summary に入れて report してください。                                                ▐
+      │  done: /opt/agmsg/scripts/send.sh herdr-symphony-test-claude-ID-e2e-test-TS-TS                                  ▐
+      │  test-claude-ID-e2e-test-TS-TS herdr-symphony '{"kind":"herdr-symphony.report","runId":"test-claude-ID ▐
+      │  ID-e2e-test-TS-TS","toAgent":"herdr-symphony","issueId":"test-issue-claude","status":"done","summary":"対応内容:          ▐
+      │  ...。検証: ...。補足: ...。"}'                                                                                                     ▐
+      │  pending: /opt/agmsg/scripts/send.sh herdr-symphony-test-claude-ID-e2e-test-TS-TS                               ▐
+      │  test-claude-ID-e2e-test-TS-TS herdr-symphony '{"kind":"herdr-symphony.report","runId":"test-claude-ID ▐
+      │  ID-e2e-test-TS-TS","toAgent":"herdr-symphony","issueId":"test-issue-claude","status":"pending","summary":"待機中の内容"}' ▐
+      │  failed: /opt/agmsg/scripts/send.sh herdr-symphony-test-claude-ID-e2e-test-TS-TS                                ▐
+      │  test-claude-ID-e2e-test-TS-TS herdr-symphony '{"kind":"herdr-symphony.report","runId":"test-claude-ID ▐
+      │  ID-e2e-test-TS-TS","toAgent":"herdr-symphony","issueId":"test-issue-claude","status":"failed","summary":"失敗理由"}'      ▐
+      │                                                                                                                                     ▐
+      │● Task completed successfully.                                                                                                       ▐
+      │                                                                                                                                     ▐
+      │✻ Worked for 0s ▐
+      │                                                                                                                                     ▐
+      │─▐
+      │❯                                                                                                                                    ▐
+      │─▐
+      │  ⏵⏵ bypass permissions on (shift+tab to cycle) · ← for agents                                                                       ▐
+      │                                                                                                                                     ▐"
     `)
   } finally {
     await herdr.cleanup()
@@ -337,35 +337,43 @@ test("e2e: claude report_file モード — herdr-symphony report で完了報�
 
     expect(agentScreen).toMatchInlineSnapshot(`
       "
-      │ 1 Z     +
-      │┌ test-claude-ID-e2e-test-TS-TS ─┐
-      ││                                                                                                                                    │
-      ││                                                                                                                                    │
-      ││❯ Test prompt for test-claude-ID                                                                                          │
-      ││  ## 完了報告                                                                                                                       │
-      ││                                                                                                                                    │
-      ││  ユーザーに依頼された作業が完了したら、以下のコマンドを実行してください。                                                          │
-      ││                                                                                                                                    │
-      ││      herdr-symphony report --status done --summary "やった作業の要約"                                                              │
-      ││                                                                                                                                    │
-      ││  background task / subagent / task の完了待ちなら、以下のコマンドを実行してください。                                              │
-      ││                                                                                                                                    │
-      ││      herdr-symphony report --status pending --summary "待機中の内容"                                                               │
-      ││                                                                                                                                    │
-      ││  失敗した場合は、以下のコマンドを実行してください。                                                                                │
-      ││                                                                                                                                    │
-      ││      herdr-symphony report --status failed --summary "失敗理由"                                                                    │
-      ││                                                                                                                                    │
-      ││● Task completed successfully.                                                                                                      │
-      ││                                                                                                                                    │
-      ││✻ Worked for 0s │
-      ││                                                                                                                                    │
-      ││─ │
-      ││❯                                                                                                                                   │
-      ││─ │
-      ││  ⏵⏵ bypass permissions on (shift+tab to cycle) · ← for agents                                                                      │
-      ││                                                                                                                                    │
-      │└─┘"
+      │ 1       +
+      │╭─ Claude Code VERSION ─╮
+      ││                                                    │ WHAT_NEW │
+      ││                    Welcome back!                   │ Auto mode is now available without \`CLAUDE_CODE_ENABLE_AUTO_MODE\` opt-in on… │
+      ││                                                    │ Fixed the terminal freezing and keystrokes lagging while streaming response… │
+      ││                       ▐▛███▜▌                      │ CLAUDE_WHATS_NEW_LINE ││                      ▝▜█████▛▘                     │ CLAUDE_WHATS_NEW_LINE ││                        ▘▘ ▝▝                       │                                                                              │
+      ││                                                    │                                                                              │
+      ││      Opus 4.8 (1M context) · API Usage Billing     │                                                                              │
+      ││  TEMP_DIR │                                                                              │
+      │╰─╯
+      │
+      │
+      │❯ Test prompt for test-claude-ID
+      │  ## 完了報告
+      │
+      │  ユーザーに依頼された作業が完了したら、以下のコマンドを実行してください。
+      │
+      │      herdr-symphony report --status done --summary "やった作業の要約"
+      │
+      │  background task / subagent / task の完了待ちなら、以下のコマンドを実行してください。
+      │
+      │      herdr-symphony report --status pending --summary "待機中の内容"
+      │
+      │  失敗した場合は、以下のコマンドを実行してください。
+      │
+      │      herdr-symphony report --status failed --summary "失敗理由"
+      │
+      │● Task completed successfully.
+      │
+      │✻ Worked for 0s │
+      │─
+      │❯
+      │─
+      │  ⏵⏵ bypass permissions on (shift+tab to cycle) · ← for agents
+      │
+      │
+      │"
     `)
   } finally {
     await herdr.cleanup()
