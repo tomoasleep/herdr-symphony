@@ -95,11 +95,9 @@ export function normalizeScreenOutput(text: string): string {
     result = result.replace(pattern, replacement)
   }
   result = result.replace(/││╭─── Claude Code VERSION[\s\S]*?╯ │\n/g, "")
-  result = result.replace(
-    /││ ▐▛███▜▌ {3}Claude Code VERSION[^\n]*\n││▝▜█████▛▘ {2}Opus 4\.8 \(1M context\) · API Usage Billing[^\n]*\n││ {2}▘▘ ▝▝ {4}TEMP_DIR[^\n]*\n/g,
-    "",
-  )
+  result = result.replace(/││[^\n]*Claude Code VERSION[^\n]*\n(?:││[^\n]*\n){0,2}/g, "")
   result = result.replace(/▕/g, "▐")
+  result = result.replace(/─+/g, "─")
   return result
     .split("\n")
     .map((line) => {

@@ -157,7 +157,7 @@ test("e2e: opencode interactive — report file で完了報告する", async ()
     expect(agentScreen).toMatchInlineSnapshot(`
       "
       │ 1 Z     +
-      │┌ test/repo#ID-e2e-test-TS ─────────────────────────────────────────────────────────────────────────────────────────┐
+      │┌ test/repo#ID-e2e-test-TS ─┐
       ││  ┃                                                                                                                                 │
       ││  ┃  Test prompt for test/repo#ID                                                E2E Test                                 │
       ││  ┃  ## 完了報告                                                                                                                    │
@@ -195,7 +195,7 @@ test("e2e: opencode interactive — report file で完了報告する", async ()
       ││  ╹▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀                                             │
       ││                                                             2.5K (2%)  ctrl+p commands    • OpenCode 1.17.13                       │
       ││                                                                                                                                    │
-      │└────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘"
+      │└─┘"
     `)
   } finally {
     await herdr.cleanup()
