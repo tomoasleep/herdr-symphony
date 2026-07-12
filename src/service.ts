@@ -227,7 +227,7 @@ export class SymphonyService {
       `refresh candidates=${candidates.length} dispatchable=${dispatchable.length} running=${this.state.running.size} retrying=${this.state.retryAttempts.size}`,
     )
     if (dispatchable.length === 0) {
-      this.logger.info("idle no dispatchable issues")
+      this.logger.debug("idle no dispatchable issues")
     }
     for (const issue of dispatchable) {
       if (this.stopped) {
