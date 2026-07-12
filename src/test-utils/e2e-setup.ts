@@ -49,6 +49,7 @@ export function makeOpencodeServiceConfig(trackerDir: string): ServiceConfig {
       maxConcurrentAgentsByState: {},
     },
     work: {
+      if: null,
       activeStates: ["Ready"],
       terminalStates: ["Done"],
       runningState: null,
@@ -106,6 +107,7 @@ export function makeClaudeServiceConfig(
       maxConcurrentAgentsByState: {},
     },
     work: {
+      if: null,
       activeStates: ["Ready"],
       terminalStates: ["Done"],
       runningState: null,

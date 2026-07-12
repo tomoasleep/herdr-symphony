@@ -31,6 +31,7 @@ function makeConfig(overrides: Partial<ServiceConfig["work"]> = {}): ServiceConf
     hooks: { beforeRun: null, afterRun: null, timeoutMs: 60_000 },
     agent: { maxConcurrentAgents: 2, maxRetryBackoffMs: 300_000, maxConcurrentAgentsByState: {} },
     work: {
+      if: null,
       activeStates: ["Ready"],
       terminalStates: ["Done"],
       runningState: "In progress",
@@ -689,6 +690,62 @@ describe("SymphonyService", () => {
     expect(runner.options?.reportPath).toBeUndefined()
     expect(runner.options?.interactive).toBeFalsy()
     expect(runner.options?.content).toBe("Fix the bug.")
+    service.shutdown()
+  })
+
+  test("work.if が未設定ならすべての Issue が dispatch される", async () => {
+    const issue = makeIssue({ fields: { Agent: "build" } })
+    const tracker = makeMockTrackerClient([issue])
+    const runner = makeMockRunner()
+    const config = makeConfig()
+
+    const testLogger = makeTestLogger()
+    const service = new SymphonyService(config, "Fix the bug.", {
+      tracker,
+      runner,
+      logger: testLogger.logger,
+      ensureWorkspace: makeMockWorkspace("/tmp/ws-if-null"),
+      claimIssue: () => true,
+      releaseIssue: () => {},
+    })
+
+    await service.refresh()
+    await service.waitForDispatches()
+    await service.reconcileRunning()
+
+    expect(testLogger.lines.some((l) => l.includes("done TEST-1"))).toBe(true)
+    service.shutdown()
+  })
+
+  test("work.if が条件を満たす Issue のみ dispatch される", async () => {
+    const buildIssue = makeIssue({
+      id: "build-1",
+      identifier: "BUILD-1",
+      fields: { Agent: "build" },
+    })
+    const planIssue = makeIssue({ id: "plan-1", identifier: "PLAN-1", fields: { Agent: "plan" } })
+    const tracker = makeMockTrackerClient([buildIssue, planIssue])
+    const runner = makeMockRunner()
+    const config = makeConfig({
+      if: '{{ issue.fields["Agent"] == "build" }}',
+    })
+
+    const testLogger = makeTestLogger()
+    const service = new SymphonyService(config, "Fix the bug.", {
+      tracker,
+      runner,
+      logger: testLogger.logger,
+      ensureWorkspace: makeMockWorkspace("/tmp/ws-if-filter"),
+      claimIssue: () => true,
+      releaseIssue: () => {},
+    })
+
+    await service.refresh()
+    await service.waitForDispatches()
+    await service.reconcileRunning()
+
+    expect(testLogger.lines.some((l) => l.includes("done BUILD-1"))).toBe(true)
+    expect(testLogger.lines.some((l) => l.includes("done PLAN-1"))).toBe(false)
     service.shutdown()
   })
 })

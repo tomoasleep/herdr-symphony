@@ -133,6 +133,7 @@ export type ResolvedIssueRuntimeConfig = {
 }
 
 export type WorkConfig = {
+  if: string | null
   activeStates: string[]
   terminalStates: string[]
   runningState: string | null

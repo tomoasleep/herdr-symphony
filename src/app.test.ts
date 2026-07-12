@@ -53,6 +53,7 @@ function _makeConfig(baseDir: string): ServiceConfig {
     hooks: { beforeRun: null, afterRun: null, timeoutMs: 60_000 },
     agent: { maxConcurrentAgents: 2, maxRetryBackoffMs: 300_000, maxConcurrentAgentsByState: {} },
     work: {
+      if: null,
       activeStates: ["Ready"],
       terminalStates: ["Done"],
       runningState: "In progress",

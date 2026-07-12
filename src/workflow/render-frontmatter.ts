@@ -41,10 +41,27 @@ export async function renderFrontmatter(
   return value
 }
 
+export async function evaluateIfCondition(
+  ifTemplate: string | null,
+  issue: Issue,
+  attempt: number | null,
+): Promise<boolean> {
+  if (ifTemplate == null) {
+    return true
+  }
+  const rendered = await renderFrontmatter(ifTemplate, issue, attempt)
+  const result = String(rendered).trim().toLowerCase()
+  if (result === "" || result === "false" || result === "0") {
+    return false
+  }
+  return true
+}
+
 export async function resolveIssueConfig(issue: Issue, attempt: number | null): Promise<Issue> {
   const resolved = await resolveIssueRuntimeConfig(
     issue,
     {
+      if: null,
       activeStates: [],
       terminalStates: [],
       runningState: null,
