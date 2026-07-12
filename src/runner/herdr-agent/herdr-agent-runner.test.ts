@@ -95,6 +95,7 @@ function makeConfig(overrides: Partial<ServiceConfig["work"]> = {}): ServiceConf
     hooks: { beforeRun: null, afterRun: null, timeoutMs: 60_000 },
     agent: { maxConcurrentAgents: 10, maxRetryBackoffMs: 300_000, maxConcurrentAgentsByState: {} },
     work: {
+      if: null,
       activeStates: ["Ready"],
       terminalStates: ["Done"],
       runningState: null,

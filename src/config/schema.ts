@@ -137,6 +137,7 @@ const HerdrAgentSchema = z.object({
 })
 
 const WorkSchema = z.object({
+  if: z.string().optional().nullable(),
   active_states: z.union([z.string(), z.array(z.string())]).optional(),
   terminal_states: z.union([z.string(), z.array(z.string())]).optional(),
   running_state: z.string().optional().nullable(),
@@ -222,6 +223,7 @@ export function resolveConfigFromSchema(input: unknown): ServiceConfig {
       maxConcurrentAgentsByState: normalizePerState(agent.max_concurrent_agents_by_state),
     },
     work: {
+      if: normalizeOptionalString(work.if),
       activeStates: parseList(work.active_states, ["Backlog", "Ready", "In progress", "In review"]),
       terminalStates: parseList(work.terminal_states, ["Done"]),
       runningState: normalizeOptionalString(work.running_state),

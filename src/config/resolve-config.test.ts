@@ -386,3 +386,22 @@ test("opencode.interactive 未指定時は false になる", () => {
 
   expect(config.work.herdrAgent.opencode.interactive).toBe(false)
 })
+
+test("work.if に Liquid テンプレート文字列を指定できる", () => {
+  const config = resolveConfig({
+    tracker: { kind: "file", file: { base_dir: "/issues" } },
+    work: {
+      if: '{{ issue.fields["Agent"] == "build" }}',
+    },
+  })
+
+  expect(config.work.if).toBe('{{ issue.fields["Agent"] == "build" }}')
+})
+
+test("work.if 未指定時は null になる", () => {
+  const config = resolveConfig({
+    tracker: { kind: "file", file: { base_dir: "/issues" } },
+  })
+
+  expect(config.work.if).toBeNull()
+})

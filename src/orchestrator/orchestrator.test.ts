@@ -24,6 +24,7 @@ function makeConfig(): ServiceConfig {
       maxConcurrentAgentsByState: { backlog: 1 },
     },
     work: {
+      if: null,
       activeStates: ["Backlog", "Ready"],
       terminalStates: ["Done"],
       runningState: null,
