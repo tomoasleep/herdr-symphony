@@ -20,6 +20,8 @@ export type HerdrWorkspaceInfo = {
   id: string
   label: string | null
   cwd: string | null
+  createdNow: boolean
+  rootPaneId: string | null
 }
 
 export type HerdrAgentInfo = {
@@ -99,6 +101,7 @@ function parseWorkspaceList(
 function parseWorkspaceCreate(stdout: string): HerdrWorkspaceInfo | null {
   const env = parseEnvelope(stdout)
   const workspace = env.result?.workspace as Record<string, unknown> | undefined
+  const rootPane = env.result?.root_pane as { pane_id?: unknown } | undefined
   if (!workspace) return null
   const id = workspace.workspace_id
   if (typeof id !== "string") return null
@@ -106,6 +109,8 @@ function parseWorkspaceCreate(stdout: string): HerdrWorkspaceInfo | null {
     id,
     label: typeof workspace.label === "string" ? workspace.label : null,
     cwd: typeof workspace.cwd === "string" ? workspace.cwd : null,
+    createdNow: true,
+    rootPaneId: typeof rootPane?.pane_id === "string" ? rootPane.pane_id : null,
   }
 }
 
@@ -169,6 +174,8 @@ export function createHerdrClient(deps: HerdrClientDeps = {}): HerdrClient {
           id: existing.workspace_id,
           label: existing.label ?? label,
           cwd: existing.cwd ?? cwd,
+          createdNow: false,
+          rootPaneId: null,
         }
       }
 

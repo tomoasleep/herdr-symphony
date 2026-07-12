@@ -95,6 +95,8 @@ describe("HerdrClient", () => {
 
     expect(ws.id).toBe("w1")
     expect(ws.label).toBe("existing-ws")
+    expect(ws.createdNow).toBe(false)
+    expect(ws.rootPaneId).toBeNull()
     expect(calls).toHaveLength(1)
     expect(calls[0]?.args).toContain("workspace")
     expect(calls[0]?.args).toContain("list")
@@ -111,6 +113,8 @@ describe("HerdrClient", () => {
 
     expect(ws.id).toBe("w2")
     expect(ws.label).toBe("new-ws")
+    expect(ws.createdNow).toBe(true)
+    expect(ws.rootPaneId).toBe("w2:p1")
     expect(calls).toHaveLength(2)
     expect(calls[1]?.args).toContain("create")
     expect(calls[1]?.args).toContain("--cwd")

@@ -220,6 +220,10 @@ export class HerdrAgentRunner implements Runner {
       env: effectiveReportPath ? { HERDR_SYMPHONY_REPORT_PATH: effectiveReportPath } : undefined,
     })
 
+    if (workspace.createdNow && workspace.rootPaneId) {
+      await this.client.closePane(workspace.rootPaneId)
+    }
+
     const target = agent.paneId ?? agentName
 
     this.emit(options, {

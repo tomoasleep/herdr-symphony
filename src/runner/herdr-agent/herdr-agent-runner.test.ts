@@ -114,7 +114,15 @@ function makeMockHerdrClient(opts: {
   let getAgentCallCount = 0
   return {
     async ensureWorkspace() {
-      return opts.workspace ?? { id: "w1", label: "TEST-1", cwd: "/repo/worktree" }
+      return (
+        opts.workspace ?? {
+          id: "w1",
+          label: "TEST-1",
+          cwd: "/repo/worktree",
+          createdNow: false,
+          rootPaneId: null,
+        }
+      )
     },
     async startAgent(name, startOpts) {
       startAgentArgs = { name, argv: startOpts.argv, env: startOpts.env }
@@ -308,6 +316,86 @@ describe("HerdrAgentRunner", () => {
     expect(result.status).toBe("succeeded")
     expect(result.error).toBeNull()
     expect(result.responseText).toBe("Implementation complete.")
+  })
+
+  test("新規 workspace の初期 pane は agent 起動後に閉じる", async () => {
+    const client = makeMockHerdrClient({
+      workspace: {
+        id: "w1",
+        label: "TEST-1",
+        cwd: "/repo/worktree",
+        createdNow: true,
+        rootPaneId: "w1:p1",
+      },
+    })
+    const runner = new HerdrAgentRunner(makeConfig(), {
+      herdrClient: client,
+      reportResolver: nullReportResolver(),
+    })
+
+    await runner.startIssue(makeIssue(), {
+      content: "Fix the bug",
+      agentKind: "opencode",
+      attempt: null,
+      workspacePath: "/repo/worktree",
+    })
+
+    expect(client.closedPanes).toEqual(["w1:p1"])
+  })
+
+  test("既存 workspace の pane は agent 起動後も閉じない", async () => {
+    const client = makeMockHerdrClient({
+      workspace: {
+        id: "w1",
+        label: "TEST-1",
+        cwd: "/repo/worktree",
+        createdNow: false,
+        rootPaneId: null,
+      },
+    })
+    const runner = new HerdrAgentRunner(makeConfig(), {
+      herdrClient: client,
+      reportResolver: nullReportResolver(),
+    })
+
+    await runner.startIssue(makeIssue(), {
+      content: "Fix the bug",
+      agentKind: "opencode",
+      attempt: null,
+      workspacePath: "/repo/worktree",
+    })
+
+    expect(client.closedPanes).toEqual([])
+  })
+
+  test("agent 起動に失敗した場合は新規 workspace の初期 pane を閉じない", async () => {
+    const client = makeMockHerdrClient({
+      workspace: {
+        id: "w1",
+        label: "TEST-1",
+        cwd: "/repo/worktree",
+        createdNow: true,
+        rootPaneId: "w1:p1",
+      },
+    })
+    client.startAgent = async () => {
+      throw new Error("agent start failed")
+    }
+    const runner = new HerdrAgentRunner(makeConfig(), {
+      herdrClient: client,
+      reportResolver: nullReportResolver(),
+    })
+
+    await expect(
+      runner.startIssue(makeIssue(), {
+        content: "Fix the bug",
+        agentKind: "opencode",
+        attempt: null,
+        workspacePath: "/repo/worktree",
+      }),
+    ).rejects.toThrow("agent start failed")
+
+    expect(client.closedPanes).toEqual([])
   })
 
   test("reportResolver が解決したテキストを responseText に使う", async () => {
@@ -562,7 +650,7 @@ describe("HerdrAgentRunner", () => {
     const client: HerdrClient = {
       async ensureWorkspace(_cwd, label) {
         receivedLabel = label
-        return { id: "w1", label, cwd: "/repo" }
+        return { id: "w1", label, cwd: "/repo", createdNow: false, rootPaneId: null }
       },
       async startAgent() {
         return { name: "TEST-1", state: "unknown", paneId: "w1:p1", workspaceId: "w1" }
@@ -1435,7 +1523,13 @@ describe("HerdrAgentRunner", () => {
     const captured = { paneId: null as string | null }
     const client: HerdrClient = {
       async ensureWorkspace() {
-        return { id: "w1", label: "TEST-1", cwd: "/repo" }
+        return {
+          id: "w1",
+          label: "TEST-1",
+          cwd: "/repo",
+          createdNow: false,
+          rootPaneId: null,
+        }
       },
       async startAgent() {
         return { name: "TEST-1", state: "working", paneId: "w1:p1", workspaceId: "w1" }
@@ -1588,7 +1682,13 @@ describe("HerdrAgentRunner", () => {
     test("既に閉じられた pane の closePane エラーは無視される", async () => {
       const client: HerdrClient = {
         async ensureWorkspace() {
-          return { id: "w1", label: "TEST-1", cwd: "/repo/worktree" }
+          return {
+            id: "w1",
+            label: "TEST-1",
+            cwd: "/repo/worktree",
+            createdNow: false,
+            rootPaneId: null,
+          }
         },
         async startAgent() {
           return { name: "TEST-1", state: "working", paneId: "w1:p1", workspaceId: "w1" }
