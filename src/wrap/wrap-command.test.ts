@@ -40,6 +40,21 @@ describe("runWrap", () => {
     expect(result.stderr).toContain("hello stderr")
   })
 
+  test("stdout と stderr を対応する親ストリームへ転送する", async () => {
+    const dir = await makeTmpDir()
+    const resultPath = join(dir, "result.json")
+    const stdout: string[] = []
+    const stderr: string[] = []
+
+    await runWrap(resultPath, ["sh", "-c", 'echo "hello stdout"; echo "hello stderr" >&2'], dir, {
+      stdout: (chunk) => stdout.push(chunk),
+      stderr: (chunk) => stderr.push(chunk),
+    })
+
+    expect(stdout.join("")).toContain("hello stdout")
+    expect(stderr.join("")).toContain("hello stderr")
+  })
+
   test("非ゼロ exit code を結果ファイルに記録し、wrap 自身は exit 0 を返す", async () => {
     const dir = await makeTmpDir()
     const resultPath = join(dir, "result.json")

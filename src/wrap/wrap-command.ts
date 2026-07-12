@@ -8,19 +8,35 @@ export type WrapResult = {
   stderr: string
 }
 
-export async function runWrap(resultPath: string, command: string[], cwd: string): Promise<number> {
+type WrapOutput = {
+  stdout?: (chunk: string) => void
+  stderr?: (chunk: string) => void
+}
+
+export async function runWrap(
+  resultPath: string,
+  command: string[],
+  cwd: string,
+  output: WrapOutput = {},
+): Promise<number> {
   const [cmd, ...args] = command
   if (!cmd) return 1
 
   const child = spawn(cmd, args, { cwd, stdio: ["ignore", "pipe", "pipe"] })
+  const writeStdout = output.stdout ?? ((chunk: string) => process.stdout.write(chunk))
+  const writeStderr = output.stderr ?? ((chunk: string) => process.stderr.write(chunk))
 
   let stdout = ""
   let stderr = ""
   child.stdout.on("data", (chunk: Buffer | string) => {
-    stdout += String(chunk)
+    const text = String(chunk)
+    stdout += text
+    writeStdout(text)
   })
   child.stderr.on("data", (chunk: Buffer | string) => {
-    stderr += String(chunk)
+    const text = String(chunk)
+    stderr += text
+    writeStderr(text)
   })
 
   const exitCode = await new Promise<number>((resolve) => {
