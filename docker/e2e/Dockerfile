@@ -63,4 +63,7 @@ RUN case "$TARGETARCH" in amd64) opencode_arch=x64 ;; arm64) opencode_arch=arm64
     && chmod +x /home/agent/.opencode/bin/opencode \
     && rm -rf /tmp/opencode*
 ENV PATH="/home/agent/.opencode/bin:${PATH}"
+
+RUN ln -sf /workspace/bin/herdr-symphony /home/agent/.local/bin/herdr-symphony
+
 WORKDIR /workspace

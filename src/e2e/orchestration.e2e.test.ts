@@ -109,6 +109,8 @@ test("e2e: herdr TUI + service log — agent が herdr 上で実行されて suc
       MOCK_URL=http://MOCK_URL
       start test/repo#1 state=Ready
       runner start kind=herdr_agent workspace=TEMP_DIR model=mock/agent-model
+      agent name=test/repo#1-e2e-test-TS
+      agent pane=PANE_ID
       [test/repo#1] [agent_started] agent_started
       reconcile running=1 refreshed=1
       [test/repo#1] [agent_status] agent_status

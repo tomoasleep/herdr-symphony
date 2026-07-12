@@ -441,7 +441,8 @@ describe("HerdrAgentRunner", () => {
 
     const args = client.startAgentArgs
     expect(args?.argv[0]).toBe("opencode")
-    expect(args?.argv[1]).toBe("--prompt")
+    expect(args?.argv[1]).toBe("--auto")
+    expect(args?.argv).toContain("--prompt")
     expect(args?.argv).not.toContain("run")
   })
 
@@ -464,6 +465,7 @@ describe("HerdrAgentRunner", () => {
     })
 
     const args = client.startAgentArgs
+    expect(args?.argv).toContain("--auto")
     expect(args?.argv).toContain("--model")
     expect(args?.argv).toContain("openai/gpt-5.4")
     expect(args?.argv).toContain("--agent")

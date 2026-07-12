@@ -107,7 +107,10 @@ async function runOpencode(config: ScenarioConfig, controller: AbortController):
   if (interactive) {
     serviceConfig.work.herdrAgent.opencode.interactive = true
   }
-  const herdrClient = wrapHerdrClientWithEnv(createHerdrClient(), {})
+  const herdrClient = wrapHerdrClientWithEnv(createHerdrClient(), {}, (info) => {
+    if (info.name) console.log(`agent name=${info.name}`)
+    if (info.paneId) console.log(`agent pane=${info.paneId}`)
+  })
   const runner = new HerdrAgentRunner(serviceConfig, { herdrClient })
   const service = new SymphonyService(serviceConfig, "Test prompt for {{ issue.identifier }}", {
     runner,

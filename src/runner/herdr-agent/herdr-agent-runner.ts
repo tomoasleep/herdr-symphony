@@ -299,6 +299,16 @@ export class HerdrAgentRunner implements Runner {
     const info = await this.client.getAgent(ctx.target)
 
     if (info === null) {
+      if (ctx.reportPath && ctx.sawAgent) {
+        if (
+          this.handleReportFileIdle(ctx.target, ctx.reportPath, ctx.pendingRemindIntervalMs, {
+            sendReminderOnMissing: !inGrace,
+          }) === "done"
+        ) {
+          return this.doneFromReportFile(ctx)
+        }
+        return { state: "running" }
+      }
       if (ctx.sawActive) {
         if (ctx.agmsgContext) {
           const handled = await this.handleAgmsgIdle(ctx.agmsgContext)
@@ -308,30 +318,9 @@ export class HerdrAgentRunner implements Runner {
           ctx.sawActive = false
           return { state: "running" }
         }
-        if (ctx.reportPath) {
-          if (
-            this.handleReportFileIdle(ctx.target, ctx.reportPath, ctx.pendingRemindIntervalMs, {
-              sendReminderOnMissing: !inGrace,
-            }) === "done"
-          ) {
-            return this.doneFromReportFile(ctx)
-          }
-          ctx.sawActive = false
-          return { state: "running" }
-        }
         return this.doneSucceeded(ctx)
       }
       if (ctx.sawAgent) {
-        if (ctx.reportPath) {
-          if (
-            this.handleReportFileIdle(ctx.target, ctx.reportPath, ctx.pendingRemindIntervalMs, {
-              sendReminderOnMissing: !inGrace,
-            }) === "done"
-          ) {
-            return this.doneFromReportFile(ctx)
-          }
-          return { state: "running" }
-        }
         return this.doneSucceeded(ctx)
       }
       return { state: "running" }
@@ -367,28 +356,6 @@ export class HerdrAgentRunner implements Runner {
     }
 
     if (state === "idle") {
-      if (ctx.sawActive) {
-        if (ctx.agmsgContext) {
-          const handled = await this.handleAgmsgIdle(ctx.agmsgContext)
-          if (handled.state === "done") {
-            return this.doneFromAgmsgReport(ctx, handled.report)
-          }
-          ctx.sawActive = false
-          return { state: "running" }
-        }
-        if (ctx.reportPath) {
-          if (
-            this.handleReportFileIdle(ctx.target, ctx.reportPath, ctx.pendingRemindIntervalMs, {
-              sendReminderOnMissing: !inGrace,
-            }) === "done"
-          ) {
-            return this.doneFromReportFile(ctx)
-          }
-          ctx.sawActive = false
-          return { state: "running" }
-        }
-        return this.doneSucceeded(ctx)
-      }
       if (ctx.reportPath && ctx.sawAgent) {
         if (
           this.handleReportFileIdle(ctx.target, ctx.reportPath, ctx.pendingRemindIntervalMs, {
@@ -398,6 +365,17 @@ export class HerdrAgentRunner implements Runner {
           return this.doneFromReportFile(ctx)
         }
         return { state: "running" }
+      }
+      if (ctx.sawActive) {
+        if (ctx.agmsgContext) {
+          const handled = await this.handleAgmsgIdle(ctx.agmsgContext)
+          if (handled.state === "done") {
+            return this.doneFromAgmsgReport(ctx, handled.report)
+          }
+          ctx.sawActive = false
+          return { state: "running" }
+        }
+        return this.doneSucceeded(ctx)
       }
     }
 
@@ -622,7 +600,11 @@ export class HerdrAgentRunner implements Runner {
     }
 
     if (options.interactive) {
-      const argv: string[] = ["opencode"]
+      const argv: string[] = ["opencode", "--auto"]
+
+      if (process.env.HERDR_SYMPHONY_DEBUG) {
+        argv.push("--log-level", "DEBUG")
+      }
 
       if (options.model) {
         argv.push("--model", options.model)
