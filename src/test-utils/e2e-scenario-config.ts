@@ -47,6 +47,7 @@ export const mockResponseSchema = z.discriminatedUnion("kind", [
 export const scenarioConfigSchema = z.object({
   kind: z.enum(["opencode", "claude"]),
   messenger: z.enum(["agmsg", "report_file"]).optional(),
+  interactive: z.boolean().optional(),
   issue: z.object({
     id: z.string(),
     identifier: z.string(),

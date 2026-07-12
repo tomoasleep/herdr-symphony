@@ -33,7 +33,7 @@ function makeConfig(): ServiceConfig {
       runner: "herdr_agent",
       herdrAgent: {
         agent: "opencode",
-        opencode: { model: null, agent: null },
+        opencode: { model: null, agent: null, interactive: false },
         claude: {
           model: null,
           permissionMode: null,

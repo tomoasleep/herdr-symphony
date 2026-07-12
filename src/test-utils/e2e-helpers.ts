@@ -57,6 +57,8 @@ const DYNAMIC_REPLACEMENTS: Array<[RegExp, string]> = [
   [/\bw\d+:p\d+\b/g, "PANE_ID"],
   [/\bw\d+:t\d+\b/g, "TAB_ID"],
   [/\bw\d+\b/g, "WORKSPACE_ID"],
+  [/test\/repo#[0-9a-z]{6,}/g, "test/repo#ID"],
+  [/Agent Model · \d+\.\d+s/g, "Agent Model · TIME"],
   [/✻ \S+ for 0s/g, "✻ Worked for 0s"],
   [/✻ Worked for 0s\s+▐/g, "✻ Worked for 0s ▐"],
   [/✻ Worked for 0s\s+│/g, "✻ Worked for 0s │"],
@@ -93,11 +95,9 @@ export function normalizeScreenOutput(text: string): string {
     result = result.replace(pattern, replacement)
   }
   result = result.replace(/││╭─── Claude Code VERSION[\s\S]*?╯ │\n/g, "")
-  result = result.replace(
-    /││ ▐▛███▜▌ {3}Claude Code VERSION[^\n]*\n││▝▜█████▛▘ {2}Opus 4\.8 \(1M context\) · API Usage Billing[^\n]*\n││ {2}▘▘ ▝▝ {4}TEMP_DIR[^\n]*\n/g,
-    "",
-  )
+  result = result.replace(/││[^\n]*Claude Code VERSION[^\n]*\n(?:││[^\n]*\n){0,2}/g, "")
   result = result.replace(/▕/g, "▐")
+  result = result.replace(/─+/g, "─")
   return result
     .split("\n")
     .map((line) => {
@@ -180,6 +180,8 @@ export async function createHerdrIsolation(prefix: string): Promise<HerdrIsolati
     "--add-host=host.docker.internal:host-gateway",
     "-v",
     `${projectRoot}:/workspace`,
+    "--tmpfs",
+    "/workspace/.git",
     "-v",
     `${sharedDir}:/tmp/shared`,
     "-e",

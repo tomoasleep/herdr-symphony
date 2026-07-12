@@ -66,7 +66,7 @@ function makeConfig(overrides: Partial<ServiceConfig["work"]> = {}): ServiceConf
       runner: "herdr_agent",
       herdrAgent: {
         agent: "opencode",
-        opencode: { model: "openai/gpt-5.4", agent: "build" },
+        opencode: { model: "openai/gpt-5.4", agent: "build", interactive: false },
         claude: {
           model: null,
           permissionMode: null,
@@ -421,6 +421,77 @@ describe("HerdrAgentRunner", () => {
 
     const args = client.startAgentArgs
     expect(args?.argv.includes("Implement feature X")).toBe(true)
+  })
+
+  test("interactive: true の場合、argv に --prompt が含まれ opencode run が使われない", async () => {
+    const client = makeMockHerdrClient({})
+    const runner = new HerdrAgentRunner(makeConfig(), {
+      herdrClient: client,
+      pollIntervalMs: 10,
+      reportResolver: nullReportResolver(),
+    })
+
+    await runUntilDone(runner, makeIssue(), {
+      content: "Fix the bug",
+      agentKind: "opencode",
+      attempt: null,
+      workspacePath: "/repo/worktree",
+      interactive: true,
+    })
+
+    const args = client.startAgentArgs
+    expect(args?.argv[0]).toBe("opencode")
+    expect(args?.argv[1]).toBe("--auto")
+    expect(args?.argv).toContain("--prompt")
+    expect(args?.argv).not.toContain("run")
+  })
+
+  test("interactive: true で model と agent が指定された場合、argv に含まれる", async () => {
+    const client = makeMockHerdrClient({})
+    const runner = new HerdrAgentRunner(makeConfig(), {
+      herdrClient: client,
+      pollIntervalMs: 10,
+      reportResolver: nullReportResolver(),
+    })
+
+    await runUntilDone(runner, makeIssue(), {
+      content: "Fix the bug",
+      agentKind: "opencode",
+      attempt: null,
+      workspacePath: "/repo/worktree",
+      interactive: true,
+      model: "openai/gpt-5.4",
+      agent: "build",
+    })
+
+    const args = client.startAgentArgs
+    expect(args?.argv).toContain("--auto")
+    expect(args?.argv).toContain("--model")
+    expect(args?.argv).toContain("openai/gpt-5.4")
+    expect(args?.argv).toContain("--agent")
+    expect(args?.argv).toContain("build")
+    expect(args?.argv).toContain("--prompt")
+  })
+
+  test("interactive: false (default) の場合、argv に --prompt が含まれず opencode run が使われる", async () => {
+    const client = makeMockHerdrClient({})
+    const runner = new HerdrAgentRunner(makeConfig(), {
+      herdrClient: client,
+      pollIntervalMs: 10,
+      reportResolver: nullReportResolver(),
+    })
+
+    await runUntilDone(runner, makeIssue(), {
+      content: "Fix the bug",
+      agentKind: "opencode",
+      attempt: null,
+      workspacePath: "/repo/worktree",
+    })
+
+    const args = client.startAgentArgs
+    expect(args?.argv[0]).toBe("opencode")
+    expect(args?.argv[1]).toBe("run")
+    expect(args?.argv).not.toContain("--prompt")
   })
 
   test("agent name が identifier + timestamp から構成される", async () => {
