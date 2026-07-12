@@ -44,6 +44,19 @@ export async function runCli(argv: string[], deps: CliDependencies = {}): Promis
     return 0
   }
 
+  if (parsed.wrap) {
+    if (!parsed.resultPath) {
+      write("--result is required\n")
+      return 1
+    }
+    if (parsed.wrapCommand.length === 0) {
+      write("command is required after --\n")
+      return 1
+    }
+    const { runWrap } = await import("./wrap/wrap-command")
+    return runWrap(parsed.resultPath, parsed.wrapCommand, cwd)
+  }
+
   const workflowPaths = resolveWorkflowPaths(
     parsed.workflowPaths,
     parsed.positionalPaths,
@@ -88,6 +101,9 @@ type ParsedArgs = {
   report: boolean
   reportStatus: ReportStatus | null
   reportSummary: string | null
+  wrap: boolean
+  resultPath: string | null
+  wrapCommand: string[]
   logLevel: LogLevel | null
   workflowPaths: string[]
   positionalPaths: string[]
@@ -99,6 +115,9 @@ function parseArgs(argv: string[]): ParsedArgs {
   let report = false
   let reportStatus: ReportStatus | null = null
   let reportSummary: string | null = null
+  let wrap = false
+  let resultPath: string | null = null
+  let wrapCommand: string[] = []
   let logLevel: LogLevel | null = null
   const workflowPaths: string[] = []
   const positionalPaths: string[] = []
@@ -107,6 +126,11 @@ function parseArgs(argv: string[]): ParsedArgs {
     const arg = argv[index]
     if (!arg) {
       continue
+    }
+
+    if (arg === "--") {
+      wrapCommand = argv.slice(index + 1)
+      break
     }
 
     if (arg === "--help" || arg === "-h") {
@@ -121,6 +145,22 @@ function parseArgs(argv: string[]): ParsedArgs {
 
     if (arg === "report") {
       report = true
+      continue
+    }
+
+    if (arg === "wrap") {
+      wrap = true
+      continue
+    }
+
+    if (arg === "--result") {
+      resultPath = argv[index + 1] ?? null
+      index += 1
+      continue
+    }
+
+    if (arg.startsWith("--result=")) {
+      resultPath = arg.slice("--result=".length)
       continue
     }
 
@@ -196,6 +236,9 @@ function parseArgs(argv: string[]): ParsedArgs {
     report,
     reportStatus,
     reportSummary,
+    wrap,
+    resultPath,
+    wrapCommand,
     logLevel,
     workflowPaths,
     positionalPaths,
@@ -231,6 +274,7 @@ function usage(): string {
     "Commands:",
     "  validate               Validate workflow configuration",
     "  report                 Write completion report to HERDR_SYMPHONY_REPORT_PATH",
+    "  wrap                   Wrap a command, capturing exit code and stdout to a result file",
     "",
     "Arguments:",
     "  workflow               Path to workflow file (can specify multiple)",
@@ -241,5 +285,6 @@ function usage(): string {
     "  --log-level <level>    Log level (debug / info / warn / error)",
     "  --status <status>      Report status (done / pending / failed)",
     "  --summary <text>       Report summary text",
+    "  --result <path>        Result file path for wrap command",
   ].join("\n")
 }

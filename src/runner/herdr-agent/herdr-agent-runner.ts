@@ -1,3 +1,5 @@
+import { readFileSync, rmSync } from "node:fs"
+import { join } from "node:path"
 import type { AgmsgClient } from "../../agmsg/agmsg-client"
 import { createAgmsgClient, getAgmsgScriptsDir, isAgmsgAvailable } from "../../agmsg/agmsg-client"
 import type { AgentReportMessage } from "../../agmsg/agmsg-message"
@@ -8,6 +10,7 @@ import { createHerdrClient } from "../../herdr/herdr-client"
 import { readReport } from "../../report/write-report"
 import { formatError } from "../../utils/error"
 import { sanitizeAgentName, sanitizeWorkspaceKey } from "../../utils/normalize"
+import type { WrapResult } from "../../wrap/wrap-command"
 import type {
   Runner,
   RunnerEvent,
@@ -48,6 +51,7 @@ const DEFAULT_HANDSHAKE_TIMEOUT_MS = 180_000
 const DEFAULT_ACK_RESEND_INTERVAL_MS = 5_000
 const DEFAULT_REMINDER_ACK_DEADLINE_MS = 30_000
 const DEFAULT_REMINDER_GRACE_PERIOD_MS = 180_000
+const RESULT_FILE = ".herdr-symphony-result.json"
 
 const CLAUDE_REPORT_REMINDER =
   'ユーザーに依頼された作業は完了しましたか？完了した場合は `herdr-symphony report --status done --summary "やった作業の要約"` を実行してください。まだ background task / subagent / task の完了待ちなら `herdr-symphony report --status pending --summary "待機中の内容"` を実行してください。失敗した場合は `herdr-symphony report --status failed --summary "失敗理由"` を実行してください。'
@@ -71,6 +75,7 @@ type AgentContext = {
   agentKind: "opencode" | "claude"
   onBlocked: "continue" | "fail" | null
   reportPath: string | undefined
+  resultPath: string | null
   pendingRemindIntervalMs: number
   reminderGraceUntil: number
   agmsgContext: AgmsgWaitContext | null
@@ -206,7 +211,14 @@ export class HerdrAgentRunner implements Runner {
       }
     }
 
-    const argv = this.buildAgentArgv({ ...options, content })
+    const isNonInteractive = options.agentKind === "opencode" && !options.interactive
+    const resultPath = isNonInteractive ? join(options.workspacePath, RESULT_FILE) : null
+
+    if (resultPath) {
+      rmSync(resultPath, { force: true })
+    }
+
+    const argv = this.buildAgentArgv({ ...options, content }, resultPath)
 
     const useReportPath =
       options.agentKind === "claude" ||
@@ -253,6 +265,7 @@ export class HerdrAgentRunner implements Runner {
       agentKind: options.agentKind,
       onBlocked: options.onBlocked ?? null,
       reportPath: effectiveReportPath,
+      resultPath,
       pendingRemindIntervalMs:
         options.pendingRemindIntervalMs ??
         this.config.work.herdrAgent.claude.pendingRemindIntervalMs,
@@ -284,6 +297,10 @@ export class HerdrAgentRunner implements Runner {
           responseText: null,
         },
       }
+    }
+
+    if (ctx.resultPath !== null) {
+      return this.pollNonInteractive(ctx)
     }
 
     if (this.now() >= ctx.deadline) {
@@ -380,6 +397,35 @@ export class HerdrAgentRunner implements Runner {
     }
 
     return { state: "running" }
+  }
+
+  private pollNonInteractive(ctx: AgentContext): RunnerPollResult {
+    if (this.now() >= ctx.deadline) {
+      return this.done(ctx, {
+        status: "timeout",
+        error: "agent timed out after",
+        responseText: null,
+      })
+    }
+
+    const result = readResultFile(ctx.resultPath!)
+    if (result === null) {
+      return { state: "running" }
+    }
+
+    if (result.exitCode === 0) {
+      return this.done(ctx, {
+        status: "succeeded",
+        error: null,
+        responseText: result.stdout.trim() || null,
+      })
+    }
+
+    return this.done(ctx, {
+      status: "failed",
+      error: `opencode run exited with code ${result.exitCode}`,
+      responseText: result.stdout.trim() || null,
+    })
   }
 
   async cancelRun(target: string): Promise<void> {
@@ -580,7 +626,7 @@ export class HerdrAgentRunner implements Runner {
     })
   }
 
-  private buildAgentArgv(options: RunnerOptions): string[] {
+  private buildAgentArgv(options: RunnerOptions, resultPath: string | null): string[] {
     if (options.agentKind === "claude") {
       const argv: string[] = ["claude"]
 
@@ -617,20 +663,42 @@ export class HerdrAgentRunner implements Runner {
       return argv
     }
 
-    const argv: string[] = ["opencode", "run"]
+    const innerArgv: string[] = ["opencode", "run"]
 
     if (options.model) {
-      argv.push("--model", options.model)
+      innerArgv.push("--model", options.model)
     }
     if (options.agent) {
-      argv.push("--agent", options.agent)
+      innerArgv.push("--agent", options.agent)
     }
 
-    argv.push(options.content)
-    return argv
+    innerArgv.push(options.content)
+
+    if (resultPath) {
+      return ["herdr-symphony", "wrap", "--result", resultPath, "--", ...innerArgv]
+    }
+
+    return innerArgv
   }
 
   private emit(options: RunnerOptions, event: RunnerEvent): void {
     options.onEvent?.(event)
+  }
+}
+
+function readResultFile(path: string): WrapResult | null {
+  try {
+    const raw = readFileSync(path, "utf8")
+    const parsed = JSON.parse(raw) as Partial<WrapResult>
+    if (
+      typeof parsed.exitCode !== "number" ||
+      typeof parsed.stdout !== "string" ||
+      typeof parsed.stderr !== "string"
+    ) {
+      return null
+    }
+    return parsed as WrapResult
+  } catch {
+    return null
   }
 }

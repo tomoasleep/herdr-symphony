@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test"
-import { mkdirSync, rmSync } from "node:fs"
+import { mkdirSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import type { AgmsgClient } from "../../agmsg/agmsg-client"
@@ -25,6 +25,44 @@ async function runUntilDone(
     await new Promise((resolve) => setTimeout(resolve, 1))
   }
   throw new Error("runUntilDone: exceeded max poll iterations")
+}
+
+const nonInteractiveTmpDirs: string[] = []
+
+function makeNonInteractiveWorkspace(): string {
+  const dir = join(tmpdir(), `hs-runner-ni-${Date.now()}-${Math.random().toString(36).slice(2)}`)
+  mkdirSync(dir, { recursive: true })
+  nonInteractiveTmpDirs.push(dir)
+  return dir
+}
+
+function writeNonInteractiveResult(
+  workspacePath: string,
+  exitCode: number,
+  stdout: string,
+  stderr = "",
+): void {
+  const resultPath = join(workspacePath, ".herdr-symphony-result.json")
+  writeFileSync(resultPath, JSON.stringify({ exitCode, stdout, stderr }))
+}
+
+async function runNonInteractiveUntilDone(
+  runner: HerdrAgentRunner,
+  issue: Issue,
+  options: RunnerOptions,
+  result?: { exitCode: number; stdout: string },
+): Promise<RunnerResult> {
+  const handle = await runner.startIssue(issue, options)
+  const { exitCode = 0, stdout = "ok" } = result ?? {}
+  writeNonInteractiveResult(options.workspacePath, exitCode, stdout)
+  for (let i = 0; i < 200; i++) {
+    const poll = await runner.pollCompletion(handle)
+    if (poll.state === "done") {
+      return poll.result
+    }
+    await new Promise((resolve) => setTimeout(resolve, 1))
+  }
+  throw new Error("runNonInteractiveUntilDone: exceeded max poll iterations")
 }
 
 function nullReportResolver(): ReportResolver {
@@ -269,6 +307,13 @@ function makeMockAgmsgClient(opts: {
 }
 
 describe("HerdrAgentRunner", () => {
+  afterEach(() => {
+    for (const dir of nonInteractiveTmpDirs) {
+      rmSync(dir, { recursive: true, force: true })
+    }
+    nonInteractiveTmpDirs.length = 0
+  })
+
   describe("buildAgentName", () => {
     test("identifier と workflowName と timestamp を結合する", () => {
       expect(buildAgentName("TEST-1", "e2e-test-claude.md", 1_719_662_400_000)).toBe(
@@ -288,22 +333,26 @@ describe("HerdrAgentRunner", () => {
   })
 
   test("正常系: workspace 作成 → agent 起動 → done 待機 → 出力取得", async () => {
-    const client = makeMockHerdrClient({
-      readText: "Implementation complete.",
-    })
+    const client = makeMockHerdrClient({})
     const runner = new HerdrAgentRunner(makeConfig(), {
       herdrClient: client,
       pollIntervalMs: 10,
       reportResolver: nullReportResolver(),
     })
     const issue = makeIssue()
+    const workspacePath = makeNonInteractiveWorkspace()
 
-    const result = await runUntilDone(runner, issue, {
-      content: "Fix the bug",
-      agentKind: "opencode",
-      attempt: null,
-      workspacePath: "/repo/worktree",
-    })
+    const result = await runNonInteractiveUntilDone(
+      runner,
+      issue,
+      {
+        content: "Fix the bug",
+        agentKind: "opencode",
+        attempt: null,
+        workspacePath,
+      },
+      { exitCode: 0, stdout: "Implementation complete." },
+    )
 
     expect(result.status).toBe("succeeded")
     expect(result.error).toBeNull()
@@ -324,6 +373,7 @@ describe("HerdrAgentRunner", () => {
       agentKind: "opencode",
       attempt: null,
       workspacePath: "/repo/worktree",
+      interactive: true,
     })
 
     expect(result.status).toBe("succeeded")
@@ -343,6 +393,7 @@ describe("HerdrAgentRunner", () => {
       agentKind: "opencode",
       attempt: null,
       workspacePath: "/repo/worktree",
+      interactive: true,
     })
 
     expect(result.status).toBe("succeeded")
@@ -385,19 +436,19 @@ describe("HerdrAgentRunner", () => {
       reportResolver: nullReportResolver(),
     })
 
-    await runUntilDone(runner, makeIssue(), {
+    await runNonInteractiveUntilDone(runner, makeIssue(), {
       content: "Fix the bug",
       agentKind: "opencode",
       attempt: null,
-      workspacePath: "/repo/worktree",
+      workspacePath: makeNonInteractiveWorkspace(),
       model: "openai/gpt-5.4",
       agent: "build",
     })
 
     const args = client.startAgentArgs
     expect(args).not.toBeNull()
-    expect(args?.argv[0]).toBe("opencode")
-    expect(args?.argv[1]).toBe("run")
+    expect(args?.argv).toContain("opencode")
+    expect(args?.argv).toContain("run")
     expect(args?.argv).toContain("--model")
     expect(args?.argv).toContain("openai/gpt-5.4")
     expect(args?.argv).toContain("--agent")
@@ -412,11 +463,11 @@ describe("HerdrAgentRunner", () => {
       reportResolver: nullReportResolver(),
     })
 
-    await runUntilDone(runner, makeIssue(), {
+    await runNonInteractiveUntilDone(runner, makeIssue(), {
       content: "Implement feature X",
       agentKind: "opencode",
       attempt: null,
-      workspacePath: "/repo/worktree",
+      workspacePath: makeNonInteractiveWorkspace(),
     })
 
     const args = client.startAgentArgs
@@ -473,7 +524,7 @@ describe("HerdrAgentRunner", () => {
     expect(args?.argv).toContain("--prompt")
   })
 
-  test("interactive: false (default) の場合、argv に --prompt が含まれず opencode run が使われる", async () => {
+  test("interactive: false (default) の場合、argv に herdr-symphony wrap が含まれる", async () => {
     const client = makeMockHerdrClient({})
     const runner = new HerdrAgentRunner(makeConfig(), {
       herdrClient: client,
@@ -481,16 +532,20 @@ describe("HerdrAgentRunner", () => {
       reportResolver: nullReportResolver(),
     })
 
-    await runUntilDone(runner, makeIssue(), {
+    await runNonInteractiveUntilDone(runner, makeIssue(), {
       content: "Fix the bug",
       agentKind: "opencode",
       attempt: null,
-      workspacePath: "/repo/worktree",
+      workspacePath: makeNonInteractiveWorkspace(),
     })
 
     const args = client.startAgentArgs
-    expect(args?.argv[0]).toBe("opencode")
-    expect(args?.argv[1]).toBe("run")
+    expect(args?.argv[0]).toBe("herdr-symphony")
+    expect(args?.argv[1]).toBe("wrap")
+    expect(args?.argv).toContain("--result")
+    expect(args?.argv).toContain("--")
+    expect(args?.argv).toContain("opencode")
+    expect(args?.argv).toContain("run")
     expect(args?.argv).not.toContain("--prompt")
   })
 
@@ -504,11 +559,11 @@ describe("HerdrAgentRunner", () => {
     })
     const issue = makeIssue({ identifier: "PROJ-42" })
 
-    await runUntilDone(runner, issue, {
+    await runNonInteractiveUntilDone(runner, issue, {
       content: "Do work",
       agentKind: "opencode",
       attempt: null,
-      workspacePath: "/repo/worktree",
+      workspacePath: makeNonInteractiveWorkspace(),
     })
 
     expect(client.startAgentArgs?.name).toBe("PROJ-42-ly02lc00")
@@ -524,11 +579,11 @@ describe("HerdrAgentRunner", () => {
     })
     const issue = makeIssue({ identifier: "PROJ-42" })
 
-    await runUntilDone(runner, issue, {
+    await runNonInteractiveUntilDone(runner, issue, {
       content: "Do work",
       agentKind: "opencode",
       attempt: null,
-      workspacePath: "/repo/worktree",
+      workspacePath: makeNonInteractiveWorkspace(),
       workflowName: "WORKFLOW.exec.md",
     })
 
@@ -545,11 +600,11 @@ describe("HerdrAgentRunner", () => {
     })
     const issue = makeIssue({ identifier: "PROJ-42" })
 
-    await runUntilDone(runner, issue, {
+    await runNonInteractiveUntilDone(runner, issue, {
       content: "Do work",
       agentKind: "opencode",
       attempt: null,
-      workspacePath: "/repo/worktree",
+      workspacePath: makeNonInteractiveWorkspace(),
       workflowName: "my flow.md",
     })
 
@@ -558,7 +613,6 @@ describe("HerdrAgentRunner", () => {
 
   test("workspace label が解決される", async () => {
     let receivedLabel = ""
-    let getAgentCallCount = 0
     const client: HerdrClient = {
       async ensureWorkspace(_cwd, label) {
         receivedLabel = label
@@ -574,10 +628,6 @@ describe("HerdrAgentRunner", () => {
         return "done"
       },
       async getAgent() {
-        getAgentCallCount++
-        if (getAgentCallCount === 1) {
-          return { name: "TEST-1", state: "working", paneId: "w1:p1", workspaceId: "w1" }
-        }
         return { name: "TEST-1", state: "done", paneId: "w1:p1", workspaceId: "w1" }
       },
       async sendInput() {},
@@ -590,11 +640,11 @@ describe("HerdrAgentRunner", () => {
       reportResolver: nullReportResolver(),
     })
 
-    await runUntilDone(runner, makeIssue(), {
+    await runNonInteractiveUntilDone(runner, makeIssue(), {
       content: "Fix the bug",
       agentKind: "opencode",
       attempt: null,
-      workspacePath: "/repo/worktree",
+      workspacePath: makeNonInteractiveWorkspace(),
     })
 
     expect(receivedLabel).toBe("TEST-1")
@@ -614,7 +664,7 @@ describe("HerdrAgentRunner", () => {
       content: "Fix the bug",
       agentKind: "opencode",
       attempt: null,
-      workspacePath: "/repo/worktree",
+      workspacePath: makeNonInteractiveWorkspace(),
       timeoutMs: 50,
     })
 
@@ -636,6 +686,7 @@ describe("HerdrAgentRunner", () => {
       agentKind: "opencode",
       attempt: null,
       workspacePath: "/repo/worktree",
+      interactive: true,
       timeoutMs: 50,
     })
 
@@ -657,6 +708,7 @@ describe("HerdrAgentRunner", () => {
       agentKind: "opencode",
       attempt: null,
       workspacePath: "/repo/worktree",
+      interactive: true,
       onBlocked: "fail",
       timeoutMs: 1_000,
     })
@@ -680,6 +732,7 @@ describe("HerdrAgentRunner", () => {
       agentKind: "opencode",
       attempt: null,
       workspacePath: "/repo/worktree",
+      interactive: true,
       onBlocked: "continue",
       timeoutMs: 50,
     })
@@ -687,29 +740,52 @@ describe("HerdrAgentRunner", () => {
     expect(result.status).toBe("timeout")
   })
 
-  test("opencode agent が idle に戻った場合は succeeded になる", async () => {
-    const client = makeMockHerdrClient({
-      getAgentResult: [
-        { name: "TEST-1", state: "working", paneId: "w1:p1", workspaceId: "w1" },
-        { name: "TEST-1", state: "idle", paneId: "w1:p1", workspaceId: "w1" },
-      ],
-      readText: "Done.",
-    })
+  test("non-interactive は exit code 0 で succeeded になり stdout が responseText になる", async () => {
+    const client = makeMockHerdrClient({})
     const runner = new HerdrAgentRunner(makeConfig(), {
       herdrClient: client,
       pollIntervalMs: 10,
       reportResolver: nullReportResolver(),
     })
 
-    const result = await runUntilDone(runner, makeIssue(), {
-      content: "Fix the bug",
-      agentKind: "opencode",
-      attempt: null,
-      workspacePath: "/repo/worktree",
-    })
+    const result = await runNonInteractiveUntilDone(
+      runner,
+      makeIssue(),
+      {
+        content: "Fix the bug",
+        agentKind: "opencode",
+        attempt: null,
+        workspacePath: makeNonInteractiveWorkspace(),
+      },
+      { exitCode: 0, stdout: "Done." },
+    )
 
     expect(result.status).toBe("succeeded")
     expect(result.responseText).toBe("Done.")
+  })
+
+  test("non-interactive は非ゼロ exit code で failed になる", async () => {
+    const client = makeMockHerdrClient({})
+    const runner = new HerdrAgentRunner(makeConfig(), {
+      herdrClient: client,
+      pollIntervalMs: 10,
+      reportResolver: nullReportResolver(),
+    })
+
+    const result = await runNonInteractiveUntilDone(
+      runner,
+      makeIssue(),
+      {
+        content: "Fix the bug",
+        agentKind: "opencode",
+        attempt: null,
+        workspacePath: makeNonInteractiveWorkspace(),
+      },
+      { exitCode: 1, stdout: "error output" },
+    )
+
+    expect(result.status).toBe("failed")
+    expect(result.error).toContain("code 1")
   })
 
   test("claude は done report がある場合に succeeded になる", async () => {
@@ -1117,13 +1193,7 @@ describe("HerdrAgentRunner", () => {
 
   test("opencode は agmsg を使わず従来通り", async () => {
     const agmsg = makeMockAgmsgClient({ inboxReport: null })
-    const client = makeMockHerdrClient({
-      getAgentResult: [
-        { name: "TEST-1", state: "working", paneId: "w1:p1", workspaceId: "w1" },
-        { name: "TEST-1", state: "idle", paneId: "w1:p1", workspaceId: "w1" },
-      ],
-      readText: "Done.",
-    })
+    const client = makeMockHerdrClient({})
     const runner = new HerdrAgentRunner(makeConfig(), {
       herdrClient: client,
       agmsgClient: agmsg,
@@ -1131,13 +1201,18 @@ describe("HerdrAgentRunner", () => {
       reportResolver: nullReportResolver(),
     })
 
-    const result = await runUntilDone(runner, makeIssue(), {
-      content: "Fix the bug",
-      agentKind: "opencode",
-      attempt: null,
-      workspacePath: "/repo/worktree",
-      agmsg: { team: "herdr-symphony", orchestratorAgent: "herdr-symphony" },
-    })
+    const result = await runNonInteractiveUntilDone(
+      runner,
+      makeIssue(),
+      {
+        content: "Fix the bug",
+        agentKind: "opencode",
+        attempt: null,
+        workspacePath: makeNonInteractiveWorkspace(),
+        agmsg: { team: "herdr-symphony", orchestratorAgent: "herdr-symphony" },
+      },
+      { exitCode: 0, stdout: "Done." },
+    )
 
     expect(result.status).toBe("succeeded")
     expect(agmsg.joinCalls).toHaveLength(0)
@@ -1153,11 +1228,11 @@ describe("HerdrAgentRunner", () => {
       reportResolver: nullReportResolver(),
     })
 
-    await runUntilDone(runner, makeIssue(), {
+    await runNonInteractiveUntilDone(runner, makeIssue(), {
       content: "Fix the bug",
       agentKind: "opencode",
       attempt: null,
-      workspacePath: "/repo/worktree",
+      workspacePath: makeNonInteractiveWorkspace(),
       model: null,
       agent: null,
     })
@@ -1300,11 +1375,11 @@ describe("HerdrAgentRunner", () => {
       reportResolver: nullReportResolver(),
     })
 
-    await runUntilDone(runner, makeIssue(), {
+    await runNonInteractiveUntilDone(runner, makeIssue(), {
       content: "Fix the bug",
       agentKind: "opencode",
       attempt: null,
-      workspacePath: "/repo/worktree",
+      workspacePath: makeNonInteractiveWorkspace(),
       permissionMode: "bypassPermissions",
     })
 
@@ -1467,12 +1542,7 @@ describe("HerdrAgentRunner", () => {
 
   describe("close pane after done", () => {
     test("closePaneAfterDoneMs 指定時、完了して時間経過後に pane を閉じる", async () => {
-      const client = makeMockHerdrClient({
-        getAgentResult: [
-          { name: "TEST-1", state: "working", paneId: "w1:p1", workspaceId: "w1" },
-          { name: "TEST-1", state: "done", paneId: "w1:p1", workspaceId: "w1" },
-        ],
-      })
+      const client = makeMockHerdrClient({})
       let currentTime = 1_000_000
       const runner = new HerdrAgentRunner(makeConfig(), {
         herdrClient: client,
@@ -1481,11 +1551,11 @@ describe("HerdrAgentRunner", () => {
         now: () => currentTime,
       })
 
-      const result = await runUntilDone(runner, makeIssue(), {
+      const result = await runNonInteractiveUntilDone(runner, makeIssue(), {
         content: "Fix the bug",
         agentKind: "opencode",
         attempt: null,
-        workspacePath: "/repo/worktree",
+        workspacePath: makeNonInteractiveWorkspace(),
         closePaneAfterDoneMs: 60_000,
       })
 
@@ -1500,12 +1570,7 @@ describe("HerdrAgentRunner", () => {
     })
 
     test("時間経過前は pane を閉じない", async () => {
-      const client = makeMockHerdrClient({
-        getAgentResult: [
-          { name: "TEST-1", state: "working", paneId: "w1:p1", workspaceId: "w1" },
-          { name: "TEST-1", state: "done", paneId: "w1:p1", workspaceId: "w1" },
-        ],
-      })
+      const client = makeMockHerdrClient({})
       let currentTime = 1_000_000
       const runner = new HerdrAgentRunner(makeConfig(), {
         herdrClient: client,
@@ -1514,11 +1579,11 @@ describe("HerdrAgentRunner", () => {
         now: () => currentTime,
       })
 
-      await runUntilDone(runner, makeIssue(), {
+      await runNonInteractiveUntilDone(runner, makeIssue(), {
         content: "Fix the bug",
         agentKind: "opencode",
         attempt: null,
-        workspacePath: "/repo/worktree",
+        workspacePath: makeNonInteractiveWorkspace(),
         closePaneAfterDoneMs: 60_000,
       })
 
@@ -1528,12 +1593,7 @@ describe("HerdrAgentRunner", () => {
     })
 
     test("closePaneAfterDoneMs 未指定時は pane を閉じない", async () => {
-      const client = makeMockHerdrClient({
-        getAgentResult: [
-          { name: "TEST-1", state: "working", paneId: "w1:p1", workspaceId: "w1" },
-          { name: "TEST-1", state: "done", paneId: "w1:p1", workspaceId: "w1" },
-        ],
-      })
+      const client = makeMockHerdrClient({})
       let currentTime = 1_000_000
       const runner = new HerdrAgentRunner(makeConfig(), {
         herdrClient: client,
@@ -1542,11 +1602,11 @@ describe("HerdrAgentRunner", () => {
         now: () => currentTime,
       })
 
-      await runUntilDone(runner, makeIssue(), {
+      await runNonInteractiveUntilDone(runner, makeIssue(), {
         content: "Fix the bug",
         agentKind: "opencode",
         attempt: null,
-        workspacePath: "/repo/worktree",
+        workspacePath: makeNonInteractiveWorkspace(),
       })
 
       currentTime += 600_000
@@ -1555,12 +1615,7 @@ describe("HerdrAgentRunner", () => {
     })
 
     test("failed で完了しても pane クローズ対象になる", async () => {
-      const client = makeMockHerdrClient({
-        getAgentResult: [
-          { name: "TEST-1", state: "working", paneId: "w1:p1", workspaceId: "w1" },
-          { name: "TEST-1", state: "blocked", paneId: "w1:p1", workspaceId: "w1" },
-        ],
-      })
+      const client = makeMockHerdrClient({})
       let currentTime = 1_000_000
       const runner = new HerdrAgentRunner(makeConfig(), {
         herdrClient: client,
@@ -1569,14 +1624,18 @@ describe("HerdrAgentRunner", () => {
         now: () => currentTime,
       })
 
-      const result = await runUntilDone(runner, makeIssue(), {
-        content: "Fix the bug",
-        agentKind: "opencode",
-        attempt: null,
-        workspacePath: "/repo/worktree",
-        onBlocked: "fail",
-        closePaneAfterDoneMs: 60_000,
-      })
+      const result = await runNonInteractiveUntilDone(
+        runner,
+        makeIssue(),
+        {
+          content: "Fix the bug",
+          agentKind: "opencode",
+          attempt: null,
+          workspacePath: makeNonInteractiveWorkspace(),
+          closePaneAfterDoneMs: 60_000,
+        },
+        { exitCode: 1, stdout: "failed" },
+      )
 
       expect(result.status).toBe("failed")
 
@@ -1618,11 +1677,11 @@ describe("HerdrAgentRunner", () => {
         now: () => currentTime,
       })
 
-      await runUntilDone(runner, makeIssue(), {
+      await runNonInteractiveUntilDone(runner, makeIssue(), {
         content: "Fix the bug",
         agentKind: "opencode",
         attempt: null,
-        workspacePath: "/repo/worktree",
+        workspacePath: makeNonInteractiveWorkspace(),
         closePaneAfterDoneMs: 60_000,
       })
 
@@ -2044,26 +2103,26 @@ describe("HerdrAgentRunner", () => {
 
     test("opencode は reportPath を無視する", async () => {
       const reportPath = makeReportPath()
-      const client = makeMockHerdrClient({
-        getAgentResult: [
-          { name: "TEST-1", state: "working", paneId: "w1:p1", workspaceId: "w1" },
-          { name: "TEST-1", state: "idle", paneId: "w1:p1", workspaceId: "w1" },
-        ],
-        readText: "Done.",
-      })
+      const client = makeMockHerdrClient({})
       const runner = new HerdrAgentRunner(makeConfig(), {
         herdrClient: client,
         pollIntervalMs: 10,
         reportResolver: nullReportResolver(),
       })
+      const workspacePath = makeNonInteractiveWorkspace()
 
-      const result = await runUntilDone(runner, makeIssue(), {
-        content: "Fix the bug",
-        agentKind: "opencode",
-        attempt: null,
-        workspacePath: "/repo/worktree",
-        reportPath,
-      })
+      const result = await runNonInteractiveUntilDone(
+        runner,
+        makeIssue(),
+        {
+          content: "Fix the bug",
+          agentKind: "opencode",
+          attempt: null,
+          workspacePath,
+          reportPath,
+        },
+        { exitCode: 0, stdout: "Done." },
+      )
 
       expect(result.status).toBe("succeeded")
       expect(result.responseText).toBe("Done.")

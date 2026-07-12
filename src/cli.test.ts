@@ -203,4 +203,45 @@ describe("runCli", () => {
     expect(code).toBe(1)
     expect(output.join("")).toContain("done / pending / failed")
   })
+
+  test("wrap --result <path> -- <cmd> で結果ファイルを書き出す", async () => {
+    const tmpDir = join(tmpdir(), `hs-cli-wrap-${Date.now()}`)
+    tmpDirs.push(tmpDir)
+    await mkdir(tmpDir, { recursive: true })
+    const resultPath = join(tmpDir, "result.json")
+    const { output } = makeDeps()
+
+    const code = await runCli(
+      ["wrap", "--result", resultPath, "--", "sh", "-c", 'echo "ok"; exit 0'],
+      {
+        cwd: tmpDir,
+        env: {},
+        start: async () => {},
+        write: (chunk) => output.push(chunk),
+      },
+    )
+
+    expect(code).toBe(0)
+    const result = JSON.parse(readFileSync(resultPath, "utf8"))
+    expect(result.exitCode).toBe(0)
+    expect(result.stdout).toContain("ok")
+  })
+
+  test("wrap は --result が必須", async () => {
+    const { deps, output } = makeDeps()
+
+    const code = await runCli(["wrap", "--", "echo", "ok"], deps)
+
+    expect(code).toBe(1)
+    expect(output.join("")).toContain("--result")
+  })
+
+  test("wrap は -- の後ろにコマンドが必須", async () => {
+    const { deps, output } = makeDeps()
+
+    const code = await runCli(["wrap", "--result", "/tmp/r.json", "--"], deps)
+
+    expect(code).toBe(1)
+    expect(output.join("")).toContain("command")
+  })
 })
