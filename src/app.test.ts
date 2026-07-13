@@ -127,6 +127,52 @@ describe("startHerdrSymphony", () => {
     tmpDirs.length = 0
   })
 
+  test("起動時にワークフロー名とポーリング周期を info ログに出力する", async () => {
+    const tmpDir = join(tmpdir(), `hs-app-startup-${Date.now()}`)
+    tmpDirs.push(tmpDir)
+    await mkdir(join(tmpDir, "Ready"), { recursive: true })
+    await writeFile(
+      join(tmpDir, "WORKFLOW.md"),
+      `---\ntracker:\n  kind: file\n  file:\n    base_dir: ${tmpDir}\npolling:\n  interval_ms: 45000\nwork:\n  active_states: [Ready]\n  running_state: "In progress"\n  success_state: "Done"\n---\nFix the issue\n`,
+    )
+
+    const testLogger = makeTestLogger("info")
+
+    await startHerdrSymphony(
+      join(tmpDir, "WORKFLOW.md"),
+      { logLevel: "info", storageConfig: { databasePath: join(tmpDir, "test.db") } },
+      {
+        logger: testLogger.logger,
+        createService: (config, template, _options, input) =>
+          new SymphonyService(config, template, {
+            logLevel: "info",
+            workflowId: input.workflowId,
+            workflowName: input.workflowName,
+            storage: input.storage ?? undefined,
+            tracker: makeMockTracker([]),
+            runner: makeMockRunner(),
+            ensureWorkspace: async () => ({
+              key: "test-1",
+              branch: null,
+              path: tmpDir,
+              repositoryRoot: tmpDir,
+              createdNow: true,
+            }),
+            claimIssue: () => true,
+            releaseIssue: () => {},
+          }),
+        schedule: () => () => {},
+      },
+    )
+
+    const startupLine = testLogger.entries.find(
+      (e) => e.level === "info" && e.line.includes("loaded"),
+    )
+    expect(startupLine).toBeDefined()
+    expect(startupLine!.line).toContain("WORKFLOW.md")
+    expect(startupLine!.line).toContain("polling=45s")
+  })
+
   test("workflow を読み込んで refresh を実行する", async () => {
     const tmpDir = join(tmpdir(), `hs-app-${Date.now()}`)
     tmpDirs.push(tmpDir)
