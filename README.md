@@ -128,6 +128,277 @@ Agent の実行状況は Herdr のサイドバーで確認できる。
 
 Liquid エンジンは strict mode（`strictFilters`, `strictVariables`）で動作し、未定義変数や失敗したフィルタはエラーになる。プロンプトだけでなく `branch`, `model`, `workspace_label` などの設定値の文字列にも適用される。
 
+### サンプル
+
+以下に代表的な 6 つの `WORKFLOW.md` 例を示す。各設定の詳細は後述のリファレンスを参照。
+
+#### 1. 最小構成 — GitHub Project + OpenCode
+
+GitHub Project を監視し、`Ready` 状態の Issue を OpenCode で処理する基本パターン。リポジトリ・モデル・Agent 名は Issue フィールドから動的に解決し、ブランチ名を Liquid で生成する。
+
+````markdown
+---
+tracker:
+  kind: github_project
+  github_project:
+    owner: "@me"
+    number: 4
+
+polling:
+  interval_ms: 30000
+
+agent:
+  max_concurrent_agents: 10
+
+work:
+  active_states: [Ready]
+  running_state: "In progress"
+  success_state: "In review"
+  failure_state: "Blocked"
+  reporter: [file, tracker]
+
+  workspace:
+    provider: gwq
+    branch: '{{ issue.fields["Branch"] | default: "herdr/" | append: issue.identifier | replace: "/", "_" }}'
+
+  herdr_agent:
+    agent: opencode
+    opencode:
+      model: '{{ issue.fields["Model"] | default: "openai/gpt-5.4" }}'
+      agent: '{{ issue.fields["Agent"] | default: "build" }}'
+    workspace_label: '{{ issue.identifier | replace: "/", "_" }}'
+    turn_timeout_ms: 3600000
+---
+
+Issue {{ issue.identifier }} を解決してください。
+
+{{ issue.body }}
+````
+
+#### 2. File tracker でローカルテスト
+
+GitHub を使わず、ローカルディレクトリの `.md` ファイルを Issue として扱う。開発・テスト用途。`base_dir` 配下の state 名ディレクトリ（例: `Ready/`）に置かれたファイルが候補になる。
+
+````markdown
+---
+tracker:
+  kind: file
+  file:
+    base_dir: ./issues
+
+work:
+  active_states: [Ready]
+  running_state: "In progress"
+  success_state: "Done"
+
+  workspace:
+    provider: git
+    branch: "local/{{ issue.identifier }}"
+
+  herdr_agent:
+    agent: opencode
+    opencode:
+      model: openai/gpt-5.4
+      agent: build
+---
+
+Issue {{ issue.identifier }} を解決してください。
+
+{{ issue.body }}
+````
+
+#### 3. Schedule tracker で定期実行
+
+cron で定期的に Agent を起動する。Issue トラッキングではなく、定時タスクの自動実行向け。`workspace.provider: none` で worktree を作らずリポジトリルートで直接実行する。
+
+````markdown
+---
+tracker:
+  kind: schedule
+  schedule:
+    cron: "0 9 * * *"
+
+work:
+  workspace:
+    provider: none
+
+  herdr_agent:
+    agent: opencode
+    opencode:
+      model: openai/gpt-5.4
+      agent: build
+    turn_timeout_ms: 1800000
+---
+
+日次の依存関係チェックと脆弱性スキャンを実行してください。
+
+`bun audit` と `bun outdated` を実行し、結果をレポートとしてまとめてください。
+````
+
+#### 4. Claude Code を使う
+
+Claude Code CLI を Agent として使う例。`report_file` messenger で完了判定を行う（デフォルト）。`permission_mode` は Issue フィールドから動的に切り替え可能。
+
+````markdown
+---
+tracker:
+  kind: github_project
+  github_project:
+    owner: "@me"
+    number: 4
+
+work:
+  active_states: [Ready]
+  running_state: "In progress"
+  success_state: "In review"
+  failure_state: "Blocked"
+  reporter: [file, tracker]
+
+  workspace:
+    provider: gwq
+    branch: "claude/{{ issue.identifier | replace: '/', '_' }}"
+
+  herdr_agent:
+    agent: claude
+    claude:
+      model: claude-sonnet-4-20250514
+      permission_mode: '{{ issue.fields["PermissionMode"] | default: "bypassPermissions" }}'
+      messenger: report_file
+    workspace_label: '{{ issue.identifier | replace: "/", "_" }}'
+    turn_timeout_ms: 3600000
+---
+
+Issue {{ issue.identifier }} を解決してください。
+
+{{ issue.body }}
+````
+
+#### 5. 複数 workflow で Issue を振り分け（work.if）
+
+`work.if` で Issue フィールドに応じて処理する workflow を切り替える。複数の `WORKFLOW.md` を同時に指定して実行する。
+
+**WORKFLOW.build.md** — `Agent` フィールドが `"build"` の Issue のみ処理:
+
+````markdown
+---
+tracker:
+  kind: github_project
+  github_project:
+    owner: "@me"
+    number: 4
+
+work:
+  if: '{{ issue.fields["Agent"] == "build" }}'
+  active_states: [Ready]
+  running_state: "In progress"
+  success_state: "In review"
+  failure_state: "Blocked"
+
+  workspace:
+    provider: gwq
+    branch: "build/{{ issue.identifier | replace: '/', '_' }}"
+
+  herdr_agent:
+    agent: opencode
+    opencode:
+      model: '{{ issue.fields["Model"] | default: "openai/gpt-5.4" }}'
+      agent: build
+---
+
+Issue {{ issue.identifier }} をビルド・修正してください。
+
+{{ issue.body }}
+````
+
+**WORKFLOW.plan.md** — `Agent` フィールドが `"plan"` の Issue のみ処理:
+
+````markdown
+---
+tracker:
+  kind: github_project
+  github_project:
+    owner: "@me"
+    number: 4
+
+work:
+  if: '{{ issue.fields["Agent"] == "plan" }}'
+  active_states: [Ready]
+  running_state: "In progress"
+  success_state: "In review"
+  failure_state: "Blocked"
+
+  workspace:
+    provider: gwq
+    branch: "plan/{{ issue.identifier | replace: '/', '_' }}"
+
+  herdr_agent:
+    agent: opencode
+    opencode:
+      model: '{{ issue.fields["Model"] | default: "openai/gpt-5.4" }}'
+      agent: plan
+---
+
+Issue {{ issue.identifier }} について実装計画を立案してください。
+
+{{ issue.body }}
+````
+
+実行:
+
+```bash
+herdr-symphony WORKFLOW.build.md WORKFLOW.plan.md
+```
+
+#### 6. hooks と状態別同時実行数制限（高度な設定）
+
+`hooks.before_run` / `hooks.after_run` で dispatch 前後にコマンドを実行し、`max_concurrent_agents_by_state` で状態別の同時実行数を制限する。OpenCode interactive mode（TUI）で起動し、`report_file` 機構で完了判定を行う例。
+
+````markdown
+---
+tracker:
+  kind: github_project
+  github_project:
+    owner: "@me"
+    number: 4
+
+agent:
+  max_concurrent_agents: 10
+  max_concurrent_agents_by_state:
+    "In progress": 3
+
+hooks:
+  before_run: 'gh issue comment {{ issue.identifier }} --body "🚀 修正を開始しました"'
+  after_run: 'gh issue comment {{ issue.identifier }} --body "✅ 修正が完了しました"'
+  timeout_ms: 30000
+
+work:
+  active_states: [Ready]
+  running_state: "In progress"
+  success_state: "In review"
+  failure_state: "Blocked"
+  reporter: [file, tracker]
+
+  workspace:
+    provider: gwq
+    branch: "fix/{{ issue.identifier | replace: '/', '_' }}"
+
+  herdr_agent:
+    agent: opencode
+    opencode:
+      model: openai/gpt-5.4
+      agent: build
+      interactive: true
+    workspace_label: '{{ issue.identifier | replace: "/", "_" }}'
+    turn_timeout_ms: 3600000
+    close_pane_after_done_ms: 60000
+    on_blocked: fail
+---
+
+Issue {{ issue.identifier }} を解決してください。
+
+{{ issue.body }}
+````
+
 ### tracker 設定
 
 #### GitHub Project Tracker
