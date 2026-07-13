@@ -81,6 +81,7 @@ test("opencode model/agent を Liquid で解決できる", async () => {
       opencode: {
         model: '{{ issue.fields["Model"] | default: "openai/gpt-5.4" }}',
         agent: '{{ issue.fields["Agent"] | default: "build" }}',
+        env: {},
         interactive: false,
       },
       claude: {
