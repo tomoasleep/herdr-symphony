@@ -35,13 +35,14 @@ function makeConfig(): ServiceConfig {
       runner: "herdr_agent",
       herdrAgent: {
         agent: "opencode",
-        opencode: { model: null, agent: null, interactive: false },
+        opencode: { model: null, agent: null, interactive: false, env: {} },
         claude: {
           model: null,
           permissionMode: null,
           messenger: "agmsg",
           pendingRemindIntervalMs: 900_000,
           reminderGracePeriodMs: 180_000,
+          env: {},
         },
         workspaceLabel: null,
         turnTimeoutMs: 3_600_000,

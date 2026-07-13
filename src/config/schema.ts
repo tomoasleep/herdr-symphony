@@ -116,6 +116,7 @@ const HerdrAgentOpencodeSchema = z.object({
   model: z.string().optional().nullable(),
   agent: z.string().optional().nullable(),
   interactive: z.boolean().optional(),
+  env: z.record(z.string(), z.string()).optional(),
 })
 
 const HerdrAgentClaudeSchema = z.object({
@@ -124,6 +125,7 @@ const HerdrAgentClaudeSchema = z.object({
   messenger: z.enum(["agmsg", "report_file"]).optional().nullable(),
   pending_remind_interval_ms: z.union([z.number(), z.string()]).optional(),
   reminder_grace_period_ms: z.union([z.number(), z.string()]).optional(),
+  env: z.record(z.string(), z.string()).optional(),
 })
 
 const HerdrAgentSchema = z.object({
@@ -243,6 +245,7 @@ export function resolveConfigFromSchema(input: unknown): ServiceConfig {
               ? herdrAgentRaw.opencode.agent
               : null,
           interactive: herdrAgentRaw?.opencode?.interactive === true,
+          env: herdrAgentRaw?.opencode?.env ?? {},
         },
         claude: {
           model:
@@ -257,6 +260,7 @@ export function resolveConfigFromSchema(input: unknown): ServiceConfig {
             toInt(herdrAgentRaw?.claude?.reminder_grace_period_ms, 180_000),
             0,
           ),
+          env: herdrAgentRaw?.claude?.env ?? {},
         },
         workspaceLabel: normalizeOptionalString(herdrAgentRaw?.workspace_label),
         turnTimeoutMs,

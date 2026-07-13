@@ -129,13 +129,14 @@ async function runOpencode(config: ScenarioConfig, controller: AbortController):
       runner: {
         kind: "herdr_agent",
         agent: "opencode",
-        opencode: { model: "mock/agent-model", agent: null, interactive },
+        opencode: { model: "mock/agent-model", agent: null, interactive, env: {} },
         claude: {
           model: null,
           permissionMode: null,
           messenger: "agmsg",
           pendingRemindIntervalMs: 900_000,
           reminderGracePeriodMs: 180_000,
+          env: {},
         },
         workspaceLabel: null,
         turnTimeoutMs: 60_000,
@@ -201,13 +202,14 @@ async function runClaude(config: ScenarioConfig, controller: AbortController): P
       runner: {
         kind: "herdr_agent",
         agent: "claude",
-        opencode: { model: null, agent: null, interactive: false },
+        opencode: { model: null, agent: null, interactive: false, env: {} },
         claude: {
           model: null,
           permissionMode: "bypassPermissions",
           messenger,
           pendingRemindIntervalMs: 900_000,
           reminderGracePeriodMs: 180_000,
+          env: {},
         },
         workspaceLabel: null,
         turnTimeoutMs: 120_000,

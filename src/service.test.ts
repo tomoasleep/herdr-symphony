@@ -41,13 +41,14 @@ function makeConfig(overrides: Partial<ServiceConfig["work"]> = {}): ServiceConf
       runner: "herdr_agent",
       herdrAgent: {
         agent: "opencode",
-        opencode: { model: null, agent: null, interactive: false },
+        opencode: { model: null, agent: null, interactive: false, env: {} },
         claude: {
           model: null,
           permissionMode: null,
           messenger: "agmsg",
           pendingRemindIntervalMs: 900_000,
           reminderGracePeriodMs: 180_000,
+          env: {},
         },
         workspaceLabel: null,
         turnTimeoutMs: 3_600_000,
@@ -406,6 +407,7 @@ describe("SymphonyService", () => {
           messenger: "report_file",
           pendingRemindIntervalMs: 900_000,
           reminderGracePeriodMs: 180_000,
+          env: {},
         },
       },
     })
@@ -642,7 +644,7 @@ describe("SymphonyService", () => {
     const config = makeConfig({
       herdrAgent: {
         ...baseConfig.work.herdrAgent,
-        opencode: { model: null, agent: null, interactive: true },
+        opencode: { model: null, agent: null, interactive: true, env: {} },
       },
     })
 
