@@ -405,3 +405,56 @@ test("work.if 未指定時は null になる", () => {
 
   expect(config.work.if).toBeNull()
 })
+
+test("opencode.env を解決できる", () => {
+  const config = resolveConfig({
+    tracker: { kind: "file", file: { base_dir: "/issues" } },
+    work: {
+      runner: "herdr_agent",
+      herdr_agent: {
+        agent: "opencode",
+        opencode: {
+          env: {
+            SOME_ENV: "{{ issue.fields.Some }}",
+            ANOTHER_ENV: "value",
+          },
+        },
+      },
+    },
+  })
+
+  expect(config.work.herdrAgent.opencode.env).toEqual({
+    SOME_ENV: "{{ issue.fields.Some }}",
+    ANOTHER_ENV: "value",
+  })
+})
+
+test("claude.env を解決できる", () => {
+  const config = resolveConfig({
+    tracker: { kind: "file", file: { base_dir: "/issues" } },
+    work: {
+      runner: "herdr_agent",
+      herdr_agent: {
+        agent: "claude",
+        claude: {
+          env: {
+            SOME_ENV: "value",
+          },
+        },
+      },
+    },
+  })
+
+  expect(config.work.herdrAgent.claude.env).toEqual({
+    SOME_ENV: "value",
+  })
+})
+
+test("env 未指定時は空オブジェクトになる", () => {
+  const config = resolveConfig({
+    tracker: { kind: "file", file: { base_dir: "/issues" } },
+  })
+
+  expect(config.work.herdrAgent.opencode.env).toEqual({})
+  expect(config.work.herdrAgent.claude.env).toEqual({})
+})

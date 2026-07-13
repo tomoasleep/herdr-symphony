@@ -450,6 +450,9 @@ export class SymphonyService {
       const runnerPermissionMode =
         runtimeConfig.runner.agent === "claude" ? runtimeConfig.runner.claude.permissionMode : null
       const runnerOnBlocked = runtimeConfig.runner.onBlocked
+      const runnerEnv = runtimeConfig.runner.agent === "claude"
+        ? runtimeConfig.runner.claude.env
+        : runtimeConfig.runner.opencode.env
       this.logger.info(
         `runner start kind=${runtimeConfig.runner.kind} workspace=${workspace.path}` +
           (runnerAgent ? ` agent=${runnerAgent}` : "") +
@@ -471,6 +474,7 @@ export class SymphonyService {
         agmsg,
         reportPath,
         reminderGracePeriodMs: runtimeConfig.runner.claude.reminderGracePeriodMs,
+        env: Object.keys(runnerEnv).length > 0 ? runnerEnv : undefined,
         onEvent: (event) => {
           this.state.markEvent(issue.id)
           const message = "message" in event ? event.message : event.event

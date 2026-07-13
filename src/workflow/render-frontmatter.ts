@@ -71,13 +71,14 @@ export async function resolveIssueConfig(issue: Issue, attempt: number | null): 
       runner: null,
       herdrAgent: {
         agent: "opencode",
-        opencode: { model: null, agent: null, interactive: false },
+        opencode: { model: null, agent: null, interactive: false, env: {} },
         claude: {
           model: null,
           permissionMode: null,
           messenger: "agmsg",
           pendingRemindIntervalMs: 900_000,
           reminderGracePeriodMs: 180_000,
+          env: {},
         },
         workspaceLabel: null,
         turnTimeoutMs: null,
@@ -113,10 +114,12 @@ export async function resolveIssueRuntimeConfig(
       opencode: {
         agent: work.herdrAgent.opencode.agent,
         model: work.herdrAgent.opencode.model,
+        env: work.herdrAgent.opencode.env,
       },
       claude: {
         model: work.herdrAgent.claude.model,
         permissionMode: work.herdrAgent.claude.permissionMode,
+        env: work.herdrAgent.claude.env,
       },
       workspaceLabel: work.herdrAgent.workspaceLabel,
       workspace: {
@@ -136,8 +139,8 @@ export async function resolveIssueRuntimeConfig(
     attempt,
   )) as {
     repository: string | null
-    opencode: { agent: string | null; model: string | null }
-    claude: { model: string | null; permissionMode: string | null }
+    opencode: { agent: string | null; model: string | null; env: Record<string, string> }
+    claude: { model: string | null; permissionMode: string | null; env: Record<string, string> }
     workspaceLabel: string | null
     workspace: WorkConfig["workspace"]
   }
@@ -157,6 +160,7 @@ export async function resolveIssueRuntimeConfig(
         agent: normalizeOverride(rendered.opencode.agent),
         model: normalizeOverride(rendered.opencode.model),
         interactive: work.herdrAgent.opencode.interactive,
+        env: rendered.opencode.env,
       },
       claude: {
         model: normalizeOverride(rendered.claude.model),
@@ -164,6 +168,7 @@ export async function resolveIssueRuntimeConfig(
         messenger: work.herdrAgent.claude.messenger,
         pendingRemindIntervalMs: work.herdrAgent.claude.pendingRemindIntervalMs,
         reminderGracePeriodMs: work.herdrAgent.claude.reminderGracePeriodMs,
+        env: rendered.claude.env,
       },
       workspaceLabel: normalizeOverride(rendered.workspaceLabel),
       turnTimeoutMs: work.herdrAgent.turnTimeoutMs,

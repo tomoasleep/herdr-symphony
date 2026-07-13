@@ -225,11 +225,19 @@ export class HerdrAgentRunner implements Runner {
       (options.agentKind === "opencode" && options.interactive === true)
     const effectiveReportPath = useReportPath ? options.reportPath : undefined
 
+    const agentEnv: Record<string, string> = {}
+    if (effectiveReportPath) {
+      agentEnv.HERDR_SYMPHONY_REPORT_PATH = effectiveReportPath
+    }
+    if (options.env) {
+      Object.assign(agentEnv, options.env)
+    }
+
     const agent = await this.client.startAgent(agentName, {
       workspaceId: workspace.id,
       cwd: options.workspacePath,
       argv,
-      env: effectiveReportPath ? { HERDR_SYMPHONY_REPORT_PATH: effectiveReportPath } : undefined,
+      env: Object.keys(agentEnv).length > 0 ? agentEnv : undefined,
     })
 
     if (workspace.createdNow && workspace.rootPaneId) {
