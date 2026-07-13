@@ -75,7 +75,7 @@ export async function resolveIssueConfig(issue: Issue, attempt: number | null): 
         claude: {
           model: null,
           permissionMode: null,
-          messenger: "agmsg",
+          messenger: "report_file",
           pendingRemindIntervalMs: 900_000,
           reminderGracePeriodMs: 180_000,
         },

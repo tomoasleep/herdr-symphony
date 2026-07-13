@@ -91,7 +91,7 @@ export function makeClaudeServiceConfig(
   trackerDir: string,
   opts: { messenger?: "agmsg" | "report_file" } = {},
 ): ServiceConfig {
-  const messenger = opts.messenger ?? "agmsg"
+  const messenger = opts.messenger ?? "report_file"
   return {
     tracker: {
       kind: "file",

@@ -229,12 +229,12 @@ test("claude.messenger: report_file を解決できる", () => {
   expect(config.work.herdrAgent.claude.messenger).toBe("report_file")
 })
 
-test("claude.messenger 未指定時は agmsg になる", () => {
+test("claude.messenger 未指定時は report_file になる", () => {
   const config = resolveConfig({
     tracker: { kind: "file", file: { base_dir: "/issues" } },
   })
 
-  expect(config.work.herdrAgent.claude.messenger).toBe("agmsg")
+  expect(config.work.herdrAgent.claude.messenger).toBe("report_file")
 })
 
 test("claude.pending_remind_interval_ms を解決できる", () => {
