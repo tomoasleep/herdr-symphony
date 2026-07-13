@@ -450,9 +450,10 @@ export class SymphonyService {
       const runnerPermissionMode =
         runtimeConfig.runner.agent === "claude" ? runtimeConfig.runner.claude.permissionMode : null
       const runnerOnBlocked = runtimeConfig.runner.onBlocked
-      const runnerEnv = runtimeConfig.runner.agent === "claude"
-        ? runtimeConfig.runner.claude.env
-        : runtimeConfig.runner.opencode.env
+      const runnerEnv =
+        runtimeConfig.runner.agent === "claude"
+          ? runtimeConfig.runner.claude.env
+          : runtimeConfig.runner.opencode.env
       this.logger.info(
         `runner start kind=${runtimeConfig.runner.kind} workspace=${workspace.path}` +
           (runnerAgent ? ` agent=${runnerAgent}` : "") +

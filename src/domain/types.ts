@@ -112,7 +112,12 @@ export type WorkspaceConfig = {
 export type ResolvedHerdrAgentRunnerConfig = {
   kind: "herdr_agent"
   agent: "opencode" | "claude"
-  opencode: { model: string | null; agent: string | null; interactive: boolean; env: Record<string, string> }
+  opencode: {
+    model: string | null
+    agent: string | null
+    interactive: boolean
+    env: Record<string, string>
+  }
   claude: {
     model: string | null
     permissionMode: string | null
