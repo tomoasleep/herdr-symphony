@@ -169,7 +169,7 @@ async function runClaude(config: ScenarioConfig, controller: AbortController): P
   const workspacePath = await prepareWorkspace(tmpdir(), `claude-${SCENARIO_NOW.toString(36)}`)
   trustClaudeWorkspace(workspacePath)
 
-  const messenger = config.messenger ?? "agmsg"
+  const messenger = config.messenger ?? "report_file"
   const serviceConfig = makeClaudeServiceConfig(trackerDir, { messenger })
   const envVars = {
     ANTHROPIC_BASE_URL: mock.url,

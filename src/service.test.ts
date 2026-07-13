@@ -429,7 +429,7 @@ describe("SymphonyService", () => {
     service.shutdown()
   })
 
-  test("claude.messenger: agmsg (default) の場合は agmsg を渡し reportPath を渡さない", async () => {
+  test("claude.messenger: agmsg の場合は agmsg を渡し reportPath を渡さない", async () => {
     const tmpDir = join(tmpdir(), `hs-service-agmsg-${Date.now()}`)
     tmpDirs.push(tmpDir)
     await mkdir(tmpDir, { recursive: true })

@@ -113,6 +113,7 @@ test("e2e: claude 対話モード — agent の画面全体を確認できる", 
     const identifier = `test-claude-${newRunId()}`
     const { containerPath } = await writeScenarioConfig(herdr.sharedDir, {
       kind: "claude",
+      messenger: "agmsg",
       issue: {
         id: "test-issue-claude",
         identifier,
@@ -210,6 +211,7 @@ test("e2e: claude report 未送信の idle — agent の画面全体を確認で
     const identifier = `test-claude-${newRunId()}`
     const { containerPath } = await writeScenarioConfig(herdr.sharedDir, {
       kind: "claude",
+      messenger: "agmsg",
       issue: {
         id: "test-issue-claude",
         identifier,

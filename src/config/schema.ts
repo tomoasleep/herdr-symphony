@@ -248,7 +248,7 @@ export function resolveConfigFromSchema(input: unknown): ServiceConfig {
           model:
             typeof herdrAgentRaw?.claude?.model === "string" ? herdrAgentRaw.claude.model : null,
           permissionMode: normalizeOptionalString(herdrAgentRaw?.claude?.permission_mode),
-          messenger: herdrAgentRaw?.claude?.messenger ?? "agmsg",
+          messenger: herdrAgentRaw?.claude?.messenger ?? "report_file",
           pendingRemindIntervalMs: Math.max(
             toInt(herdrAgentRaw?.claude?.pending_remind_interval_ms, 900_000),
             1_000,
