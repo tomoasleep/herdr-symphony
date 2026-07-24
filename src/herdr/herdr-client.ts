@@ -114,6 +114,30 @@ function parseWorkspaceCreate(stdout: string): HerdrWorkspaceInfo | null {
   }
 }
 
+function parsePaneList(stdout: string): string[] {
+  const panes = parseEnvelope(stdout).result?.panes
+  if (!Array.isArray(panes)) return []
+  return panes.flatMap((pane) => {
+    if (typeof pane !== "object" || pane === null) return []
+    const paneId = (pane as Record<string, unknown>).pane_id
+    return typeof paneId === "string" ? [paneId] : []
+  })
+}
+
+function parsePaneCreate(stdout: string): string | null {
+  const pane = parseEnvelope(stdout).result?.pane as Record<string, unknown> | undefined
+  return typeof pane?.pane_id === "string" ? pane.pane_id : null
+}
+
+function supportsPaneRun(version: string): boolean {
+  const match = version.match(/\b(\d+)\.(\d+)\.(\d+)\b/)
+  if (!match) return false
+  const major = Number(match[1])
+  const minor = Number(match[2])
+  const patch = Number(match[3])
+  return major > 0 || minor > 7 || (minor === 7 && patch >= 5)
+}
+
 function parseAgentStarted(stdout: string): HerdrAgentInfo | null {
   const env = parseEnvelope(stdout)
   const agent = env.result?.agent as Record<string, unknown> | undefined
@@ -163,6 +187,14 @@ function parseWaitResult(stdout: string): HerdrAgentInfo | null {
 export function createHerdrClient(deps: HerdrClientDeps = {}): HerdrClient {
   const herdrBin = deps.herdrBin ?? "herdr"
   const runCommand = deps.runCommand ?? defaultCommandRunner
+  let paneRunSupported: Promise<boolean> | null = null
+
+  function supportsPaneRunForInstalledHerdr(cwd: string): Promise<boolean> {
+    paneRunSupported ??= runCommand(herdrBin, ["--version"], cwd).then(
+      (result) => result.exitCode === 0 && supportsPaneRun(result.stdout),
+    )
+    return paneRunSupported
+  }
 
   return {
     async ensureWorkspace(cwd, label) {
@@ -197,6 +229,54 @@ export function createHerdrClient(deps: HerdrClientDeps = {}): HerdrClient {
     },
 
     async startAgent(name, opts) {
+      if (await supportsPaneRunForInstalledHerdr(opts.cwd)) {
+        const listResult = await runCommand(
+          herdrBin,
+          ["pane", "list", "--workspace", opts.workspaceId],
+          opts.cwd,
+        )
+        const sourcePaneId = parsePaneList(listResult.stdout)[0]
+        if (!sourcePaneId) {
+          throw new Error(`no pane found in Herdr workspace: ${opts.workspaceId}`)
+        }
+
+        const splitArgs = [
+          "pane",
+          "split",
+          sourcePaneId,
+          "--direction",
+          "right",
+          "--cwd",
+          opts.cwd,
+          "--no-focus",
+        ]
+        if (opts.env) {
+          for (const [key, value] of Object.entries(opts.env)) {
+            splitArgs.push("--env", `${key}=${value}`)
+          }
+        }
+        const splitResult = await runCommand(herdrBin, splitArgs, opts.cwd)
+        if (splitResult.exitCode !== 0) {
+          throw new Error(splitResult.stderr.trim() || `herdr pane split failed: ${name}`)
+        }
+        const paneId = parsePaneCreate(splitResult.stdout)
+        if (!paneId) {
+          throw new Error(
+            `failed to parse pane split response: ${splitResult.stdout.slice(0, 200)}`,
+          )
+        }
+
+        const runResult = await runCommand(
+          herdrBin,
+          ["pane", "run", paneId, ...opts.argv],
+          opts.cwd,
+        )
+        if (runResult.exitCode !== 0) {
+          throw new Error(runResult.stderr.trim() || `herdr pane run failed: ${name}`)
+        }
+        return { name, state: "unknown", paneId, workspaceId: opts.workspaceId }
+      }
+
       const args = [
         "agent",
         "start",
