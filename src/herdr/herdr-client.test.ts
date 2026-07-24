@@ -148,7 +148,7 @@ describe("HerdrClient", () => {
     expect(calls[1]?.args).toContain("--no-focus")
   })
 
-  test("startAgent uses pane run with herdr 0.7.5 or newer", async () => {
+  test("startAgent quotes pane run arguments with herdr 0.7.5 or newer", async () => {
     const { runner, calls } = makeCommandRunner({
       "--version": { exitCode: 0, stdout: "herdr 0.7.5\n", stderr: "" },
       "pane list": PANE_LIST_RESPONSE,
@@ -160,7 +160,7 @@ describe("HerdrClient", () => {
     const agent = await client.startAgent("ISSUE-1", {
       workspaceId: "w2",
       cwd: "/repo/worktree",
-      argv: ["opencode", "run", "hello"],
+      argv: ["opencode", "run", "first line\nsecond line"],
       env: { FOO: "bar" },
     })
 
@@ -187,7 +187,12 @@ describe("HerdrClient", () => {
       "--env",
       "FOO=bar",
     ])
-    expect(calls[3]?.args).toEqual(["pane", "run", "w2:p2", "opencode", "run", "hello"])
+    expect(calls[3]?.args).toEqual([
+      "pane",
+      "run",
+      "w2:p2",
+      "'opencode' 'run' 'first line\nsecond line'",
+    ])
   })
 
   test("startAgent uses the legacy command before herdr 0.7.5", async () => {

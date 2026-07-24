@@ -138,6 +138,10 @@ function supportsPaneRun(version: string): boolean {
   return major > 0 || minor > 7 || (minor === 7 && patch >= 5)
 }
 
+function shellQuote(value: string): string {
+  return `'${value.replace(/'/g, `'\\''`)}'`
+}
+
 function parseAgentStarted(stdout: string): HerdrAgentInfo | null {
   const env = parseEnvelope(stdout)
   const agent = env.result?.agent as Record<string, unknown> | undefined
@@ -268,7 +272,7 @@ export function createHerdrClient(deps: HerdrClientDeps = {}): HerdrClient {
 
         const runResult = await runCommand(
           herdrBin,
-          ["pane", "run", paneId, ...opts.argv],
+          ["pane", "run", paneId, opts.argv.map(shellQuote).join(" ")],
           opts.cwd,
         )
         if (runResult.exitCode !== 0) {
