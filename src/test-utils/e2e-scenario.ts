@@ -208,7 +208,7 @@ async function runClaude(config: ScenarioConfig, controller: AbortController): P
           permissionMode: "bypassPermissions",
           messenger,
           pendingRemindIntervalMs: 900_000,
-          reminderGracePeriodMs: 180_000,
+          reminderGracePeriodMs: config.reminderGracePeriodMs ?? 180_000,
           env: {},
         },
         workspaceLabel: null,

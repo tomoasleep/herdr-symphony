@@ -1,11 +1,7 @@
-FROM debian:bookworm-slim
+FROM node:22-bookworm-slim
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl git python3 ca-certificates gnupg procps unzip sqlite3 \
-    && rm -rf /var/lib/apt/lists/*
-
-RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
-    && apt-get install -y nodejs \
     && rm -rf /var/lib/apt/lists/*
 
 COPY docker/e2e/agmsg-scripts/ /opt/agmsg/scripts/
@@ -55,7 +51,8 @@ RUN mkdir -p /home/agent/.claude && \
     printf '%s\n' '{"theme":"dark","hasCompletedOnboarding":true}' > /home/agent/.claude/settings.json
 
 ARG TARGETARCH
-RUN case "$TARGETARCH" in amd64) opencode_arch=x64 ;; arm64) opencode_arch=arm64 ;; *) exit 1 ;; esac \
+RUN arch="${TARGETARCH:-$(dpkg --print-architecture)}" \
+    && case "$arch" in amd64) opencode_arch=x64 ;; arm64) opencode_arch=arm64 ;; *) exit 1 ;; esac \
     && curl -fsSL "https://github.com/anomalyco/opencode/releases/download/v1.17.13/opencode-linux-${opencode_arch}.tar.gz" -o /tmp/opencode.tar.gz \
     && tar xzf /tmp/opencode.tar.gz -C /tmp \
     && mkdir -p /home/agent/.opencode/bin \
