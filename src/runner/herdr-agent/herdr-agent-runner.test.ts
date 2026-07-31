@@ -139,16 +139,19 @@ function makeMockHerdrClient(opts: {
   agentStarted?: HerdrAgentInfo
   getAgentResult?: HerdrAgentInfo | null | (HerdrAgentInfo | null)[]
   readText?: string
+  onSendPrompt?: (target: string, text: string) => void
   onSendKeys?: (target: string, keys: string[]) => void
 }): HerdrClient & {
   startAgentArgs: { name: string; argv: string[]; env?: Record<string, string> } | null
   sentInputs: { target: string; text: string }[]
+  sentPrompts: { target: string; text: string }[]
   sentKeys: { target: string; keys: string[] }[]
   closedPanes: string[]
   getAgentCallCount: number
 } {
   let startAgentArgs: { name: string; argv: string[]; env?: Record<string, string> } | null = null
   const sentInputs: { target: string; text: string }[] = []
+  const sentPrompts: { target: string; text: string }[] = []
   const sentKeys: { target: string; keys: string[] }[] = []
   const closedPanes: string[] = []
   let getAgentCallCount = 0
@@ -194,6 +197,10 @@ function makeMockHerdrClient(opts: {
       getAgentCallCount++
       return seq[idx] ?? null
     },
+    async sendPrompt(target, text) {
+      sentPrompts.push({ target, text })
+      opts.onSendPrompt?.(target, text)
+    },
     async sendInput(target, text) {
       sentInputs.push({ target, text })
     },
@@ -210,6 +217,9 @@ function makeMockHerdrClient(opts: {
     get sentInputs() {
       return sentInputs
     },
+    get sentPrompts() {
+      return sentPrompts
+    },
     get sentKeys() {
       return sentKeys
     },
@@ -222,6 +232,7 @@ function makeMockHerdrClient(opts: {
   } as HerdrClient & {
     startAgentArgs: { name: string; argv: string[]; env?: Record<string, string> } | null
     sentInputs: { target: string; text: string }[]
+    sentPrompts: { target: string; text: string }[]
     sentKeys: { target: string; keys: string[] }[]
     closedPanes: string[]
     getAgentCallCount: number
@@ -720,6 +731,7 @@ describe("HerdrAgentRunner", () => {
       async getAgent() {
         return { name: "TEST-1", state: "done", paneId: "w1:p1", workspaceId: "w1" }
       },
+      async sendPrompt() {},
       async sendInput() {},
       async sendKeys() {},
       async closePane() {},
@@ -1620,6 +1632,7 @@ describe("HerdrAgentRunner", () => {
       async getAgent() {
         return null
       },
+      async sendPrompt() {},
       async sendInput() {},
       async sendKeys() {},
       async closePane(paneId: string) {
@@ -1763,6 +1776,7 @@ describe("HerdrAgentRunner", () => {
         async getAgent() {
           return { name: "TEST-1", state: "done", paneId: "w1:p1", workspaceId: "w1" }
         },
+        async sendPrompt() {},
         async sendInput() {},
         async sendKeys() {},
         async closePane() {
@@ -1994,7 +2008,7 @@ describe("HerdrAgentRunner", () => {
       expect(result.responseText).toBe("完了しました")
     })
 
-    test("idle 検出時に report 未送信なら sendInput + sendKeys でリマインドする", async () => {
+    test("idle 検出時に report 未送信なら prompt でリマインドする", async () => {
       const reportPath = makeReportPath()
       const client = makeMockHerdrClient({
         getAgentResult: [
@@ -2024,8 +2038,7 @@ describe("HerdrAgentRunner", () => {
       const result = await runPromise
 
       expect(result.status).toBe("succeeded")
-      expect(client.sentInputs.length).toBeGreaterThanOrEqual(1)
-      expect(client.sentKeys.length).toBeGreaterThanOrEqual(1)
+      expect(client.sentPrompts.length).toBeGreaterThanOrEqual(1)
     })
 
     test("pending report が指定期間経過で remind を再送する", async () => {
@@ -2062,7 +2075,7 @@ describe("HerdrAgentRunner", () => {
       writeReport(reportPath, "pending", "待機中", new Date(currentTime).toISOString())
       await new Promise((resolve) => setTimeout(resolve, 10))
 
-      const initialSendCount = client.sentInputs.length
+      const initialSendCount = client.sentPrompts.length
 
       currentTime += 6_000
       await new Promise((resolve) => setTimeout(resolve, 10))
@@ -2071,7 +2084,7 @@ describe("HerdrAgentRunner", () => {
       const result = await runPromise
 
       expect(result.status).toBe("succeeded")
-      expect(client.sentInputs.length).toBeGreaterThan(initialSendCount)
+      expect(client.sentPrompts.length).toBeGreaterThan(initialSendCount)
     })
 
     test("pending report が指定期間内は remind を再送しない", async () => {
@@ -2106,12 +2119,12 @@ describe("HerdrAgentRunner", () => {
       writeReport(reportPath, "pending", "待機中", new Date(currentTime).toISOString())
       await new Promise((resolve) => setTimeout(resolve, 10))
 
-      const initialSendCount = client.sentInputs.length
+      const initialSendCount = client.sentPrompts.length
 
       currentTime += 3_000
       await new Promise((resolve) => setTimeout(resolve, 10))
 
-      const midSendCount = client.sentInputs.length
+      const midSendCount = client.sentPrompts.length
       expect(midSendCount).toBe(initialSendCount)
 
       writeReport(reportPath, "done", "完了")
@@ -2158,7 +2171,7 @@ describe("HerdrAgentRunner", () => {
       currentTime += 6_000
       await new Promise((resolve) => setTimeout(resolve, 10))
 
-      const initialSendCount = client.sentInputs.length
+      const initialSendCount = client.sentPrompts.length
 
       writeReport(reportPath, "pending", "待機中2", new Date(currentTime).toISOString())
       await new Promise((resolve) => setTimeout(resolve, 10))
@@ -2166,7 +2179,7 @@ describe("HerdrAgentRunner", () => {
       currentTime += 3_000
       await new Promise((resolve) => setTimeout(resolve, 10))
 
-      expect(client.sentInputs.length).toBe(initialSendCount)
+      expect(client.sentPrompts.length).toBe(initialSendCount)
 
       writeReport(reportPath, "done", "完了")
       const result = await runPromise
@@ -2316,7 +2329,7 @@ describe("HerdrAgentRunner", () => {
       })
 
       await new Promise((resolve) => setTimeout(resolve, 30))
-      expect(client.sentInputs.length).toBe(0)
+      expect(client.sentPrompts.length).toBe(0)
 
       currentTime += 6_000
       await new Promise((resolve) => setTimeout(resolve, 30))
@@ -2357,11 +2370,11 @@ describe("HerdrAgentRunner", () => {
       })
 
       await new Promise((resolve) => setTimeout(resolve, 30))
-      expect(client.sentInputs.length).toBe(0)
+      expect(client.sentPrompts.length).toBe(0)
 
       currentTime += 6_000
       await new Promise((resolve) => setTimeout(resolve, 30))
-      expect(client.sentInputs.length).toBeGreaterThan(0)
+      expect(client.sentPrompts.length).toBeGreaterThan(0)
 
       writeReport(reportPath, "done", "完了")
       const result = await runPromise

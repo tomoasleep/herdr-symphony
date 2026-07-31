@@ -48,6 +48,7 @@ export type HerdrClient = {
   ): Promise<HerdrAgentInfo | null>
   readAgent(target: string, lines?: number): Promise<string>
   getAgent(target: string): Promise<HerdrAgentInfo | null>
+  sendPrompt(target: string, text: string): Promise<void>
   sendInput(target: string, text: string): Promise<void>
   sendKeys(target: string, ...keys: string[]): Promise<void>
   closePane(paneId: string): Promise<void>
@@ -191,13 +192,13 @@ function parseWaitResult(stdout: string): HerdrAgentInfo | null {
 export function createHerdrClient(deps: HerdrClientDeps = {}): HerdrClient {
   const herdrBin = deps.herdrBin ?? "herdr"
   const runCommand = deps.runCommand ?? defaultCommandRunner
-  let paneRunSupported: Promise<boolean> | null = null
+  let herdr075OrNewer: Promise<boolean> | null = null
 
-  function supportsPaneRunForInstalledHerdr(cwd: string): Promise<boolean> {
-    paneRunSupported ??= runCommand(herdrBin, ["--version"], cwd).then(
+  function isHerdr075OrNewer(cwd: string): Promise<boolean> {
+    herdr075OrNewer ??= runCommand(herdrBin, ["--version"], cwd).then(
       (result) => result.exitCode === 0 && supportsPaneRun(result.stdout),
     )
-    return paneRunSupported
+    return herdr075OrNewer
   }
 
   return {
@@ -233,7 +234,7 @@ export function createHerdrClient(deps: HerdrClientDeps = {}): HerdrClient {
     },
 
     async startAgent(name, opts) {
-      if (await supportsPaneRunForInstalledHerdr(opts.cwd)) {
+      if (await isHerdr075OrNewer(opts.cwd)) {
         const listResult = await runCommand(
           herdrBin,
           ["pane", "list", "--workspace", opts.workspaceId],
@@ -270,13 +271,13 @@ export function createHerdrClient(deps: HerdrClientDeps = {}): HerdrClient {
           )
         }
 
-        const runResult = await runCommand(
+        const result = await runCommand(
           herdrBin,
           ["pane", "run", paneId, opts.argv.map(shellQuote).join(" ")],
           opts.cwd,
         )
-        if (runResult.exitCode !== 0) {
-          throw new Error(runResult.stderr.trim() || `herdr pane run failed: ${name}`)
+        if (result.exitCode !== 0) {
+          throw new Error(result.stderr.trim() || `herdr pane run failed: ${name}`)
         }
         return { name, state: "unknown", paneId, workspaceId: opts.workspaceId }
       }
@@ -348,6 +349,28 @@ export function createHerdrClient(deps: HerdrClientDeps = {}): HerdrClient {
         return null
       }
       return parseAgentInfo(result.stdout)
+    },
+
+    async sendPrompt(target, text) {
+      if (await isHerdr075OrNewer(process.cwd())) {
+        const result = await runCommand(herdrBin, ["agent", "prompt", target, text], process.cwd())
+        if (result.exitCode !== 0) {
+          throw new Error(result.stderr.trim() || `herdr agent prompt failed: ${target}`)
+        }
+        return
+      }
+      const sendResult = await runCommand(herdrBin, ["agent", "send", target, text], process.cwd())
+      if (sendResult.exitCode !== 0) {
+        throw new Error(sendResult.stderr.trim() || `herdr agent send failed: ${target}`)
+      }
+      const keyResult = await runCommand(
+        herdrBin,
+        ["pane", "send-keys", target, "Enter"],
+        process.cwd(),
+      )
+      if (keyResult.exitCode !== 0) {
+        throw new Error(keyResult.stderr.trim() || `herdr pane send-keys failed: ${target}`)
+      }
     },
 
     async sendInput(target, text) {

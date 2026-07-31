@@ -330,9 +330,14 @@ export class HerdrAgentRunner implements Runner {
     if (info === null) {
       if (ctx.reportPath && ctx.sawAgent) {
         if (
-          this.handleReportFileIdle(ctx.target, ctx.reportPath, ctx.pendingRemindIntervalMs, {
-            sendReminderOnMissing: !inGrace,
-          }) === "done"
+          (await this.handleReportFileIdle(
+            ctx.target,
+            ctx.reportPath,
+            ctx.pendingRemindIntervalMs,
+            {
+              sendReminderOnMissing: !inGrace,
+            },
+          )) === "done"
         ) {
           return this.doneFromReportFile(ctx)
         }
@@ -373,9 +378,14 @@ export class HerdrAgentRunner implements Runner {
     if (state === "done") {
       if (ctx.reportPath) {
         if (
-          this.handleReportFileIdle(ctx.target, ctx.reportPath, ctx.pendingRemindIntervalMs, {
-            sendReminderOnMissing: !inGrace,
-          }) === "done"
+          (await this.handleReportFileIdle(
+            ctx.target,
+            ctx.reportPath,
+            ctx.pendingRemindIntervalMs,
+            {
+              sendReminderOnMissing: !inGrace,
+            },
+          )) === "done"
         ) {
           return this.doneFromReportFile(ctx)
         }
@@ -387,9 +397,14 @@ export class HerdrAgentRunner implements Runner {
     if (state === "idle") {
       if (ctx.reportPath && ctx.sawAgent) {
         if (
-          this.handleReportFileIdle(ctx.target, ctx.reportPath, ctx.pendingRemindIntervalMs, {
-            sendReminderOnMissing: !inGrace,
-          }) === "done"
+          (await this.handleReportFileIdle(
+            ctx.target,
+            ctx.reportPath,
+            ctx.pendingRemindIntervalMs,
+            {
+              sendReminderOnMissing: !inGrace,
+            },
+          )) === "done"
         ) {
           return this.doneFromReportFile(ctx)
         }
@@ -515,12 +530,12 @@ export class HerdrAgentRunner implements Runner {
     return { state: "none" }
   }
 
-  private handleReportFileIdle(
+  private async handleReportFileIdle(
     target: string,
     reportPath: string,
     pendingRemindIntervalMs: number,
     options: { sendReminderOnMissing?: boolean } = {},
-  ): "done" | "pending" | "none" {
+  ): Promise<"done" | "pending" | "none"> {
     const sendReminderOnMissing = options.sendReminderOnMissing ?? true
     const report = readReport(reportPath)
     if (report?.status === "done" || report?.status === "failed") {
@@ -532,15 +547,13 @@ export class HerdrAgentRunner implements Runner {
         sendReminderOnMissing &&
         (Number.isNaN(reportedAt) || this.now() - reportedAt >= pendingRemindIntervalMs)
       ) {
-        void this.client.sendInput(target, CLAUDE_REPORT_REMINDER)
-        void this.client.sendKeys(target, "Enter")
+        await this.client.sendPrompt(target, CLAUDE_REPORT_REMINDER)
         this.logger("report-file pending reminder sent")
       }
       return "pending"
     }
     if (sendReminderOnMissing) {
-      void this.client.sendInput(target, CLAUDE_REPORT_REMINDER)
-      void this.client.sendKeys(target, "Enter")
+      await this.client.sendPrompt(target, CLAUDE_REPORT_REMINDER)
       this.logger("report-file reminder sent")
     }
     return "none"

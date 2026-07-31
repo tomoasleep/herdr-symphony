@@ -242,6 +242,50 @@ describe("HerdrClient", () => {
     expect(calls[1]?.args).toContain("--workspace")
   })
 
+  test("sendPrompt uses agent prompt with herdr 0.7.5 or newer", async () => {
+    const { runner, calls } = makeCommandRunner({
+      "--version": { exitCode: 0, stdout: "herdr 0.7.5\n", stderr: "" },
+      "agent prompt": { exitCode: 0, stdout: "", stderr: "" },
+    })
+    const client = createHerdrClient({ runCommand: runner })
+
+    await client.sendPrompt("w2:p2", "Complete the task")
+
+    expect(calls.map((call) => call.args)).toEqual([
+      ["--version"],
+      ["agent", "prompt", "w2:p2", "Complete the task"],
+    ])
+  })
+
+  test("sendPrompt falls back to agent send and Enter before herdr 0.7.5", async () => {
+    const { runner, calls } = makeCommandRunner({
+      "--version": { exitCode: 0, stdout: "herdr 0.7.4\n", stderr: "" },
+      "agent send": { exitCode: 0, stdout: "", stderr: "" },
+      "pane send-keys": { exitCode: 0, stdout: "", stderr: "" },
+    })
+    const client = createHerdrClient({ runCommand: runner })
+
+    await client.sendPrompt("w2:p2", "Complete the task")
+
+    expect(calls.map((call) => call.args)).toEqual([
+      ["--version"],
+      ["agent", "send", "w2:p2", "Complete the task"],
+      ["pane", "send-keys", "w2:p2", "Enter"],
+    ])
+  })
+
+  test("sendPrompt throws when herdr rejects the prompt", async () => {
+    const { runner } = makeCommandRunner({
+      "--version": { exitCode: 0, stdout: "herdr 0.7.5\n", stderr: "" },
+      "agent prompt": { exitCode: 1, stdout: "", stderr: "agent not running" },
+    })
+    const client = createHerdrClient({ runCommand: runner })
+
+    await expect(client.sendPrompt("w2:p2", "Complete the task")).rejects.toThrow(
+      "agent not running",
+    )
+  })
+
   test("waitAgent returns agent info when status reached", async () => {
     const waitResponse: CommandResult = {
       exitCode: 0,
