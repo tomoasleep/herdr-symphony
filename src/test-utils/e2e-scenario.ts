@@ -41,42 +41,40 @@ function trustClaudeWorkspace(workspacePath: string): void {
   writeFileSync(configPath, `${JSON.stringify(config)}\n`)
 }
 
-async function executeRule(
-  rule: MockResponse,
-  signal: AbortSignal,
-): Promise<Record<string, unknown>> {
-  if (rule.kind === "respond") {
-    if (rule.toolCalls) {
-      return { content: rule.content, toolCalls: rule.toolCalls }
-    }
-    return { content: rule.content }
-  }
-  await new Promise<void>((resolve, reject) => {
-    const timer = setTimeout(resolve, rule.ms)
-    signal.addEventListener(
-      "abort",
-      () => {
-        clearTimeout(timer)
-        reject(new Error("scenario aborted"))
-      },
-      { once: true },
-    )
-  })
-  return executeRule(rule.next as MockResponse, signal)
-}
-
 async function consumeMockResponses(
   mock: LLMock,
   responses: ScenarioConfig["mockResponses"],
   signal: AbortSignal,
 ): Promise<void> {
   let i = 0
-  mock.on({}, async () => {
+  mock.on({}, async (request) => {
     const idx = Math.min(i, responses.length - 1)
     const rule = responses[idx]
     if (!rule) throw new Error("mockResponses became empty unexpectedly")
+    if (rule.expectedUserMessage && !JSON.stringify(request).includes(rule.expectedUserMessage)) {
+      throw new Error(`expected user message not found: ${rule.expectedUserMessage}`)
+    }
     i++
-    return executeRule(rule, signal)
+    if (rule.kind === "respond") {
+      return rule.toolCalls
+        ? { content: rule.content, toolCalls: rule.toolCalls }
+        : { content: rule.content }
+    }
+    await new Promise<void>((resolve, reject) => {
+      const timer = setTimeout(resolve, rule.ms)
+      signal.addEventListener(
+        "abort",
+        () => {
+          clearTimeout(timer)
+          reject(new Error("scenario aborted"))
+        },
+        { once: true },
+      )
+    })
+    const next = rule.next as Extract<MockResponse, { kind: "respond" }>
+    return next.toolCalls
+      ? { content: next.content, toolCalls: next.toolCalls }
+      : { content: next.content }
   })
 }
 
@@ -183,7 +181,7 @@ async function runClaude(config: ScenarioConfig, controller: AbortController): P
   const runner = new HerdrAgentRunner(serviceConfig, {
     herdrClient,
     pollIntervalMs: 3_000,
-    now: () => SCENARIO_NOW,
+    now: Date.now,
   })
   const service = new SymphonyService(serviceConfig, "Test prompt for {{ issue.identifier }}", {
     runner,

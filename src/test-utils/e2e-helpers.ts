@@ -61,9 +61,10 @@ const DYNAMIC_REPLACEMENTS: Array<[RegExp, string]> = [
   [/\bw\d+\b/g, "WORKSPACE_ID"],
   [/test\/repo#[0-9a-z]{6,}/g, "test/repo#ID"],
   [/Agent Model · \d+\.\d+s/g, "Agent Model · TIME"],
-  [/✻ \S+ for 0s/g, "✻ Worked for 0s"],
-  [/✻ Worked for 0s\s+▐/g, "✻ Worked for 0s ▐"],
-  [/✻ Worked for 0s\s+│/g, "✻ Worked for 0s │"],
+  [/^([ │]*✻) \S+ for 0s/gm, "$1 Worked for 0s"],
+  [/^([ │]*✻) \S+ for (?!0s)\d+s +(?=▐)/gm, "$1 Worked for TIME "],
+  [/^([ │]*✻ Worked for 0s)[ \t]+(?=▐|│)/gm, "$1 "],
+  [/[^\s│] [A-Za-z]+…\s*(?=▐)/g, "✽ Working… "],
   [/│ What's new\s+│/g, "│ WHAT_NEW │"],
   [/│ Added [^\n]*?│\s*│/g, "│ CLAUDE_WHATS_NEW_LINE │"],
   [/│ Fixed [^\n]*?│\s*│/g, "│ CLAUDE_WHATS_NEW_LINE │"],
@@ -98,7 +99,10 @@ export function normalizeScreenOutput(text: string): string {
   }
   result = result.replace(/││╭─── Claude Code VERSION[\s\S]*?╯ │\n/g, "")
   result = result.replace(/││[^\n]*Claude Code VERSION[^\n]*\n(?:││[^\n]*\n){0,2}/g, "")
-  result = result.replace(/│╭─ Claude Code VERSION[\s\S]*?│╰─╯(?:\n|$)/g, "")
+  result = result.replace(
+    /│╭─(?: |>)Claude Code(?:>| )VERSION[^\n]*\r?\n[\s\S]*?│╰─╯[^\n]*(?:\r?\n|$)/g,
+    "",
+  )
   result = result.replace(/▕/g, "▐")
   result = result.replace(/─+/g, "─")
   return result

@@ -50,6 +50,16 @@ test("normalizeOutput は new と menu の間の可変スペースを正規化�
   expect(normalizeOutput("new                 menu│")).toBe("new menu│")
 })
 
+test("normalizeScreenOutput は Claude footer の Worked for 0s の末尾余白だけを正規化する", () => {
+  expect(
+    normalizeScreenOutput(
+      "  │✻ Worked for 0s          ▐\n│✻ Worked for 0s          │\n│❯ reminder: ✻ Pending for 0s          ▐\n│Bash(herdr-symphony report --status done)          ▐\n│● Completed after reminder.          ▐",
+    ),
+  ).toBe(
+    "│✻ Worked for 0s ▐\n│✻ Worked for 0s │\n│❯ reminder: ✻ Pending for 0s          ▐\n│Bash(herdr-symphony report --status done)          ▐\n│● Completed after reminder.          ▐",
+  )
+})
+
 test("normalizeScreenOutput は agent pane の上枠線を正規化する", () => {
   expect(normalizeScreenOutput("│┌ test-claude-ID-e2e-test-TS-TS ───┐")).toBe(
     "│┌ test-claude-ID-e2e-test-TS-TS ─┐",
@@ -66,6 +76,18 @@ test("normalizeScreenOutput は Claude welcome画面を除外する", () => {
 
 test("normalizeScreenOutput は root pane を閉じた後の Claude welcome画面を除外する", () => {
   expect(normalizeScreenOutput("│╭─ Claude Code VERSION ─╮\r\n││ Welcome back! │\r\n│╰─╯")).toBe("")
+})
+
+test("normalizeScreenOutput は実際のClaude welcome banner全体を除外する", () => {
+  for (const header of ["│╭─>Claude Code>VERSION ─╮▐", "│╭─>Claude Code VERSION ─╮▐"]) {
+    expect(
+      normalizeScreenOutput(
+        `before\n${header}\n││ Welcome back! │▐\n│╰─╯▐\n│  ## 完了報告\n│      herdr-symphony report --status done --summary "やった作業の要約"\nafter`,
+      ),
+    ).toBe(
+      'before\n│  ## 完了報告\n│      herdr-symphony report --status done --summary "やった作業の要約"\nafter',
+    )
+  }
 })
 
 test("normalizeScreenOutput は改行された Claude agent名の動的な断片を正規化する", () => {

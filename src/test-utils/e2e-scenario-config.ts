@@ -36,11 +36,13 @@ export const mockResponseSchema = z.discriminatedUnion("kind", [
     kind: z.literal("respond"),
     content: z.string(),
     toolCalls: z.array(toolCallSchema).optional(),
+    expectedUserMessage: z.string().optional(),
   }),
   z.object({
     kind: z.literal("wait"),
     ms: z.number().positive(),
     next: z.lazy((): z.ZodType => mockResponseSchema),
+    expectedUserMessage: z.string().optional(),
   }),
 ])
 

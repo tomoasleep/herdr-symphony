@@ -34,13 +34,29 @@ function claudeMockResponses(identifier: string): MockResponse[] {
   ]
 }
 
-function claudeReminderMockResponses(): MockResponse[] {
+function claudeReminderMockResponses(identifier: string): MockResponse[] {
   return [
-    plainResponse("Waiting for a completion reminder."),
-    claudeReportFileToolCall({
-      status: "done",
-      summary: "Completed after reminder.",
-    }),
+    {
+      kind: "respond",
+      content: "Working on the initial task.",
+      toolCalls: [
+        {
+          name: "Bash",
+          arguments: { command: "printf 'Initial task completed without report'" },
+        },
+      ],
+      expectedUserMessage: `Test prompt for ${identifier}`,
+    },
+    plainResponse("Initial task completed without report."),
+    {
+      kind: "wait",
+      ms: 30_000,
+      expectedUserMessage: "ユーザーに依頼された作業は完了しましたか？",
+      next: claudeReportFileToolCall({
+        status: "done",
+        summary: "Completed after reminder.",
+      }),
+    },
     plainResponse("Completed after reminder."),
   ]
 }
@@ -55,34 +71,61 @@ function claudeReportFileMockResponses(): MockResponse[] {
   ]
 }
 
-async function captureAgentScreen(
-  scenarioSession: Session,
-  herdrSession: Session,
-  containerId: string,
-  completionText?: RegExp,
-): Promise<string> {
+async function agentPaneId(scenarioSession: Session): Promise<string> {
   await scenarioSession.waitForText(/agent pane=\S+/, { timeout: 30_000 })
   const scenarioOutput = await scenarioSession.text({ trimEnd: true })
   const paneId = scenarioOutput.match(/agent pane=(\S+)/)?.[1]
   if (!paneId) throw new Error("agent pane id not found")
+  return paneId
+}
 
+async function dismissBypassPermissionsWarning(containerId: string, paneId: string): Promise<void> {
+  const deadline = Date.now() + 30_000
+  while (Date.now() < deadline) {
+    const result = await execInContainer(
+      containerId,
+      [
+        "herdr",
+        "agent",
+        "read",
+        paneId,
+        "--source",
+        "visible",
+        "--lines",
+        "100",
+        "--format",
+        "text",
+      ],
+      10_000,
+    )
+    if (/WARNING: Claude Code running in Bypass Permissions mode/.test(result.stdout)) {
+      await execInContainer(containerId, ["herdr", "pane", "send-keys", paneId, "Down"], 10_000)
+      await execInContainer(containerId, ["herdr", "pane", "send-keys", paneId, "Enter"], 10_000)
+      return
+    }
+    await new Promise((resolve) => setTimeout(resolve, 500))
+  }
+}
+
+async function captureAgentScreen(
+  paneId: string,
+  herdrSession: Session,
+  containerId: string,
+  completionText?: RegExp,
+  forbiddenText?: RegExp,
+  stabilize = true,
+): Promise<string> {
   await execInContainer(containerId, ["herdr", "agent", "focus", paneId], 10_000)
   await execInContainer(containerId, ["herdr", "pane", "zoom", paneId, "--on"], 10_000)
   const deadline = Date.now() + 60_000
   let screen = ""
   while (Date.now() < deadline) {
     screen = normalizeScreenOutput(await herdrSession.text({ immediate: true }))
-    if (/WARNING: Claude Code running in Bypass Permissions mode/.test(screen)) {
-      await execInContainer(containerId, ["herdr", "pane", "send-keys", paneId, "Down"], 10_000)
-      await execInContainer(containerId, ["herdr", "pane", "send-keys", paneId, "Enter"], 10_000)
-      await new Promise((resolve) => setTimeout(resolve, 500))
-      continue
-    }
-    if (
-      completionText
-        ? completionText.test(screen)
-        : /あなたは herdr-symphony の agent です。|Task completed/.test(screen)
-    ) {
+    const completed = completionText
+      ? completionText.test(screen)
+      : /あなたは herdr-symphony の agent です。|Task completed/.test(screen)
+    if (completed && !forbiddenText?.test(screen)) {
+      if (!stabilize) return screen
       const stabilizeDeadline = Date.now() + 15_000
       while (Date.now() < stabilizeDeadline) {
         screen = normalizeScreenOutput(await herdrSession.text({ immediate: true }))
@@ -102,7 +145,7 @@ async function captureAgentScreen(
       }
       return screen
     }
-    await new Promise((resolve) => setTimeout(resolve, 500))
+    await new Promise((resolve) => setTimeout(resolve, 10))
   }
   return screen
 }
@@ -155,7 +198,9 @@ test("e2e: claude 対話モード — agent の画面全体を確認できる", 
       }),
     )
 
-    const agentScreen = await captureAgentScreen(scenarioSession, herdrSession, herdr.containerId)
+    const paneId = await agentPaneId(scenarioSession)
+    await dismissBypassPermissionsWarning(herdr.containerId, paneId)
+    const agentScreen = await captureAgentScreen(paneId, herdrSession, herdr.containerId)
 
     expect(agentScreen).toMatchInlineSnapshot(`
       "
@@ -228,14 +273,14 @@ test("e2e: claude は report 未送信の idle 後に reminder を受信して�
     const { containerPath } = await writeScenarioConfig(herdr.sharedDir, {
       kind: "claude",
       messenger: "report_file",
-      reminderGracePeriodMs: 0,
+      reminderGracePeriodMs: 20_000,
       issue: {
         id: "test-issue-claude",
         identifier,
         title: "E2E Claude Test Issue",
         body: "This is a test issue for herdr-symphony claude e2e.",
       },
-      mockResponses: claudeReminderMockResponses(),
+      mockResponses: claudeReminderMockResponses(identifier),
     })
 
     const scenarioSession = register(
@@ -254,16 +299,22 @@ test("e2e: claude は report 未送信の idle 後に reminder を受信して�
       }),
     )
 
-    const agentScreen = await captureAgentScreen(
-      scenarioSession,
+    const paneId = await agentPaneId(scenarioSession)
+    await dismissBypassPermissionsWarning(herdr.containerId, paneId)
+    const reminderScreen = await captureAgentScreen(
+      paneId,
       herdrSession,
       herdr.containerId,
-      /Completed after reminder\./,
+      /ユーザーに依頼された作業は完了しましたか？/,
+      /Bash\(herdr-symphony report|Completed after reminder\./,
+      false,
     )
 
-    expect(agentScreen).toMatchInlineSnapshot(`
+    expect(reminderScreen).toMatchInlineSnapshot(`
       "
       │ 1       +
+      ││                                                    │ WHAT_NEW │▐
+      ││                    Welcome back!                   │ Bug fixes and reliability improvements                                       │▐
       ││                                                    │ Added Claude Opus 5 (\`claude-opus-5\`), now the default Opus model — 1M cont… │▐
       ││                       ▐▛███▜▌                      │ Added \`sandbox.network.strictAllowlist\` setting to deny non-allowlisted hos… │▐
       ││                      ▝▜█████▛▘                     │ /release-notes for more                                                      │▐
@@ -289,21 +340,23 @@ test("e2e: claude は report 未送信の idle 後に reminder を受信して�
       │                                                                                                                                     ▐
       │      herdr-symphony report --status failed --summary "失敗理由"                                                                     ▐
       │                                                                                                                                     ▐
-      │● Writing report file.                                                                                                               ▐
-      │                                                                                                                                     ▐
-      │● Bash(herdr-symphony report --status done --summary 'Completed after reminder.')                                                    ▐
-      │  ⎿  (No output)                                                                                                                     ▐
-      │                                                                                                                                     ▐
-      │● Completed after reminder.                                                                                                          ▐
+      │● Initial task completed without report.                                                                                             ▐
       │                                                                                                                                     ▐
       │✻ Worked for 0s ▐
       │                                                                                                                                     ▐
       │─▐
-      │❯                                                                                                                                    ▐
+      │❯ ユーザーに依頼された作業は完了しましたか？完了した場合は \`herdr-symphony report --status done --summary "やった作業の要約"\`        ▐
+      │  を実行してください。まだ background task / subagent / task の完了待ちなら \`herdr-symphony report --status pending --summary        ▐
+      │  "待機中の内容"\` を実行してください。失敗した場合は \`herdr-symphony report --status failed --summary "失敗理由"\`                    ▐
+      │  を実行してください。                                                                                                               ▐
       │─▐
-      │  ⏵⏵ bypass permissions on (shift+tab to cycle) · ← for agents                                                                       ▐
+      │  ⏵⏵ bypass permissions on (shift+tab to cycle)                                                                                      ▐
       │                                                                                                                                     ▐"
     `)
+
+    await scenarioSession.waitForText(new RegExp(`^done ${identifier} status=succeeded$`, "m"), {
+      timeout: 60_000,
+    })
   } finally {
     await herdr.cleanup()
   }
@@ -357,7 +410,9 @@ test("e2e: claude report_file モード — herdr-symphony report で完了報�
       }),
     )
 
-    const agentScreen = await captureAgentScreen(scenarioSession, herdrSession, herdr.containerId)
+    const paneId = await agentPaneId(scenarioSession)
+    await dismissBypassPermissionsWarning(herdr.containerId, paneId)
+    const agentScreen = await captureAgentScreen(paneId, herdrSession, herdr.containerId)
 
     expect(agentScreen).toMatchInlineSnapshot(`
       "
