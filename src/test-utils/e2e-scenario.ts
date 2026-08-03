@@ -41,13 +41,35 @@ function trustClaudeWorkspace(workspacePath: string): void {
   writeFileSync(configPath, `${JSON.stringify(config)}\n`)
 }
 
+function toMockResponse(
+  rule: Extract<MockResponse, { kind: "respond" }>,
+  includeToolCallContent: boolean,
+): Record<string, unknown> {
+  if (!rule.toolCalls) return { content: rule.content }
+  return {
+    ...(includeToolCallContent ? { content: rule.content } : {}),
+    toolCalls: rule.toolCalls.map((toolCall) => ({
+      name: toolCall.name,
+      arguments: JSON.stringify(toolCall.arguments),
+    })),
+  }
+}
+
+function isTitleGenerationRequest(request: unknown): boolean {
+  return JSON.stringify(request).includes(
+    "Write the title in the predominant language of the session",
+  )
+}
+
 async function consumeMockResponses(
   mock: LLMock,
   responses: ScenarioConfig["mockResponses"],
   signal: AbortSignal,
+  includeToolCallContent = false,
 ): Promise<void> {
   let i = 0
   mock.on({}, async (request) => {
+    if (isTitleGenerationRequest(request)) return { content: "E2E Claude Test Issue" }
     const idx = Math.min(i, responses.length - 1)
     const rule = responses[idx]
     if (!rule) throw new Error("mockResponses became empty unexpectedly")
@@ -56,9 +78,7 @@ async function consumeMockResponses(
     }
     i++
     if (rule.kind === "respond") {
-      return rule.toolCalls
-        ? { content: rule.content, toolCalls: rule.toolCalls }
-        : { content: rule.content }
+      return toMockResponse(rule, includeToolCallContent)
     }
     await new Promise<void>((resolve, reject) => {
       const timer = setTimeout(resolve, rule.ms)
@@ -72,9 +92,7 @@ async function consumeMockResponses(
       )
     })
     const next = rule.next as Extract<MockResponse, { kind: "respond" }>
-    return next.toolCalls
-      ? { content: next.content, toolCalls: next.toolCalls }
-      : { content: next.content }
+    return toMockResponse(next, includeToolCallContent)
   })
 }
 
@@ -87,7 +105,7 @@ function loadConfig(): ScenarioConfig {
 
 async function runOpencode(config: ScenarioConfig, controller: AbortController): Promise<void> {
   const mock = new LLMock()
-  await consumeMockResponses(mock, config.mockResponses, controller.signal)
+  await consumeMockResponses(mock, config.mockResponses, controller.signal, true)
   await mock.start()
   const mockUrl = mock.url
   console.log(`MOCK_URL=${mockUrl}`)

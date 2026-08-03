@@ -49,13 +49,11 @@ function claudeReminderMockResponses(identifier: string): MockResponse[] {
     },
     plainResponse("Initial task completed without report."),
     {
-      kind: "wait",
-      ms: 30_000,
-      expectedUserMessage: "ユーザーに依頼された作業は完了しましたか？",
-      next: claudeReportFileToolCall({
+      ...claudeReportFileToolCall({
         status: "done",
         summary: "Completed after reminder.",
       }),
+      expectedUserMessage: "ユーザーに依頼された作業は完了しましたか？",
     },
     plainResponse("Completed after reminder."),
   ]
@@ -205,11 +203,6 @@ test("e2e: claude 対話モード — agent の画面全体を確認できる", 
     expect(agentScreen).toMatchInlineSnapshot(`
       "
       │ 1       +
-      │╰─╯▐
-      │                                                                                                                                     ▐
-      │                                                                                                                                     ▐
-      │❯ あなたは herdr-symphony の agent です。                                                                                            ▐
-      │  実タスクは agmsg で届きます。                                                                                                      ▐
       │  最初に /opt/agmsg/scripts/actas-claim.sh "$PWD" claude-code "test-claude-ID-e2e-test-TS-TS"                    ▐
       │  "$CLAUDE_CODE_SESSION_ID" を実行して、この agent identity を claim してください。                                                  ▐
       │  claim に失敗した場合は task ack を返さず、作業を開始しないでください。                                                             ▐
@@ -235,9 +228,14 @@ test("e2e: claude 対話モード — agent の画面全体を確認できる", 
       │  test-claude-ID-e2e-test-TS-TS herdr-symphony '{"kind":"herdr-symphony.report","runId":"test-claude-ID ▐
       │  ID-e2e-test-TS-TS","toAgent":"herdr-symphony","issueId":"test-issue-claude","status":"failed","summary":"失敗理由"}'      ▐
       │                                                                                                                                     ▐
+      │● Bash(/opt/agmsg/scripts/send.sh 'herdr-symphony-test-claude-ID-e2e-test-TS-TS'                                 ▐
+      │      'test-claude-ID-e2e-test-TS-TS' herdr-symphony…)                                                           ▐
+      │  ⎿  Sent to herdr-symphony in team herdr-symphony-test-claude-ID-e2e-test-TS-TS                                 ▐
+      │     Sent to herdr-symphony in team herdr-symphony-test-claude-ID-e2e-test-TS-TS                                 ▐
+      │                                                                                                                                     ▐
       │● Task completed successfully.                                                                                                       ▐
       │                                                                                                                                     ▐
-      │✻ Worked for 0s ▐
+      │✻ Worked for TIME ▐
       │                                                                                                                                     ▐
       │─▐
       │❯                                                                                                                                    ▐
@@ -313,9 +311,6 @@ test("e2e: claude は report 未送信の idle 後に reminder を受信して�
     expect(reminderScreen).toMatchInlineSnapshot(`
       "
       │ 1       +
-      ││                                                    │ WHAT_NEW │▐
-      ││                    Welcome back!                   │ Bug fixes and reliability improvements                                       │▐
-      ││                                                    │ Added Claude Opus 5 (\`claude-opus-5\`), now the default Opus model — 1M cont… │▐
       ││                       ▐▛███▜▌                      │ Added \`sandbox.network.strictAllowlist\` setting to deny non-allowlisted hos… │▐
       ││                      ▝▜█████▛▘                     │ /release-notes for more                                                      │▐
       ││                        ▘▘ ▝▝                       │                                                                              │▐
@@ -339,6 +334,9 @@ test("e2e: claude は report 未送信の idle 後に reminder を受信して�
       │  失敗した場合は、以下のコマンドを実行してください。                                                                                 ▐
       │                                                                                                                                     ▐
       │      herdr-symphony report --status failed --summary "失敗理由"                                                                     ▐
+      │                                                                                                                                     ▐
+      │● Bash(printf 'Initial task completed without report')                                                                               ▐
+      │  ⎿  Initial task completed without report                                                                                           ▐
       │                                                                                                                                     ▐
       │● Initial task completed without report.                                                                                             ▐
       │                                                                                                                                     ▐
@@ -417,9 +415,6 @@ test("e2e: claude report_file モード — herdr-symphony report で完了報�
     expect(agentScreen).toMatchInlineSnapshot(`
       "
       │ 1       +
-      │                                                                                                                                     ▐
-      │    herdr-symphony report --status failed --summary "失敗理由"'                                                                      ▐
-      │╭─>Claude Code>VERSION ─╮▐
       ││                                                    │ WHAT_NEW │▐
       ││                    Welcome back!                   │ Bug fixes and reliability improvements                                       │▐
       ││                                                    │ Added Claude Opus 5 (\`claude-opus-5\`), now the default Opus model — 1M cont… │▐
@@ -447,6 +442,9 @@ test("e2e: claude report_file モード — herdr-symphony report で完了報�
       │                                                                                                                                     ▐
       │      herdr-symphony report --status failed --summary "失敗理由"                                                                     ▐
       │                                                                                                                                     ▐
+      │● Bash(herdr-symphony report --status done --summary 'Task completed successfully.')                                                 ▐
+      │  ⎿  (No output)                                                                                                                     ▐
+      │                                                                                                                                     ▐
       │● Task completed successfully.                                                                                                       ▐
       │                                                                                                                                     ▐
       │✻ Worked for 0s ▐
@@ -457,6 +455,10 @@ test("e2e: claude report_file モード — herdr-symphony report で完了報�
       │  ⏵⏵ bypass permissions on (shift+tab to cycle) · ← for agents                                                                       ▐
       │                                                                                                                                     ▐"
     `)
+
+    await scenarioSession.waitForText(new RegExp(`^done ${identifier} status=succeeded$`, "m"), {
+      timeout: 60_000,
+    })
   } finally {
     await herdr.cleanup()
   }
