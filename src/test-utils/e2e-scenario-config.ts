@@ -36,11 +36,13 @@ export const mockResponseSchema = z.discriminatedUnion("kind", [
     kind: z.literal("respond"),
     content: z.string(),
     toolCalls: z.array(toolCallSchema).optional(),
+    expectedUserMessage: z.string().optional(),
   }),
   z.object({
     kind: z.literal("wait"),
     ms: z.number().positive(),
     next: z.lazy((): z.ZodType => mockResponseSchema),
+    expectedUserMessage: z.string().optional(),
   }),
 ])
 
@@ -48,6 +50,7 @@ export const scenarioConfigSchema = z.object({
   kind: z.enum(["opencode", "claude"]),
   messenger: z.enum(["agmsg", "report_file"]).optional(),
   interactive: z.boolean().optional(),
+  reminderGracePeriodMs: z.number().nonnegative().optional(),
   issue: z.object({
     id: z.string(),
     identifier: z.string(),

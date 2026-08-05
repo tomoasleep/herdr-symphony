@@ -41,42 +41,58 @@ function trustClaudeWorkspace(workspacePath: string): void {
   writeFileSync(configPath, `${JSON.stringify(config)}\n`)
 }
 
-async function executeRule(
-  rule: MockResponse,
-  signal: AbortSignal,
-): Promise<Record<string, unknown>> {
-  if (rule.kind === "respond") {
-    if (rule.toolCalls) {
-      return { content: rule.content, toolCalls: rule.toolCalls }
-    }
-    return { content: rule.content }
+function toMockResponse(
+  rule: Extract<MockResponse, { kind: "respond" }>,
+  includeToolCallContent: boolean,
+): Record<string, unknown> {
+  if (!rule.toolCalls) return { content: rule.content }
+  return {
+    ...(includeToolCallContent ? { content: rule.content } : {}),
+    toolCalls: rule.toolCalls.map((toolCall) => ({
+      name: toolCall.name,
+      arguments: JSON.stringify(toolCall.arguments),
+    })),
   }
-  await new Promise<void>((resolve, reject) => {
-    const timer = setTimeout(resolve, rule.ms)
-    signal.addEventListener(
-      "abort",
-      () => {
-        clearTimeout(timer)
-        reject(new Error("scenario aborted"))
-      },
-      { once: true },
-    )
-  })
-  return executeRule(rule.next as MockResponse, signal)
+}
+
+function isTitleGenerationRequest(request: unknown): boolean {
+  return JSON.stringify(request).includes(
+    "Write the title in the predominant language of the session",
+  )
 }
 
 async function consumeMockResponses(
   mock: LLMock,
   responses: ScenarioConfig["mockResponses"],
   signal: AbortSignal,
+  includeToolCallContent = false,
 ): Promise<void> {
   let i = 0
-  mock.on({}, async () => {
+  mock.on({}, async (request) => {
+    if (isTitleGenerationRequest(request)) return { content: "E2E Claude Test Issue" }
     const idx = Math.min(i, responses.length - 1)
     const rule = responses[idx]
     if (!rule) throw new Error("mockResponses became empty unexpectedly")
+    if (rule.expectedUserMessage && !JSON.stringify(request).includes(rule.expectedUserMessage)) {
+      throw new Error(`expected user message not found: ${rule.expectedUserMessage}`)
+    }
     i++
-    return executeRule(rule, signal)
+    if (rule.kind === "respond") {
+      return toMockResponse(rule, includeToolCallContent)
+    }
+    await new Promise<void>((resolve, reject) => {
+      const timer = setTimeout(resolve, rule.ms)
+      signal.addEventListener(
+        "abort",
+        () => {
+          clearTimeout(timer)
+          reject(new Error("scenario aborted"))
+        },
+        { once: true },
+      )
+    })
+    const next = rule.next as Extract<MockResponse, { kind: "respond" }>
+    return toMockResponse(next, includeToolCallContent)
   })
 }
 
@@ -89,7 +105,7 @@ function loadConfig(): ScenarioConfig {
 
 async function runOpencode(config: ScenarioConfig, controller: AbortController): Promise<void> {
   const mock = new LLMock()
-  await consumeMockResponses(mock, config.mockResponses, controller.signal)
+  await consumeMockResponses(mock, config.mockResponses, controller.signal, true)
   await mock.start()
   const mockUrl = mock.url
   console.log(`MOCK_URL=${mockUrl}`)
@@ -183,7 +199,7 @@ async function runClaude(config: ScenarioConfig, controller: AbortController): P
   const runner = new HerdrAgentRunner(serviceConfig, {
     herdrClient,
     pollIntervalMs: 3_000,
-    now: () => SCENARIO_NOW,
+    now: Date.now,
   })
   const service = new SymphonyService(serviceConfig, "Test prompt for {{ issue.identifier }}", {
     runner,
@@ -208,7 +224,7 @@ async function runClaude(config: ScenarioConfig, controller: AbortController): P
           permissionMode: "bypassPermissions",
           messenger,
           pendingRemindIntervalMs: 900_000,
-          reminderGracePeriodMs: 180_000,
+          reminderGracePeriodMs: config.reminderGracePeriodMs ?? 180_000,
           env: {},
         },
         workspaceLabel: null,

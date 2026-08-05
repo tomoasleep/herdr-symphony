@@ -64,6 +64,24 @@ test("scenarioConfigSchema は wait を受け付ける", () => {
   expect(parsed.mockResponses[0]?.kind).toBe("wait")
 })
 
+test("scenarioConfigSchema は respond と wait の expectedUserMessage を受け付ける", () => {
+  const parsed = scenarioConfigSchema.parse({
+    kind: "opencode",
+    issue: { id: "i", identifier: "r#1", title: "t", body: "b" },
+    mockResponses: [
+      { kind: "respond", content: "x", expectedUserMessage: "first prompt" },
+      {
+        kind: "wait",
+        ms: 100,
+        expectedUserMessage: "reminder",
+        next: { kind: "respond", content: "y" },
+      },
+    ],
+  })
+  expect(parsed.mockResponses[0]?.expectedUserMessage).toBe("first prompt")
+  expect(parsed.mockResponses[1]?.expectedUserMessage).toBe("reminder")
+})
+
 test("scenarioConfigSchema は wait.next が無い場合を reject する", () => {
   expect(() =>
     scenarioConfigSchema.parse({

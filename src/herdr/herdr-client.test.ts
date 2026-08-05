@@ -84,6 +84,30 @@ const AGENT_START_RESPONSE: CommandResult = {
   stderr: "",
 }
 
+const PANE_LIST_RESPONSE: CommandResult = {
+  exitCode: 0,
+  stdout: JSON.stringify({
+    id: "cli:pane:list",
+    result: {
+      type: "pane_list",
+      panes: [{ pane_id: "w2:p1", workspace_id: "w2" }],
+    },
+  }),
+  stderr: "",
+}
+
+const PANE_SPLIT_RESPONSE: CommandResult = {
+  exitCode: 0,
+  stdout: JSON.stringify({
+    id: "cli:pane:split",
+    result: {
+      type: "pane_created",
+      pane: { pane_id: "w2:p2", workspace_id: "w2" },
+    },
+  }),
+  stderr: "",
+}
+
 describe("HerdrClient", () => {
   test("ensureWorkspace reuses existing workspace by label", async () => {
     const { runner, calls } = makeCommandRunner({
@@ -124,16 +148,20 @@ describe("HerdrClient", () => {
     expect(calls[1]?.args).toContain("--no-focus")
   })
 
-  test("startAgent calls herdr agent start with correct args", async () => {
+  test("startAgent quotes pane run arguments with herdr 0.7.5 or newer", async () => {
     const { runner, calls } = makeCommandRunner({
-      "agent start": AGENT_START_RESPONSE,
+      "--version": { exitCode: 0, stdout: "herdr 0.7.5\n", stderr: "" },
+      "pane list": PANE_LIST_RESPONSE,
+      "pane split": PANE_SPLIT_RESPONSE,
+      "pane run": { exitCode: 0, stdout: "", stderr: "" },
     })
     const client = createHerdrClient({ runCommand: runner })
 
     const agent = await client.startAgent("ISSUE-1", {
       workspaceId: "w2",
       cwd: "/repo/worktree",
-      argv: ["opencode", "run", "hello"],
+      argv: ["opencode", "run", "first line\nsecond line"],
+      env: { FOO: "bar" },
     })
 
     expect(agent.name).toBe("ISSUE-1")
@@ -141,21 +169,35 @@ describe("HerdrClient", () => {
     expect(agent.workspaceId).toBe("w2")
     expect(agent.state).toBe("unknown")
 
-    const call = calls[0]
-    expect(call?.args).toContain("agent")
-    expect(call?.args).toContain("start")
-    expect(call?.args).toContain("ISSUE-1")
-    expect(call?.args).toContain("--workspace")
-    expect(call?.args).toContain("w2")
-    expect(call?.args).toContain("--cwd")
-    expect(call?.args).toContain("/repo/worktree")
-    expect(call?.args).toContain("--no-focus")
-    expect(call?.args).toContain("--")
-    expect(call?.args).toContain("opencode")
+    expect(calls.map((call) => call.args.slice(0, 2).join(" "))).toEqual([
+      "--version",
+      "pane list",
+      "pane split",
+      "pane run",
+    ])
+    expect(calls[2]?.args).toEqual([
+      "pane",
+      "split",
+      "w2:p1",
+      "--direction",
+      "right",
+      "--cwd",
+      "/repo/worktree",
+      "--no-focus",
+      "--env",
+      "FOO=bar",
+    ])
+    expect(calls[3]?.args).toEqual([
+      "pane",
+      "run",
+      "w2:p2",
+      "'opencode' 'run' 'first line\nsecond line'",
+    ])
   })
 
-  test("startAgent passes env vars", async () => {
+  test("startAgent uses the legacy command before herdr 0.7.5", async () => {
     const { runner, calls } = makeCommandRunner({
+      "--version": { exitCode: 0, stdout: "herdr 0.7.4\n", stderr: "" },
       "agent start": AGENT_START_RESPONSE,
     })
     const client = createHerdrClient({ runCommand: runner })
@@ -167,11 +209,81 @@ describe("HerdrClient", () => {
       env: { FOO: "bar", BAZ: "qux" },
     })
 
-    const args = calls[0]?.args ?? []
+    const args = calls[1]?.args ?? []
+    expect(args).toContain("agent")
+    expect(args).toContain("start")
+    expect(args).toContain("ISSUE-1")
+    expect(args).toContain("--workspace")
+    expect(args).toContain("w2")
+    expect(args).toContain("--cwd")
+    expect(args).toContain("/repo/worktree")
+    expect(args).toContain("--no-focus")
+    expect(args).toContain("--")
+    expect(args).toContain("opencode")
     expect(args).toContain("--env")
     const envValues = args.filter((_, i) => args[i - 1] === "--env")
     expect(envValues).toContain("FOO=bar")
     expect(envValues).toContain("BAZ=qux")
+  })
+
+  test("startAgent uses the legacy command when herdr version cannot be read", async () => {
+    const { runner, calls } = makeCommandRunner({
+      "--version": { exitCode: 1, stdout: "", stderr: "not found" },
+      "agent start": AGENT_START_RESPONSE,
+    })
+    const client = createHerdrClient({ runCommand: runner })
+
+    await client.startAgent("ISSUE-1", {
+      workspaceId: "w2",
+      cwd: "/repo/worktree",
+      argv: ["opencode", "run"],
+    })
+
+    expect(calls[1]?.args).toContain("--workspace")
+  })
+
+  test("sendPrompt uses agent prompt with herdr 0.7.5 or newer", async () => {
+    const { runner, calls } = makeCommandRunner({
+      "--version": { exitCode: 0, stdout: "herdr 0.7.5\n", stderr: "" },
+      "agent prompt": { exitCode: 0, stdout: "", stderr: "" },
+    })
+    const client = createHerdrClient({ runCommand: runner })
+
+    await client.sendPrompt("w2:p2", "Complete the task")
+
+    expect(calls.map((call) => call.args)).toEqual([
+      ["--version"],
+      ["agent", "prompt", "w2:p2", "Complete the task"],
+    ])
+  })
+
+  test("sendPrompt falls back to agent send and Enter before herdr 0.7.5", async () => {
+    const { runner, calls } = makeCommandRunner({
+      "--version": { exitCode: 0, stdout: "herdr 0.7.4\n", stderr: "" },
+      "agent send": { exitCode: 0, stdout: "", stderr: "" },
+      "pane send-keys": { exitCode: 0, stdout: "", stderr: "" },
+    })
+    const client = createHerdrClient({ runCommand: runner })
+
+    await client.sendPrompt("w2:p2", "Complete the task")
+
+    expect(calls.map((call) => call.args)).toEqual([
+      ["--version"],
+      ["agent", "send", "w2:p2", "Complete the task"],
+      ["pane", "send-keys", "w2:p2", "Enter"],
+    ])
+  })
+
+  test("sendPrompt throws when herdr rejects the prompt", async () => {
+    const { runner } = makeCommandRunner({
+      "--version": { exitCode: 0, stdout: "herdr 0.7.5\n", stderr: "" },
+      "agent prompt": { exitCode: 1, stdout: "", stderr: "agent not running" },
+    })
+    const client = createHerdrClient({ runCommand: runner })
+
+    await expect(client.sendPrompt("w2:p2", "Complete the task")).rejects.toThrow(
+      "agent not running",
+    )
   })
 
   test("waitAgent returns agent info when status reached", async () => {
