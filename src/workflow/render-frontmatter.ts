@@ -5,7 +5,7 @@ import { formatError } from "../utils/error"
 
 const engine = new Liquid({
   strictFilters: true,
-  strictVariables: true,
+  strictVariables: false,
 })
 
 export async function renderFrontmatter(
