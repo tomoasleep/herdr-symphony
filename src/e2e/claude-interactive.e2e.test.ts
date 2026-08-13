@@ -311,12 +311,7 @@ test("e2e: claude は report 未送信の idle 後に reminder を受信して�
     expect(reminderScreen).toMatchInlineSnapshot(`
       "
       │ 1       +
-      ││                       ▐▛███▜▌                      │ Added \`sandbox.network.strictAllowlist\` setting to deny non-allowlisted hos… │▐
-      ││                      ▝▜█████▛▘                     │ /release-notes for more                                                      │▐
-      ││                        ▘▘ ▝▝                       │                                                                              │▐
-      ││                                                    │                                                                              │▐
-      ││       Opus 5 (1M context) · API Usage Billing      │                                                                              │▐
-      ││  TEMP_DIR │                                                                              │▐
+      ││ WELCOME_BANNER │▐
       │╰─╯▐
       │                                                                                                                                     ▐
       │                                                                                                                                     ▐
@@ -415,15 +410,7 @@ test("e2e: claude report_file モード — herdr-symphony report で完了報�
     expect(agentScreen).toMatchInlineSnapshot(`
       "
       │ 1       +
-      ││                                                    │ WHAT_NEW │▐
-      ││                    Welcome back!                   │ Bug fixes and reliability improvements                                       │▐
-      ││                                                    │ Added Claude Opus 5 (\`claude-opus-5\`), now the default Opus model — 1M cont… │▐
-      ││                       ▐▛███▜▌                      │ Added \`sandbox.network.strictAllowlist\` setting to deny non-allowlisted hos… │▐
-      ││                      ▝▜█████▛▘                     │ /release-notes for more                                                      │▐
-      ││                        ▘▘ ▝▝                       │                                                                              │▐
-      ││                                                    │                                                                              │▐
-      ││       Opus 5 (1M context) · API Usage Billing      │                                                                              │▐
-      ││  TEMP_DIR │                                                                              │▐
+      ││ WELCOME_BANNER │▐
       │╰─╯▐
       │                                                                                                                                     ▐
       │                                                                                                                                     ▐

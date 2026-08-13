@@ -107,7 +107,14 @@ export async function ensureWorkspace(
   }
 
   if (config.provider === "gwq") {
-    const result = await ensureGwqWorkspace(issue, config, repositoryRoot, runCommand, onLog)
+    const result = await ensureGwqWorkspace(
+      issue,
+      config,
+      repositoryRoot,
+      runCommand,
+      runGit,
+      onLog,
+    )
     logLine(
       onLog,
       `workspace ready key=${result.key} created=${result.createdNow} path=${result.path} branch=${result.branch ?? "none"}`,
@@ -190,6 +197,7 @@ async function ensureGwqWorkspace(
   config: WorkspaceConfig,
   repositoryRoot: string,
   runCommand: CommandRunner,
+  runGit: GitCommandRunner,
   onLog?: (line: string) => void,
 ): Promise<WorkspaceResult> {
   const plan = buildGwqWorkspacePlan(issue, repositoryRoot, config, onLog)
@@ -211,7 +219,7 @@ async function ensureGwqWorkspace(
   }
 
   const args = ["add"]
-  if (config.gwq.createBranch) {
+  if (config.gwq.createBranch && !(await hasLocalBranch(repositoryRoot, plan.branch, runGit))) {
     args.push("-b")
   }
   args.push(plan.branch)

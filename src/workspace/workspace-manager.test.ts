@@ -276,6 +276,9 @@ describe("ensureWorkspace", () => {
         if (command === "git" && args[0] === "rev-parse") {
           return { exitCode: 0, stdout: "/repos/fairy\n", stderr: "" }
         }
+        if (command === "git" && args[0] === "show-ref") {
+          return { exitCode: 1, stdout: "", stderr: "" }
+        }
         if (
           command === "gwq" &&
           args[0] === "list" &&
@@ -303,9 +306,74 @@ describe("ensureWorkspace", () => {
 
       expect(result.createdNow).toBeTrue()
       expect(result.path).toBe("/repos/fairy.worktrees/feature/abc-123")
-      expect(calls.at(2)).toEqual({
+      expect(calls.at(3)).toEqual({
         command: "gwq",
         args: ["add", "-b", "herdr/feature_abc-123"],
+        cwd: "/repos/fairy",
+      })
+    })
+
+    test("gwq provider で branch が既に存在する場合は -b を付けずに add する", async () => {
+      const calls: Array<{ command: string; args: string[]; cwd: string }> = []
+      const issue = {
+        id: "1",
+        identifier: "ABC/123",
+        title: "task",
+        description: null,
+        priority: 1,
+        state: "Backlog",
+        repository: "/repos/fairy",
+        fields: {
+          Worktree: "feature/abc-123",
+        },
+        url: null,
+        labels: [],
+        blockedBy: [],
+        createdAt: null,
+        updatedAt: null,
+      }
+      const runCommand = async (command: string, args: string[], cwd: string) => {
+        calls.push({ command, args, cwd })
+        if (command === "git" && args[0] === "rev-parse") {
+          return { exitCode: 0, stdout: "/repos/fairy\n", stderr: "" }
+        }
+        if (command === "git" && args[0] === "show-ref") {
+          return { exitCode: 0, stdout: "", stderr: "" }
+        }
+        if (
+          command === "gwq" &&
+          args[0] === "list" &&
+          calls.filter((entry) => entry.command === "gwq" && entry.args[0] === "list").length === 1
+        ) {
+          return { exitCode: 0, stdout: "[]", stderr: "" }
+        }
+        if (command === "gwq" && args[0] === "add") {
+          return { exitCode: 0, stdout: "", stderr: "" }
+        }
+        if (command === "gwq" && args[0] === "list") {
+          return {
+            exitCode: 0,
+            stdout:
+              '[{"path":"/repos/fairy.worktrees/feature/abc-123","branch":"herdr/feature_abc-123","is_main":false}]',
+            stderr: "",
+          }
+        }
+        throw new Error(`unexpected command: ${command} ${args.join(" ")}`)
+      }
+
+      const result = await ensureWorkspace(issue, makeWorkspaceConfig({ provider: "gwq" }), {
+        runCommand,
+      })
+
+      expect(result.createdNow).toBeTrue()
+      expect(calls.at(2)).toEqual({
+        command: "git",
+        args: ["show-ref", "--verify", "refs/heads/herdr/feature_abc-123"],
+        cwd: "/repos/fairy",
+      })
+      expect(calls.at(3)).toEqual({
+        command: "gwq",
+        args: ["add", "herdr/feature_abc-123"],
         cwd: "/repos/fairy",
       })
     })
@@ -332,6 +400,9 @@ describe("ensureWorkspace", () => {
       const runCommand = async (command: string, args: string[], _cwd: string) => {
         if (command === "git" && args[0] === "rev-parse") {
           return { exitCode: 0, stdout: "/repos/fairy\n", stderr: "" }
+        }
+        if (command === "git" && args[0] === "show-ref") {
+          return { exitCode: 1, stdout: "", stderr: "" }
         }
         if (command === "gwq" && args[0] === "list") {
           listCount += 1

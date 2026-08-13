@@ -104,6 +104,14 @@ export function normalizeScreenOutput(text: string): string {
     "",
   )
   result = result.replace(/▕/g, "▐")
+  result = result.replace(
+    /(?:[^\n]*?││)[^\n]*WHAT_NEW[^\n]*\r?\n(?:[^\n]*?││[^\n]*\r?\n)*?[^\n]*?│╰─+╯▐\r?\n/g,
+    "││ WELCOME_BANNER │▐\n│╰─╯▐\n",
+  )
+  result = result.replace(
+    /(?:[^\n]*?││)[^\n]*▐▛███▜▌[^\n]*\r?\n(?:[^\n]*?││[^\n]*\r?\n)*?[^\n]*?│╰─+╯▐\r?\n/g,
+    "││ WELCOME_BANNER │▐\n│╰─╯▐\n",
+  )
   result = result.replace(/─+/g, "─")
   return result
     .split("\n")
