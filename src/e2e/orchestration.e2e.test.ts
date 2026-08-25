@@ -61,11 +61,11 @@ test("e2e: herdr TUI + service log — agent が herdr 上で実行されて suc
 
     expect(await captureOutput(herdrSession)).toMatchInlineSnapshot(`
       "
-       spaces                  │ 1       +
+       spaces                  │   1     +
                                │$
        · workspace             │
-                               │
-                               │
+       · test/repo#1           │
+         master                │
                                │
                                │
                                │
