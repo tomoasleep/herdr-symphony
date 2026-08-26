@@ -20,7 +20,7 @@ RUN curl -fsSL https://herdr.dev/install.sh | sh
 ENV PATH="/home/agent/.local/bin:${PATH}"
 
 RUN npm config set prefix /home/agent/.npm-global \
-    && npm install -g @anthropic-ai/claude-code
+    && npm install -g @anthropic-ai/claude-code@2.1.246
 ENV PATH="/home/agent/.npm-global/bin:${PATH}"
 
 RUN printf '%s\n' \
