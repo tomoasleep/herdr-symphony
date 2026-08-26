@@ -166,7 +166,7 @@ test("e2e: claude 対話モード — agent の画面全体を確認できる", 
   try {
     const herdrSession = register(
       await launchTerminal({
-        ...containerCommand(herdr.containerId, ["herdr"]),
+        ...containerCommand(herdr.containerId, ["herdr"], undefined, "/tmp"),
         cwd: projectRoot,
         cols: 160,
         rows: 40,
@@ -266,7 +266,7 @@ test("e2e: claude は report 未送信の idle 後に reminder を受信して�
   try {
     const herdrSession = register(
       await launchTerminal({
-        ...containerCommand(herdr.containerId, ["herdr"]),
+        ...containerCommand(herdr.containerId, ["herdr"], undefined, "/tmp"),
         cwd: projectRoot,
         cols: 160,
         rows: 40,
@@ -378,7 +378,7 @@ test("e2e: claude report_file モード — herdr-symphony report で完了報�
   try {
     const herdrSession = register(
       await launchTerminal({
-        ...containerCommand(herdr.containerId, ["herdr"]),
+        ...containerCommand(herdr.containerId, ["herdr"], undefined, "/tmp"),
         cwd: projectRoot,
         cols: 160,
         rows: 40,

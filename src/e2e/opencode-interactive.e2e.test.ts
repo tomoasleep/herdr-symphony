@@ -83,7 +83,7 @@ test("e2e: opencode interactive — report file で完了報告する", async ()
   try {
     const herdrSession = register(
       await launchTerminal({
-        ...containerCommand(herdr.containerId, ["herdr"]),
+        ...containerCommand(herdr.containerId, ["herdr"], undefined, "/tmp"),
         cwd: projectRoot,
         cols: 160,
         rows: 40,

@@ -61,6 +61,7 @@ const DYNAMIC_REPLACEMENTS: Array<[RegExp, string]> = [
   [/\bw\d+\b/g, "WORKSPACE_ID"],
   [/test\/repo#[0-9a-z]{6,}/g, "test/repo#ID"],
   [/Agent Model · \d+\.\d+s/g, "Agent Model · TIME"],
+  [/^([ │]*✻[^\n]*?) · done \d{1,2}:\d{2} [AP]M/gm, "$1"],
   [/^([ │]*✻) \S+ for 0s/gm, "$1 Worked for 0s"],
   [/^([ │]*✻) \S+ for (?!0s)\d+s +(?=▐)/gm, "$1 Worked for TIME "],
   [/^([ │]*✻ Worked for 0s)[ \t]+(?=▐|│)/gm, "$1 "],
@@ -193,8 +194,6 @@ export async function createHerdrIsolation(prefix: string): Promise<HerdrIsolati
     "--add-host=host.docker.internal:host-gateway",
     "-v",
     `${projectRoot}:/workspace`,
-    "--tmpfs",
-    "/workspace/.git",
     "-v",
     `${sharedDir}:/tmp/shared`,
     "-e",
@@ -229,10 +228,15 @@ export function containerCommand(
   containerId: string,
   command: string[],
   env?: Record<string, string>,
+  workdir?: string,
 ): { command: string; args: string[] } {
   const envArgs = ["-e", "TERM=xterm-truecolor"]
   for (const [key, value] of Object.entries(env ?? {})) {
     envArgs.push("-e", `${key}=${value}`)
   }
-  return { command: "docker", args: ["exec", "-it", ...envArgs, containerId, ...command] }
+  const workdirArgs = workdir ? ["-w", workdir] : []
+  return {
+    command: "docker",
+    args: ["exec", "-it", ...envArgs, ...workdirArgs, containerId, ...command],
+  }
 }
