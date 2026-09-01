@@ -105,6 +105,28 @@ async function dismissBypassPermissionsWarning(containerId: string, paneId: stri
   }
 }
 
+async function waitForStableScreen(
+  session: Session,
+  isForbidden?: (screen: string) => boolean,
+): Promise<string> {
+  let stable: string | undefined
+  let repeats = 0
+  for (let i = 0; i < 110; i++) {
+    const screen = normalizeScreenOutput(await session.text({ immediate: true }))
+    if (screen === stable) {
+      repeats++
+      if (repeats >= 2) {
+        if (isForbidden === undefined || isForbidden(screen)) return screen
+      }
+    } else {
+      stable = screen
+      repeats = 0
+    }
+    await new Promise((resolve) => setTimeout(resolve, 500))
+  }
+  return stable ?? ""
+}
+
 async function captureAgentScreen(
   paneId: string,
   herdrSession: Session,
@@ -124,34 +146,20 @@ async function captureAgentScreen(
       : /あなたは herdr-symphony の agent です。|Task completed/.test(screen)
     if (completed && !forbiddenText?.test(screen)) {
       if (!stabilize) {
-        let prev = ""
-        for (let i = 0; i < 10; i++) {
-          screen = normalizeScreenOutput(await herdrSession.text({ immediate: true }))
-          if (forbiddenText?.test(screen)) return screen
-          if (screen === prev) break
-          prev = screen
-          await new Promise((resolve) => setTimeout(resolve, 1000))
-        }
-        return screen
+        return waitForStableScreen(herdrSession, (s) => forbiddenText?.test(s) ?? false)
       }
       const stabilizeDeadline = Date.now() + 15_000
       while (Date.now() < stabilizeDeadline) {
-        screen = normalizeScreenOutput(await herdrSession.text({ immediate: true }))
-        if (/✓ test-claude-ID/.test(screen)) {
+        const raw = await herdrSession.text({ immediate: true })
+        screen = normalizeScreenOutput(raw)
+        if (/✓ test-claude-ID/.test(screen) && /· done \d{1,2}:\d{2} [AP]M/.test(raw)) {
           break
         }
         await new Promise((resolve) => setTimeout(resolve, 500))
       }
-      let prev = ""
-      for (let i = 0; i < 10; i++) {
-        screen = normalizeScreenOutput(await herdrSession.text({ immediate: true }))
-        if (screen === prev) {
-          break
-        }
-        prev = screen
-        await new Promise((resolve) => setTimeout(resolve, 1000))
-      }
-      return screen
+      await herdrSession.press(["ctrl", "l"])
+      await new Promise((resolve) => setTimeout(resolve, 1_000))
+      return waitForStableScreen(herdrSession)
     }
     await new Promise((resolve) => setTimeout(resolve, 10))
   }
@@ -166,7 +174,7 @@ test("e2e: claude 対話モード — agent の画面全体を確認できる", 
   try {
     const herdrSession = register(
       await launchTerminal({
-        ...containerCommand(herdr.containerId, ["herdr"]),
+        ...containerCommand(herdr.containerId, ["herdr"], undefined, "/tmp"),
         cwd: projectRoot,
         cols: 160,
         rows: 40,
@@ -266,7 +274,7 @@ test("e2e: claude は report 未送信の idle 後に reminder を受信して�
   try {
     const herdrSession = register(
       await launchTerminal({
-        ...containerCommand(herdr.containerId, ["herdr"]),
+        ...containerCommand(herdr.containerId, ["herdr"], undefined, "/tmp"),
         cwd: projectRoot,
         cols: 160,
         rows: 40,
@@ -378,7 +386,7 @@ test("e2e: claude report_file モード — herdr-symphony report で完了報�
   try {
     const herdrSession = register(
       await launchTerminal({
-        ...containerCommand(herdr.containerId, ["herdr"]),
+        ...containerCommand(herdr.containerId, ["herdr"], undefined, "/tmp"),
         cwd: projectRoot,
         cols: 160,
         rows: 40,
@@ -425,12 +433,6 @@ test("e2e: claude report_file モード — herdr-symphony report で完了報�
     expect(agentScreen).toMatchInlineSnapshot(`
       "
       │   1     +
-      │                                                                                                                                     ▐
-      │    herdr-symphony report --status pending --summary "待機中の内容"                                                                  ▐
-      │                                                                                                                                     ▐
-      │失敗した場合は、以下のコマンドを実行してください。                                                                                   ▐
-      │                                                                                                                                     ▐
-      │    herdr-symphony report --status failed --summary "失敗理由"'                                                                      ▐
       │ ▐▛███▛█   Claude Code VERSION                                                                                                      ▐
       │▝▜██████▀  Opus 5 (1M context) · API Usage Billing                                                                                   ▐
       │  ▝▝ ▝▝    TEMP_DIR                                                                         ▐
@@ -460,6 +462,12 @@ test("e2e: claude report_file モード — herdr-symphony report で完了報�
       │❯                                                                                                                                    ▐
       │─▐
       │  ⏵⏵ bypass permissions on (shift+tab to cycle) · ← for agents                                                                       ▐
+      │                                                                                                                                     ▐
+      │                                                                                                                                     ▐
+      │                                                                                                                                     ▐
+      │                                                                                                                                     ▐
+      │                                                                                                                                     ▐
+      │                                                                                                                                     ▐
       │                                                                                                                                     ▐
       │                                                                                                                                     ▐
       │                                                                                                                                     ▐

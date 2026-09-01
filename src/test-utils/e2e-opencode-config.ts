@@ -10,6 +10,7 @@ export function createOpencodeTestConfig(options: OpencodeTestConfigOptions): st
     model: `mock/${model}`,
     enabled_providers: ["mock"],
     share: "disabled",
+    autoupdate: false,
     ...(options.agent ? { agent: options.agent } : {}),
     provider: {
       mock: {

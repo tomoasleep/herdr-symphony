@@ -19,7 +19,7 @@ test("e2e: herdr TUI + service log — agent が herdr 上で実行されて suc
   try {
     const herdrSession = register(
       await launchTerminal({
-        ...containerCommand(herdr.containerId, ["herdr"]),
+        ...containerCommand(herdr.containerId, ["herdr"], undefined, "/tmp"),
         cwd: projectRoot,
         cols: 160,
         rows: 40,
@@ -63,7 +63,7 @@ test("e2e: herdr TUI + service log — agent が herdr 上で実行されて suc
       "
        spaces                  │   1     +
                                │$
-       · workspace             │
+       · tmp                   │
        · test/repo#1           │
          master                │
                                │
