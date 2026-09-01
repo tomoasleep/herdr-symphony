@@ -61,10 +61,10 @@ const DYNAMIC_REPLACEMENTS: Array<[RegExp, string]> = [
   [/\bw\d+\b/g, "WORKSPACE_ID"],
   [/test\/repo#[0-9a-z]{6,}/g, "test/repo#ID"],
   [/Agent Model · \d+\.\d+s/g, "Agent Model · TIME"],
-  [/^([ │]*✻[^\n]*?) · done \d{1,2}:\d{2} [AP]M/gm, "$1"],
-  [/^([ │]*✻) \S+ for 0s/gm, "$1 Worked for 0s"],
-  [/^([ │]*✻) \S+ for (?!0s)\d+s +(?=▐)/gm, "$1 Worked for TIME "],
-  [/^([ │]*✻ Worked for 0s)[ \t]+(?=▐|│)/gm, "$1 "],
+  [/^([ │]*[^\s│][^\n]*?) · done \d{1,2}:\d{2} [AP]M/gm, "$1"],
+  [/^([ │]*[^\s│]) \S+ for 0s/gm, "$1 Worked for 0s"],
+  [/^([ │]*[^\s│]) \S+ for (?!0s)\d+s +(?=▐)/gm, "$1 Worked for TIME "],
+  [/^([ │]*[^\s│] Worked for 0s)[ \t]+(?=▐|│)/gm, "$1 "],
   [/[^\s│] [A-Za-z]+…\s*(?=▐)/g, "✽ Working… "],
   [/│ What's new\s+│/g, "│ WHAT_NEW │"],
   [/│ Added [^\n]*?│\s*│/g, "│ CLAUDE_WHATS_NEW_LINE │"],
@@ -95,6 +95,13 @@ export function normalizeLogOutput(text: string): string {
 
 export function normalizeScreenOutput(text: string): string {
   let result = text
+    .split("\n")
+    .map((line) => {
+      const idx = line.indexOf("│")
+      if (idx === -1) return line
+      return line.slice(idx)
+    })
+    .join("\n")
   for (const [pattern, replacement] of DYNAMIC_REPLACEMENTS) {
     result = result.replace(pattern, replacement)
   }
@@ -113,15 +120,7 @@ export function normalizeScreenOutput(text: string): string {
     /(?:[^\n]*?││)[^\n]*▐▛███▜▌[^\n]*\r?\n(?:[^\n]*?││[^\n]*\r?\n)*?[^\n]*?│╰─+╯▐\r?\n/g,
     "││ WELCOME_BANNER │▐\n│╰─╯▐\n",
   )
-  result = result.replace(/─+/g, "─")
-  return result
-    .split("\n")
-    .map((line) => {
-      const idx = line.indexOf("│")
-      if (idx === -1) return line
-      return line.slice(idx)
-    })
-    .join("\n")
+  return result.replace(/─+/g, "─")
 }
 
 export async function captureOutput(session: Session): Promise<string> {
