@@ -6,7 +6,7 @@ import type { AgentReportMessage } from "../../agmsg/agmsg-message"
 import { formatAgmsgMessage, parseInboxForMessages } from "../../agmsg/agmsg-message"
 import type { Issue, ServiceConfig } from "../../domain/types"
 import type { HerdrAgentState, HerdrClient } from "../../herdr/herdr-client"
-import { createHerdrClient } from "../../herdr/herdr-client"
+import { createHerdrClient, defaultCommandRunner } from "../../herdr/herdr-client"
 import { readReport } from "../../report/write-report"
 import { formatError } from "../../utils/error"
 import { sanitizeAgentName, sanitizeWorkspaceKey } from "../../utils/normalize"
@@ -19,6 +19,7 @@ import type {
   RunnerPollResult,
   RunnerResult,
 } from "../types"
+import { createOpencodeVersionProbe, type OpencodeVersionProbe } from "./opencode-version"
 import type { ReportResolver } from "./report"
 import { createReportResolver } from "./report"
 
@@ -29,6 +30,7 @@ export type HerdrAgentRunnerDeps = {
   reportResolver?: ReportResolver
   logger?: (msg: string) => void
   now?: () => number
+  opencodeVersionProbe?: OpencodeVersionProbe
 }
 
 export function buildAgentName(
@@ -152,6 +154,7 @@ export class HerdrAgentRunner implements Runner {
   private readonly reportResolver: ReportResolver
   private readonly logger: (msg: string) => void
   private readonly now: () => number
+  private readonly opencodeVersionProbe: OpencodeVersionProbe
   private readonly contexts = new Map<string, AgentContext>()
   private readonly pendingCloses = new Map<string, { target: string; closeAt: number }>()
 
@@ -166,6 +169,8 @@ export class HerdrAgentRunner implements Runner {
     this.logger = deps.logger ?? (() => {})
     this.reportResolver = deps.reportResolver ?? createReportResolver({ logger: deps.logger })
     this.now = deps.now ?? Date.now
+    this.opencodeVersionProbe =
+      deps.opencodeVersionProbe ?? createOpencodeVersionProbe(defaultCommandRunner)
   }
 
   async startIssue(issue: Issue, options: RunnerOptions): Promise<RunnerHandle> {
@@ -218,7 +223,7 @@ export class HerdrAgentRunner implements Runner {
       rmSync(resultPath, { force: true })
     }
 
-    const argv = this.buildAgentArgv({ ...options, content }, resultPath)
+    const argv = await this.buildAgentArgv({ ...options, content }, resultPath)
 
     const useReportPath =
       options.agentKind === "claude" ||
@@ -651,7 +656,10 @@ export class HerdrAgentRunner implements Runner {
     })
   }
 
-  private buildAgentArgv(options: RunnerOptions, resultPath: string | null): string[] {
+  private async buildAgentArgv(
+    options: RunnerOptions,
+    resultPath: string | null,
+  ): Promise<string[]> {
     if (options.agentKind === "claude") {
       const argv: string[] = ["claude"]
 
@@ -671,10 +679,12 @@ export class HerdrAgentRunner implements Runner {
     }
 
     if (options.interactive) {
-      const argv: string[] = ["opencode", "--auto"]
+      const major = await this.opencodeVersionProbe(options.workspacePath)
+      const isV2 = major !== null && major >= 2
+      const argv: string[] = isV2 ? ["opencode", "mini"] : ["opencode", "--auto"]
 
       if (process.env.HERDR_SYMPHONY_DEBUG) {
-        argv.push("--log-level", "DEBUG")
+        argv.push("--log-level", isV2 ? "debug" : "DEBUG")
       }
 
       if (options.model) {

@@ -5,6 +5,7 @@ import {
   containerCommand,
   createHerdrIsolation,
   createSessionManager,
+  dismissHerdrOnboarding,
   normalizeLogOutput,
 } from "../test-utils/e2e-helpers"
 import { plainResponse, writeScenarioConfig } from "../test-utils/e2e-scenario-config"
@@ -29,6 +30,7 @@ test("e2e: herdr TUI + service log — agent が herdr 上で実行されて suc
     )
 
     await herdrSession.waitForText(/spaces|agents/i, { timeout: 15_000 })
+    await dismissHerdrOnboarding(herdrSession)
 
     const { containerPath } = await writeScenarioConfig(herdr.sharedDir, {
       kind: "opencode",
@@ -61,7 +63,7 @@ test("e2e: herdr TUI + service log — agent が herdr 上で実行されて suc
 
     expect(await captureOutput(herdrSession)).toMatchInlineSnapshot(`
       "
-       spaces                  │   1     +
+       spaces                  │   1      +
                                │$
        · tmp                   │
        · test/repo#1           │

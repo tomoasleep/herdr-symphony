@@ -575,12 +575,13 @@ describe("HerdrAgentRunner", () => {
     expect(args?.argv.includes("Implement feature X")).toBe(true)
   })
 
-  test("interactive: true の場合、argv に --prompt が含まれ opencode run が使われない", async () => {
+  test("interactive: true かつ opencode v1 の場合、argv に --prompt が含まれ opencode run が使われない", async () => {
     const client = makeMockHerdrClient({})
     const runner = new HerdrAgentRunner(makeConfig(), {
       herdrClient: client,
       pollIntervalMs: 10,
       reportResolver: nullReportResolver(),
+      opencodeVersionProbe: () => Promise.resolve(1),
     })
 
     await runUntilDone(runner, makeIssue(), {
@@ -598,12 +599,13 @@ describe("HerdrAgentRunner", () => {
     expect(args?.argv).not.toContain("run")
   })
 
-  test("interactive: true で model と agent が指定された場合、argv に含まれる", async () => {
+  test("interactive: true かつ opencode v1 で model と agent が指定された場合、argv に含まれる", async () => {
     const client = makeMockHerdrClient({})
     const runner = new HerdrAgentRunner(makeConfig(), {
       herdrClient: client,
       pollIntervalMs: 10,
       reportResolver: nullReportResolver(),
+      opencodeVersionProbe: () => Promise.resolve(1),
     })
 
     await runUntilDone(runner, makeIssue(), {
@@ -623,6 +625,120 @@ describe("HerdrAgentRunner", () => {
     expect(args?.argv).toContain("--agent")
     expect(args?.argv).toContain("build")
     expect(args?.argv).toContain("--prompt")
+  })
+
+  test("interactive: true かつ opencode v2 の場合、opencode mini で起動する", async () => {
+    const client = makeMockHerdrClient({})
+    const runner = new HerdrAgentRunner(makeConfig(), {
+      herdrClient: client,
+      pollIntervalMs: 10,
+      reportResolver: nullReportResolver(),
+      opencodeVersionProbe: () => Promise.resolve(2),
+    })
+
+    await runUntilDone(runner, makeIssue(), {
+      content: "Fix the bug",
+      agentKind: "opencode",
+      attempt: null,
+      workspacePath: "/repo/worktree",
+      interactive: true,
+      model: "openai/gpt-5.4",
+      agent: "build",
+    })
+
+    const args = client.startAgentArgs
+    expect(args?.argv).toEqual([
+      "opencode",
+      "mini",
+      "--model",
+      "openai/gpt-5.4",
+      "--agent",
+      "build",
+      "--prompt",
+      "Fix the bug",
+    ])
+  })
+
+  test("opencode バージョン不明時は v1 形式にフォールバックする", async () => {
+    const client = makeMockHerdrClient({})
+    const runner = new HerdrAgentRunner(makeConfig(), {
+      herdrClient: client,
+      pollIntervalMs: 10,
+      reportResolver: nullReportResolver(),
+      opencodeVersionProbe: () => Promise.resolve(null),
+    })
+
+    await runUntilDone(runner, makeIssue(), {
+      content: "Fix the bug",
+      agentKind: "opencode",
+      attempt: null,
+      workspacePath: "/repo/worktree",
+      interactive: true,
+      model: "openai/gpt-5.4",
+      agent: "build",
+    })
+
+    const args = client.startAgentArgs
+    expect(args?.argv[0]).toBe("opencode")
+    expect(args?.argv[1]).toBe("--auto")
+    expect(args?.argv).toContain("--model")
+    expect(args?.argv).toContain("--prompt")
+  })
+
+  test("HERDR_SYMPHONY_DEBUG 時、opencode v1 は --log-level DEBUG を付ける", async () => {
+    process.env.HERDR_SYMPHONY_DEBUG = "1"
+    try {
+      const client = makeMockHerdrClient({})
+      const runner = new HerdrAgentRunner(makeConfig(), {
+        herdrClient: client,
+        pollIntervalMs: 10,
+        reportResolver: nullReportResolver(),
+        opencodeVersionProbe: () => Promise.resolve(1),
+      })
+
+      await runUntilDone(runner, makeIssue(), {
+        content: "Fix the bug",
+        agentKind: "opencode",
+        attempt: null,
+        workspacePath: "/repo/worktree",
+        interactive: true,
+      })
+
+      const args = client.startAgentArgs
+      const logLevelIndex = args?.argv.indexOf("--log-level") ?? -1
+      expect(logLevelIndex).toBeGreaterThanOrEqual(0)
+      expect(args?.argv[logLevelIndex + 1]).toBe("DEBUG")
+    } finally {
+      delete process.env.HERDR_SYMPHONY_DEBUG
+    }
+  })
+
+  test("HERDR_SYMPHONY_DEBUG 時、opencode v2 は --log-level debug を付ける", async () => {
+    process.env.HERDR_SYMPHONY_DEBUG = "1"
+    try {
+      const client = makeMockHerdrClient({})
+      const runner = new HerdrAgentRunner(makeConfig(), {
+        herdrClient: client,
+        pollIntervalMs: 10,
+        reportResolver: nullReportResolver(),
+        opencodeVersionProbe: () => Promise.resolve(2),
+      })
+
+      await runUntilDone(runner, makeIssue(), {
+        content: "Fix the bug",
+        agentKind: "opencode",
+        attempt: null,
+        workspacePath: "/repo/worktree",
+        interactive: true,
+      })
+
+      const args = client.startAgentArgs
+      const logLevelIndex = args?.argv.indexOf("--log-level") ?? -1
+      expect(logLevelIndex).toBeGreaterThanOrEqual(0)
+      expect(args?.argv[logLevelIndex + 1]).toBe("debug")
+    } finally {
+      delete process.env.HERDR_SYMPHONY_DEBUG
+    }
   })
 
   test("interactive: false (default) の場合、argv に herdr-symphony wrap が含まれる", async () => {

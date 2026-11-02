@@ -61,6 +61,7 @@ const DYNAMIC_REPLACEMENTS: Array<[RegExp, string]> = [
   [/\bw\d+\b/g, "WORKSPACE_ID"],
   [/test\/repo#[0-9a-z]{6,}/g, "test/repo#ID"],
   [/Agent Model · \d+\.\d+s/g, "Agent Model · TIME"],
+  [/Agent Model · \d+ms/g, "Agent Model · TIME"],
   [/^([ │]*[^\s│][^\n]*?) · done \d{1,2}:\d{2} [AP]M/gm, "$1"],
   [/^([ │]*[^\s│]) \S+ for 0s/gm, "$1 Worked for 0s"],
   [/^([ │]*[^\s│]) \S+ for (?!0s)\d+s +(?=▐)/gm, "$1 Worked for TIME "],
@@ -76,6 +77,7 @@ const DYNAMIC_REPLACEMENTS: Array<[RegExp, string]> = [
   [/new\s+menu/g, "new menu"],
   [/┌ test-claude-ID-e2e-test-TS-TS ─+┐/g, "┌ test-claude-ID-e2e-test-TS-TS ─┐"],
   [/(reconcile running=1 refreshed=1)(?:\n\1)+/g, "$1"],
+  [/([\p{L}\p{N}])> (?=[\p{L}\p{N}])/gu, "$1"],
 ]
 
 export function normalizeOutput(text: string): string {
@@ -128,6 +130,21 @@ export async function captureOutput(session: Session): Promise<string> {
   return normalizeOutput(text)
 }
 
+export async function dismissHerdrOnboarding(session: Session): Promise<void> {
+  const deadline = Date.now() + 15_000
+  while (Date.now() < deadline) {
+    const screen = await session.text({ immediate: true, trimEnd: true })
+    if (/mouse-first terminal/.test(screen)) {
+      session.sendKey("enter")
+    } else if (/↵ install/.test(screen)) {
+      session.sendKey("escape")
+    } else {
+      return
+    }
+    await new Promise((resolve) => setTimeout(resolve, 500))
+  }
+}
+
 export type HerdrIsolation = {
   containerId: string
   sharedDir: string
@@ -163,22 +180,37 @@ function runDocker(args: string[], timeoutMs = 30_000): Promise<CommandResult> {
   return runCommand("docker", args, timeoutMs)
 }
 
-let imageReady: Promise<void> | undefined
+export const OPENCODE_V2_IMAGE = "herdr-e2e-opencode-v2:latest"
 
-async function ensureE2EImage(): Promise<void> {
-  const result = await runDocker(["image", "inspect", "herdr-e2e:latest"])
+const imagesReady = new Map<string, Promise<void>>()
+
+async function ensureE2EImage(image: string, buildArgs: string[] = []): Promise<void> {
+  const result = await runDocker(["image", "inspect", image])
   if (result.exitCode === 0) return
 
   const build = await runDocker(
-    ["build", "-f", "docker/e2e/Dockerfile", "-t", "herdr-e2e:latest", process.cwd()],
+    ["build", ...buildArgs, "-f", "docker/e2e/Dockerfile", "-t", image, process.cwd()],
     300_000,
   )
   if (build.exitCode !== 0) throw new Error(`docker build failed: ${build.stderr}`)
 }
 
-export async function createHerdrIsolation(prefix: string): Promise<HerdrIsolation> {
-  imageReady ??= ensureE2EImage()
-  await imageReady
+export type HerdrIsolationOptions = {
+  image?: string
+  buildArgs?: string[]
+}
+
+export async function createHerdrIsolation(
+  prefix: string,
+  options: HerdrIsolationOptions = {},
+): Promise<HerdrIsolation> {
+  const image = options.image ?? "herdr-e2e:latest"
+  let ready = imagesReady.get(image)
+  if (!ready) {
+    ready = ensureE2EImage(image, options.buildArgs)
+    imagesReady.set(image, ready)
+  }
+  await ready
 
   const shortId = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`
   const containerName = `herdr-e2e-${prefix}-${shortId}`
@@ -197,7 +229,7 @@ export async function createHerdrIsolation(prefix: string): Promise<HerdrIsolati
     `${sharedDir}:/tmp/shared`,
     "-e",
     "AGMSG_SCRIPTS_DIR=/opt/agmsg/scripts",
-    "herdr-e2e:latest",
+    image,
     "sleep",
     "infinity",
   ])
