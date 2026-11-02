@@ -107,6 +107,16 @@ test("normalizeOutput は running reconciliation の繰り返しを畳む", () =
   expect(normalizeLogOutput(`${line}\n${line}`)).toBe(line)
 })
 
+test("normalizeScreenOutput はリサイズ reflow の wrap マーカーを除去する", () => {
+  expect(
+    normalizeScreenOutput(
+      '│    herdr-symphony repor> t --status done --summary "やった作業の要約"\n│background task / sub> agent / task の完了待ちなら、以下のコ> マンドを実行してください。',
+    ),
+  ).toBe(
+    '│    herdr-symphony report --status done --summary "やった作業の要約"\n│background task / subagent / task の完了待ちなら、以下のコマンドを実行してください。',
+  )
+})
+
 test("normalizeLogOutput は各行の先頭スペースを除去する", () => {
   expect(normalizeLogOutput("  first\nsecond\n")).toBe("first\nsecond")
 })

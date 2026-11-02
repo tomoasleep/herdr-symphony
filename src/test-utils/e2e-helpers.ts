@@ -77,6 +77,7 @@ const DYNAMIC_REPLACEMENTS: Array<[RegExp, string]> = [
   [/new\s+menu/g, "new menu"],
   [/┌ test-claude-ID-e2e-test-TS-TS ─+┐/g, "┌ test-claude-ID-e2e-test-TS-TS ─┐"],
   [/(reconcile running=1 refreshed=1)(?:\n\1)+/g, "$1"],
+  [/([\p{L}\p{N}])> (?=[\p{L}\p{N}])/gu, "$1"],
 ]
 
 export function normalizeOutput(text: string): string {
