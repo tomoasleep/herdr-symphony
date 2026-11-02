@@ -5,6 +5,7 @@ import {
   createHerdrIsolation,
   dismissHerdrOnboarding,
   execInContainer,
+  normalizeOutput,
   normalizeScreenOutput,
 } from "../test-utils/e2e-helpers"
 import { plainResponse, writeScenarioConfig } from "../test-utils/e2e-scenario-config"
@@ -13,6 +14,7 @@ export type OpencodeInteractiveTestOptions = {
   prefix: string
   image: string
   buildArgs: string[]
+  capture?: "screen" | "paneRead"
 }
 
 export function opencodeReportFileMockResponses(
@@ -42,16 +44,29 @@ async function resolveOpencodeToolName(containerId: string): Promise<string> {
   return major !== null && major >= 2 ? "shell" : "Bash"
 }
 
-async function captureAgentScreen(
-  scenarioSession: Session,
-  herdrSession: Session,
-  containerId: string,
-): Promise<string> {
+async function resolveAgentPaneId(scenarioSession: Session): Promise<string> {
   await scenarioSession.waitForText(/agent pane=\S+/, { timeout: 30_000 })
   const scenarioOutput = await scenarioSession.text({ trimEnd: true })
   const paneId = scenarioOutput.match(/agent pane=(\S+)/)?.[1]
   if (!paneId) throw new Error("agent pane id not found")
+  return paneId
+}
 
+async function capturePaneContent(containerId: string, paneId: string): Promise<string> {
+  const result = await execInContainer(
+    containerId,
+    ["herdr", "pane", "read", paneId, "--source", "recent-unwrapped", "--lines", "24"],
+    10_000,
+  )
+  if (result.exitCode !== 0) throw new Error(`herdr pane read failed: ${result.stderr}`)
+  return normalizeOutput(result.stdout)
+}
+
+async function captureAgentScreen(
+  herdrSession: Session,
+  containerId: string,
+  paneId: string,
+): Promise<string> {
   await execInContainer(containerId, ["herdr", "agent", "focus", paneId], 10_000)
   await execInContainer(containerId, ["herdr", "pane", "zoom", paneId, "--on"], 10_000)
   const deadline = Date.now() + 60_000
@@ -168,7 +183,11 @@ export async function runOpencodeInteractiveE2E(
       throw e
     }
 
-    return await captureAgentScreen(scenarioSession, herdrSession, herdr.containerId)
+    const paneId = await resolveAgentPaneId(scenarioSession)
+    if (opts.capture === "paneRead") {
+      return await capturePaneContent(herdr.containerId, paneId)
+    }
+    return await captureAgentScreen(herdrSession, herdr.containerId, paneId)
   } finally {
     await herdr.cleanup()
   }
