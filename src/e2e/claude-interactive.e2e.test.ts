@@ -4,6 +4,7 @@ import {
   containerCommand,
   createHerdrIsolation,
   createSessionManager,
+  dismissHerdrOnboarding,
   execInContainer,
   normalizeScreenOutput,
 } from "../test-utils/e2e-helpers"
@@ -184,6 +185,7 @@ test("e2e: claude 対話モード — agent の画面全体を確認できる", 
     )
 
     await herdrSession.waitForText(/spaces|agents/i, { timeout: 15_000 })
+    await dismissHerdrOnboarding(herdrSession)
 
     const identifier = `test-claude-${newRunId()}`
     const { containerPath } = await writeScenarioConfig(herdr.sharedDir, {
@@ -220,7 +222,7 @@ test("e2e: claude 対話モード — agent の画面全体を確認できる", 
 
     expect(agentScreen).toMatchInlineSnapshot(`
       "
-      │   1     +
+      │   1      +
       │  最初に /opt/agmsg/scripts/actas-claim.sh "$PWD" claude-code "test-claude-ID-e2e-test-TS-TS"                    ▐
       │  "$CLAUDE_CODE_SESSION_ID" を実行して、この agent identity を claim してください。                                                  ▐
       │  claim に失敗した場合は task ack を返さず、作業を開始しないでください。                                                             ▐
@@ -284,6 +286,7 @@ test("e2e: claude は report 未送信の idle 後に reminder を受信して�
     )
 
     await herdrSession.waitForText(/spaces|agents/i, { timeout: 15_000 })
+    await dismissHerdrOnboarding(herdrSession)
 
     const identifier = `test-claude-${newRunId()}`
     const { containerPath } = await writeScenarioConfig(herdr.sharedDir, {
@@ -328,7 +331,7 @@ test("e2e: claude は report 未送信の idle 後に reminder を受信して�
 
     expect(reminderScreen).toMatchInlineSnapshot(`
       "
-      │   1     +
+      │   1      +
       │  ▝▝ ▝▝    TEMP_DIR                                                                         ▐
       │                                                                                                                                     ▐
       │                                                                                                                                     ▐
@@ -396,6 +399,7 @@ test("e2e: claude report_file モード — herdr-symphony report で完了報�
     )
 
     await herdrSession.waitForText(/spaces|agents/i, { timeout: 15_000 })
+    await dismissHerdrOnboarding(herdrSession)
 
     const identifier = `test-claude-${newRunId()}`
     const { containerPath } = await writeScenarioConfig(herdr.sharedDir, {
@@ -432,7 +436,7 @@ test("e2e: claude report_file モード — herdr-symphony report で完了報�
 
     expect(agentScreen).toMatchInlineSnapshot(`
       "
-      │   1     +
+      │   1      +
       │ ▐▛███▛█   Claude Code VERSION                                                                                                      ▐
       │▝▜██████▀  Opus 5 (1M context) · API Usage Billing                                                                                   ▐
       │  ▝▝ ▝▝    TEMP_DIR                                                                         ▐

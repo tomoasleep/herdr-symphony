@@ -52,5 +52,8 @@ jobs:
       - name: Build E2E Docker image
         run: docker build -f docker/e2e/Dockerfile -t herdr-e2e:latest .
 
+      - name: Build E2E Docker image (opencode v2)
+        run: docker build --build-arg OPENCODE_VERSION=v2.2.5 -f docker/e2e/Dockerfile -t herdr-e2e-opencode-v2:latest .
+
       - name: Run E2E tests
         run: bun test src/e2e
