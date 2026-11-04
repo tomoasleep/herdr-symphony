@@ -1,6 +1,6 @@
 import { afterEach } from "bun:test"
 import { spawn } from "node:child_process"
-import { mkdtemp, rm } from "node:fs/promises"
+import { chmod, mkdtemp, rm } from "node:fs/promises"
 import { join } from "node:path"
 import type { Session } from "tuistory"
 
@@ -223,6 +223,8 @@ export async function createHerdrIsolation(
   const containerName = `herdr-e2e-${prefix}-${shortId}`
   const projectRoot = process.cwd()
   const sharedDir = await mkdtemp(join(projectRoot, `.herdr-e2e-${prefix}-`))
+  // agent ユーザー (uid 1001) 以外のホストでも scenario config を読めるようにする
+  await chmod(sharedDir, 0o755)
 
   const result = await runDocker([
     "run",
