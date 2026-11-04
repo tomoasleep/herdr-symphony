@@ -107,6 +107,12 @@ test("normalizeOutput は running reconciliation の繰り返しを畳む", () =
   expect(normalizeLogOutput(`${line}\n${line}`)).toBe(line)
 })
 
+test("normalizeOutput はワークスペースのアクティビティグリフを状態非依存に正規化する", () => {
+  expect(normalizeOutput(" · tmp                   │\n  ○ test/repo#1           │")).toBe(
+    " ○ tmp                   │\n  ○ test/repo#1           │",
+  )
+})
+
 test("normalizeScreenOutput はリサイズ reflow の wrap マーカーを除去する", () => {
   expect(
     normalizeScreenOutput(
