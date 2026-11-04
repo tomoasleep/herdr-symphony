@@ -1,4 +1,8 @@
 import { spawn } from "node:child_process"
+import { randomUUID } from "node:crypto"
+import { rmSync, writeFileSync } from "node:fs"
+import { tmpdir } from "node:os"
+import { join } from "node:path"
 
 export type CommandResult = {
   exitCode: number
@@ -143,6 +147,21 @@ function shellQuote(value: string): string {
   return `'${value.replace(/'/g, `'\\''`)}'`
 }
 
+function writeAgentScript(cwd: string, argv: string[]): string {
+  const scriptPath = join(tmpdir(), `herdr-symphony-agent-${randomUUID()}.sh`)
+  const lines = ["#!/bin/sh", "script_path=$0", `trap 'rm -f -- "$script_path"' EXIT`]
+  if (cwd) {
+    lines.push(`cd ${shellQuote(cwd)} || exit`)
+  }
+  lines.push(argv.map(shellQuote).join(" "))
+  writeFileSync(scriptPath, `${lines.join("\n")}\n`, {
+    encoding: "utf8",
+    mode: 0o600,
+    flag: "wx",
+  })
+  return scriptPath
+}
+
 function parseAgentStarted(stdout: string): HerdrAgentInfo | null {
   const env = parseEnvelope(stdout)
   const agent = env.result?.agent as Record<string, unknown> | undefined
@@ -245,41 +264,54 @@ export function createHerdrClient(deps: HerdrClientDeps = {}): HerdrClient {
           throw new Error(`no pane found in Herdr workspace: ${opts.workspaceId}`)
         }
 
-        const splitArgs = [
-          "pane",
-          "split",
-          sourcePaneId,
-          "--direction",
-          "right",
-          "--cwd",
-          opts.cwd,
-          "--no-focus",
-        ]
-        if (opts.env) {
-          for (const [key, value] of Object.entries(opts.env)) {
-            splitArgs.push("--env", `${key}=${value}`)
+        const scriptPath = writeAgentScript(opts.cwd, opts.argv)
+        let paneId: string | null = null
+        let commandSubmitted = false
+        try {
+          const splitArgs = [
+            "pane",
+            "split",
+            sourcePaneId,
+            "--direction",
+            "right",
+            "--cwd",
+            opts.cwd,
+            "--no-focus",
+          ]
+          if (opts.env) {
+            for (const [key, value] of Object.entries(opts.env)) {
+              splitArgs.push("--env", `${key}=${value}`)
+            }
+          }
+          const splitResult = await runCommand(herdrBin, splitArgs, opts.cwd)
+          if (splitResult.exitCode !== 0) {
+            throw new Error(splitResult.stderr.trim() || `herdr pane split failed: ${name}`)
+          }
+          paneId = parsePaneCreate(splitResult.stdout)
+          if (!paneId) {
+            throw new Error(
+              `failed to parse pane split response: ${splitResult.stdout.slice(0, 200)}`,
+            )
+          }
+
+          const result = await runCommand(
+            herdrBin,
+            ["pane", "run", paneId, `sh ${shellQuote(scriptPath)}`],
+            opts.cwd,
+          )
+          if (result.exitCode !== 0) {
+            throw new Error(result.stderr.trim() || `herdr pane run failed: ${name}`)
+          }
+          commandSubmitted = true
+          return { name, state: "unknown", paneId, workspaceId: opts.workspaceId }
+        } finally {
+          if (!commandSubmitted) {
+            if (paneId) {
+              await runCommand(herdrBin, ["pane", "close", paneId], opts.cwd).catch(() => undefined)
+            }
+            rmSync(scriptPath, { force: true })
           }
         }
-        const splitResult = await runCommand(herdrBin, splitArgs, opts.cwd)
-        if (splitResult.exitCode !== 0) {
-          throw new Error(splitResult.stderr.trim() || `herdr pane split failed: ${name}`)
-        }
-        const paneId = parsePaneCreate(splitResult.stdout)
-        if (!paneId) {
-          throw new Error(
-            `failed to parse pane split response: ${splitResult.stdout.slice(0, 200)}`,
-          )
-        }
-
-        const result = await runCommand(
-          herdrBin,
-          ["pane", "run", paneId, opts.argv.map(shellQuote).join(" ")],
-          opts.cwd,
-        )
-        if (result.exitCode !== 0) {
-          throw new Error(result.stderr.trim() || `herdr pane run failed: ${name}`)
-        }
-        return { name, state: "unknown", paneId, workspaceId: opts.workspaceId }
       }
 
       const args = [

@@ -1,4 +1,6 @@
 import { describe, expect, test } from "bun:test"
+import { execFileSync } from "node:child_process"
+import { existsSync, readFileSync } from "node:fs"
 import {
   type CommandResult,
   type CommandRunner,
@@ -148,7 +150,7 @@ describe("HerdrClient", () => {
     expect(calls[1]?.args).toContain("--no-focus")
   })
 
-  test("startAgent quotes pane run arguments with herdr 0.7.5 or newer", async () => {
+  test("startAgent writes argv to a script and executes a long prompt outside terminal input", async () => {
     const { runner, calls } = makeCommandRunner({
       "--version": { exitCode: 0, stdout: "herdr 0.7.5\n", stderr: "" },
       "pane list": PANE_LIST_RESPONSE,
@@ -157,10 +159,11 @@ describe("HerdrClient", () => {
     })
     const client = createHerdrClient({ runCommand: runner })
 
+    const prompt = "x".repeat(1162)
     const agent = await client.startAgent("ISSUE-1", {
       workspaceId: "w2",
-      cwd: "/repo/worktree",
-      argv: ["opencode", "run", "first line\nsecond line"],
+      cwd: "/",
+      argv: ["/usr/bin/printf", "%s", prompt],
       env: { FOO: "bar" },
     })
 
@@ -182,17 +185,50 @@ describe("HerdrClient", () => {
       "--direction",
       "right",
       "--cwd",
-      "/repo/worktree",
+      "/",
       "--no-focus",
       "--env",
       "FOO=bar",
     ])
-    expect(calls[3]?.args).toEqual([
-      "pane",
-      "run",
-      "w2:p2",
-      "'opencode' 'run' 'first line\nsecond line'",
-    ])
+
+    const command = calls[3]?.args[3]
+    expect(command).toMatch(/^sh '.+herdr-symphony-agent-.+\.sh'$/)
+    expect(command).not.toContain(prompt)
+    const scriptPath = command?.match(/^sh '(.+)'$/)?.[1]
+    expect(scriptPath).toBeTruthy()
+    if (!scriptPath) throw new Error("launcher script path missing")
+    const script = readFileSync(scriptPath, "utf8")
+    expect(script).toContain("cd '/'")
+    expect(script).toContain(`'/usr/bin/printf' '%s' '${prompt}'`)
+    expect(script).toContain("trap 'rm -f -- \"$script_path\"' EXIT")
+    expect(execFileSync("sh", [scriptPath], { encoding: "utf8" })).toBe(prompt)
+    expect(existsSync(scriptPath)).toBe(false)
+  })
+
+  test("startAgent closes the split pane and removes its script if pane run fails", async () => {
+    const { runner, calls } = makeCommandRunner({
+      "--version": { exitCode: 0, stdout: "herdr 0.7.5\n", stderr: "" },
+      "pane list": PANE_LIST_RESPONSE,
+      "pane split": PANE_SPLIT_RESPONSE,
+      "pane run": { exitCode: 1, stdout: "", stderr: "pane input failed" },
+      "pane close": { exitCode: 0, stdout: "", stderr: "" },
+    })
+    const client = createHerdrClient({ runCommand: runner })
+
+    await expect(
+      client.startAgent("ISSUE-1", {
+        workspaceId: "w2",
+        cwd: "/repo/worktree",
+        argv: ["claude", "long prompt"],
+      }),
+    ).rejects.toThrow("pane input failed")
+
+    expect(calls.some((call) => call.args.join(" ") === "pane close w2:p2")).toBe(true)
+    const command = calls.find((call) => call.args[0] === "pane" && call.args[1] === "run")?.args[3]
+    const scriptPath = command?.match(/^sh '(.+)'$/)?.[1]
+    expect(scriptPath).toBeTruthy()
+    if (!scriptPath) throw new Error("launcher script path missing")
+    expect(existsSync(scriptPath)).toBe(false)
   })
 
   test("startAgent uses the legacy command before herdr 0.7.5", async () => {
