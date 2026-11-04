@@ -65,8 +65,8 @@ test("e2e: herdr TUI + service log — agent が herdr 上で実行されて suc
       "
        spaces                  │   1      +
                                │$
-       · tmp                   │
-       · test/repo#1           │
+       ○ tmp                   │
+       ○ test/repo#1           │
          master                │
                                │
                                │

@@ -1,6 +1,6 @@
 import { afterEach } from "bun:test"
 import { spawn } from "node:child_process"
-import { mkdtemp, rm } from "node:fs/promises"
+import { chmod, mkdtemp, rm } from "node:fs/promises"
 import { join } from "node:path"
 import type { Session } from "tuistory"
 
@@ -78,6 +78,9 @@ const DYNAMIC_REPLACEMENTS: Array<[RegExp, string]> = [
   [/┌ test-claude-ID-e2e-test-TS-TS ─+┐/g, "┌ test-claude-ID-e2e-test-TS-TS ─┐"],
   [/(reconcile running=1 refreshed=1)(?:\n\1)+/g, "$1"],
   [/([\p{L}\p{N}])> (?=[\p{L}\p{N}])/gu, "$1"],
+  // ワークスペースのアクティビティグリフは run 完了直後の取得タイミングで
+  // 変わるため、状態非依存に正規化する
+  [/^([ ]*)[·○](\s)/gm, "$1○$2"],
 ]
 
 export function normalizeOutput(text: string): string {
@@ -122,7 +125,14 @@ export function normalizeScreenOutput(text: string): string {
     /(?:[^\n]*?││)[^\n]*▐▛███▜▌[^\n]*\r?\n(?:[^\n]*?││[^\n]*\r?\n)*?[^\n]*?│╰─+╯▐\r?\n/g,
     "││ WELCOME_BANNER │▐\n│╰─╯▐\n",
   )
-  return result.replace(/─+/g, "─")
+  result = result.replace(/─+/g, "─")
+  return result
+    .split("\n")
+    .map((line) => {
+      const withoutChrome = line.replace(/\s+▐$/, "").replace(/▐$/, "")
+      return withoutChrome.replace(/\s+$/, "")
+    })
+    .join("\n")
 }
 
 export async function captureOutput(session: Session): Promise<string> {
@@ -216,6 +226,8 @@ export async function createHerdrIsolation(
   const containerName = `herdr-e2e-${prefix}-${shortId}`
   const projectRoot = process.cwd()
   const sharedDir = await mkdtemp(join(projectRoot, `.herdr-e2e-${prefix}-`))
+  // agent ユーザー (uid 1001) 以外のホストでも scenario config を読めるようにする
+  await chmod(sharedDir, 0o755)
 
   const result = await runDocker([
     "run",
