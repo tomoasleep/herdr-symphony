@@ -419,7 +419,7 @@ export function createHerdrClient(deps: HerdrClientDeps = {}): HerdrClient {
   }
 }
 
-function defaultCommandRunner(
+export function defaultCommandRunner(
   command: string,
   args: string[],
   cwd: string,

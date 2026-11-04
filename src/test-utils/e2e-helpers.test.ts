@@ -60,6 +60,14 @@ test("normalizeScreenOutput は Claude footer の Worked for 0s の末尾余白�
   )
 })
 
+test("normalizeScreenOutput は Claude footer の done タイムスタンプを除去する", () => {
+  expect(
+    normalizeScreenOutput(
+      "  │✻ Worked for 0s · done 1:36 AM          ▐\n│✻ Sautéed for 10s · done 1:36 AM          ▐",
+    ),
+  ).toBe("│✻ Worked for 0s ▐\n│✻ Worked for TIME ▐")
+})
+
 test("normalizeScreenOutput は agent pane の上枠線を正規化する", () => {
   expect(normalizeScreenOutput("│┌ test-claude-ID-e2e-test-TS-TS ───┐")).toBe(
     "│┌ test-claude-ID-e2e-test-TS-TS ─┐",
@@ -97,6 +105,16 @@ test("normalizeScreenOutput は改行された Claude agent名の動的な断片
 test("normalizeOutput は running reconciliation の繰り返しを畳む", () => {
   const line = "reconcile running=1 refreshed=1"
   expect(normalizeLogOutput(`${line}\n${line}`)).toBe(line)
+})
+
+test("normalizeScreenOutput はリサイズ reflow の wrap マーカーを除去する", () => {
+  expect(
+    normalizeScreenOutput(
+      '│    herdr-symphony repor> t --status done --summary "やった作業の要約"\n│background task / sub> agent / task の完了待ちなら、以下のコ> マンドを実行してください。',
+    ),
+  ).toBe(
+    '│    herdr-symphony report --status done --summary "やった作業の要約"\n│background task / subagent / task の完了待ちなら、以下のコマンドを実行してください。',
+  )
 })
 
 test("normalizeLogOutput は各行の先頭スペースを除去する", () => {

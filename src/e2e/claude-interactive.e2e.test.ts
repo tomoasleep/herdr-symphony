@@ -4,6 +4,7 @@ import {
   containerCommand,
   createHerdrIsolation,
   createSessionManager,
+  dismissHerdrOnboarding,
   execInContainer,
   normalizeScreenOutput,
 } from "../test-utils/e2e-helpers"
@@ -105,6 +106,28 @@ async function dismissBypassPermissionsWarning(containerId: string, paneId: stri
   }
 }
 
+async function waitForStableScreen(
+  session: Session,
+  isForbidden?: (screen: string) => boolean,
+): Promise<string> {
+  let stable: string | undefined
+  let repeats = 0
+  for (let i = 0; i < 110; i++) {
+    const screen = normalizeScreenOutput(await session.text({ immediate: true }))
+    if (screen === stable) {
+      repeats++
+      if (repeats >= 2) {
+        if (isForbidden === undefined || isForbidden(screen)) return screen
+      }
+    } else {
+      stable = screen
+      repeats = 0
+    }
+    await new Promise((resolve) => setTimeout(resolve, 500))
+  }
+  return stable ?? ""
+}
+
 async function captureAgentScreen(
   paneId: string,
   herdrSession: Session,
@@ -123,25 +146,21 @@ async function captureAgentScreen(
       ? completionText.test(screen)
       : /あなたは herdr-symphony の agent です。|Task completed/.test(screen)
     if (completed && !forbiddenText?.test(screen)) {
-      if (!stabilize) return screen
+      if (!stabilize) {
+        return waitForStableScreen(herdrSession, (s) => forbiddenText?.test(s) ?? false)
+      }
       const stabilizeDeadline = Date.now() + 15_000
       while (Date.now() < stabilizeDeadline) {
-        screen = normalizeScreenOutput(await herdrSession.text({ immediate: true }))
-        if (/✓ test-claude-ID/.test(screen)) {
+        const raw = await herdrSession.text({ immediate: true })
+        screen = normalizeScreenOutput(raw)
+        if (/✓ test-claude-ID/.test(screen) && /· done \d{1,2}:\d{2} [AP]M/.test(raw)) {
           break
         }
         await new Promise((resolve) => setTimeout(resolve, 500))
       }
-      let prev = ""
-      for (let i = 0; i < 10; i++) {
-        screen = normalizeScreenOutput(await herdrSession.text({ immediate: true }))
-        if (screen === prev) {
-          break
-        }
-        prev = screen
-        await new Promise((resolve) => setTimeout(resolve, 1000))
-      }
-      return screen
+      await herdrSession.press(["ctrl", "l"])
+      await new Promise((resolve) => setTimeout(resolve, 1_000))
+      return waitForStableScreen(herdrSession)
     }
     await new Promise((resolve) => setTimeout(resolve, 10))
   }
@@ -156,7 +175,7 @@ test("e2e: claude 対話モード — agent の画面全体を確認できる", 
   try {
     const herdrSession = register(
       await launchTerminal({
-        ...containerCommand(herdr.containerId, ["herdr"]),
+        ...containerCommand(herdr.containerId, ["herdr"], undefined, "/tmp"),
         cwd: projectRoot,
         cols: 160,
         rows: 40,
@@ -166,6 +185,7 @@ test("e2e: claude 対話モード — agent の画面全体を確認できる", 
     )
 
     await herdrSession.waitForText(/spaces|agents/i, { timeout: 15_000 })
+    await dismissHerdrOnboarding(herdrSession)
 
     const identifier = `test-claude-${newRunId()}`
     const { containerPath } = await writeScenarioConfig(herdr.sharedDir, {
@@ -202,7 +222,7 @@ test("e2e: claude 対話モード — agent の画面全体を確認できる", 
 
     expect(agentScreen).toMatchInlineSnapshot(`
       "
-      │ 1       +
+      │   1      +
       │  最初に /opt/agmsg/scripts/actas-claim.sh "$PWD" claude-code "test-claude-ID-e2e-test-TS-TS"                    ▐
       │  "$CLAUDE_CODE_SESSION_ID" を実行して、この agent identity を claim してください。                                                  ▐
       │  claim に失敗した場合は task ack を返さず、作業を開始しないでください。                                                             ▐
@@ -256,7 +276,7 @@ test("e2e: claude は report 未送信の idle 後に reminder を受信して�
   try {
     const herdrSession = register(
       await launchTerminal({
-        ...containerCommand(herdr.containerId, ["herdr"]),
+        ...containerCommand(herdr.containerId, ["herdr"], undefined, "/tmp"),
         cwd: projectRoot,
         cols: 160,
         rows: 40,
@@ -266,6 +286,7 @@ test("e2e: claude は report 未送信の idle 後に reminder を受信して�
     )
 
     await herdrSession.waitForText(/spaces|agents/i, { timeout: 15_000 })
+    await dismissHerdrOnboarding(herdrSession)
 
     const identifier = `test-claude-${newRunId()}`
     const { containerPath } = await writeScenarioConfig(herdr.sharedDir, {
@@ -310,25 +331,22 @@ test("e2e: claude は report 未送信の idle 後に reminder を受信して�
 
     expect(reminderScreen).toMatchInlineSnapshot(`
       "
-      │ 1       +
-      ││ WELCOME_BANNER │▐
-      │╰─╯▐
+      │   1      +
+      │  ▝▝ ▝▝    TEMP_DIR                                                                         ▐
       │                                                                                                                                     ▐
       │                                                                                                                                     ▐
       │❯ Test prompt for test-claude-ID                                                                                           ▐
-      │  ## 完了報告                                                                                                                        ▐
+      │  完了報告                                                                                                                           ▐
       │                                                                                                                                     ▐
       │  ユーザーに依頼された作業が完了したら、以下のコマンドを実行してください。                                                           ▐
       │                                                                                                                                     ▐
-      │      herdr-symphony report --status done --summary "やった作業の要約"                                                               ▐
-      │                                                                                                                                     ▐
+      │  herdr-symphony report --status done --summary "やった作業の要約"                                                                   ▐
       │  background task / subagent / task の完了待ちなら、以下のコマンドを実行してください。                                               ▐
       │                                                                                                                                     ▐
-      │      herdr-symphony report --status pending --summary "待機中の内容"                                                                ▐
-      │                                                                                                                                     ▐
+      │  herdr-symphony report --status pending --summary "待機中の内容"                                                                    ▐
       │  失敗した場合は、以下のコマンドを実行してください。                                                                                 ▐
       │                                                                                                                                     ▐
-      │      herdr-symphony report --status failed --summary "失敗理由"                                                                     ▐
+      │  herdr-symphony report --status failed --summary "失敗理由"                                                                         ▐
       │                                                                                                                                     ▐
       │● Bash(printf 'Initial task completed without report')                                                                               ▐
       │  ⎿  Initial task completed without report                                                                                           ▐
@@ -337,13 +355,21 @@ test("e2e: claude は report 未送信の idle 後に reminder を受信して�
       │                                                                                                                                     ▐
       │✻ Worked for 0s ▐
       │                                                                                                                                     ▐
+      │❯ ユーザーに依頼された作業は完了しましたか？完了した場合は herdr-symphony report --status done --summary "やった作業の要約"          ▐
+      │  を実行してください。まだ background task / subagent / task の完了待ちなら herdr-symphony report --status pending --summary         ▐
+      │  "待機中の内容" を実行してください。失敗した場合は herdr-symphony report --status failed --summary "失敗理由" を実行してください。  ▐
+      │                                                                                                                                     ▐
+      │● Bash(herdr-symphony report --status done --summary 'Completed after reminder.')                                                    ▐
+      │  ⎿  (No output)                                                                                                                     ▐
+      │                                                                                                                                     ▐
+      │● Completed after reminder.                                                                                                          ▐
+      │                                                                                                                                     ▐
+      │✻ Worked for 0s ▐
+      │                                                                                                                                     ▐
       │─▐
-      │❯ ユーザーに依頼された作業は完了しましたか？完了した場合は \`herdr-symphony report --status done --summary "やった作業の要約"\`        ▐
-      │  を実行してください。まだ background task / subagent / task の完了待ちなら \`herdr-symphony report --status pending --summary        ▐
-      │  "待機中の内容"\` を実行してください。失敗した場合は \`herdr-symphony report --status failed --summary "失敗理由"\`                    ▐
-      │  を実行してください。                                                                                                               ▐
+      │❯                                                                                                                                    ▐
       │─▐
-      │  ⏵⏵ bypass permissions on (shift+tab to cycle)                                                                                      ▐
+      │  ⏵⏵ bypass permissions on (shift+tab to cycle) · ← for agents                                                                       ▐
       │                                                                                                                                     ▐"
     `)
 
@@ -363,7 +389,7 @@ test("e2e: claude report_file モード — herdr-symphony report で完了報�
   try {
     const herdrSession = register(
       await launchTerminal({
-        ...containerCommand(herdr.containerId, ["herdr"]),
+        ...containerCommand(herdr.containerId, ["herdr"], undefined, "/tmp"),
         cwd: projectRoot,
         cols: 160,
         rows: 40,
@@ -373,6 +399,7 @@ test("e2e: claude report_file モード — herdr-symphony report で完了報�
     )
 
     await herdrSession.waitForText(/spaces|agents/i, { timeout: 15_000 })
+    await dismissHerdrOnboarding(herdrSession)
 
     const identifier = `test-claude-${newRunId()}`
     const { containerPath } = await writeScenarioConfig(herdr.sharedDir, {
@@ -409,25 +436,24 @@ test("e2e: claude report_file モード — herdr-symphony report で完了報�
 
     expect(agentScreen).toMatchInlineSnapshot(`
       "
-      │ 1       +
-      ││ WELCOME_BANNER │▐
-      │╰─╯▐
+      │   1      +
+      │ ▐▛███▛█   Claude Code VERSION                                                                                                      ▐
+      │▝▜██████▀  Opus 5 (1M context) · API Usage Billing                                                                                   ▐
+      │  ▝▝ ▝▝    TEMP_DIR                                                                         ▐
       │                                                                                                                                     ▐
       │                                                                                                                                     ▐
       │❯ Test prompt for test-claude-ID                                                                                           ▐
-      │  ## 完了報告                                                                                                                        ▐
+      │  完了報告                                                                                                                           ▐
       │                                                                                                                                     ▐
       │  ユーザーに依頼された作業が完了したら、以下のコマンドを実行してください。                                                           ▐
       │                                                                                                                                     ▐
-      │      herdr-symphony report --status done --summary "やった作業の要約"                                                               ▐
-      │                                                                                                                                     ▐
+      │  herdr-symphony report --status done --summary "やった作業の要約"                                                                   ▐
       │  background task / subagent / task の完了待ちなら、以下のコマンドを実行してください。                                               ▐
       │                                                                                                                                     ▐
-      │      herdr-symphony report --status pending --summary "待機中の内容"                                                                ▐
-      │                                                                                                                                     ▐
+      │  herdr-symphony report --status pending --summary "待機中の内容"                                                                    ▐
       │  失敗した場合は、以下のコマンドを実行してください。                                                                                 ▐
       │                                                                                                                                     ▐
-      │      herdr-symphony report --status failed --summary "失敗理由"                                                                     ▐
+      │  herdr-symphony report --status failed --summary "失敗理由"                                                                         ▐
       │                                                                                                                                     ▐
       │● Bash(herdr-symphony report --status done --summary 'Task completed successfully.')                                                 ▐
       │  ⎿  (No output)                                                                                                                     ▐
@@ -440,6 +466,15 @@ test("e2e: claude report_file モード — herdr-symphony report で完了報�
       │❯                                                                                                                                    ▐
       │─▐
       │  ⏵⏵ bypass permissions on (shift+tab to cycle) · ← for agents                                                                       ▐
+      │                                                                                                                                     ▐
+      │                                                                                                                                     ▐
+      │                                                                                                                                     ▐
+      │                                                                                                                                     ▐
+      │                                                                                                                                     ▐
+      │                                                                                                                                     ▐
+      │                                                                                                                                     ▐
+      │                                                                                                                                     ▐
+      │                                                                                                                                     ▐
       │                                                                                                                                     ▐"
     `)
 

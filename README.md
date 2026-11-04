@@ -567,6 +567,11 @@ herdr_agent:
 | `opencode.agent` | string (Liquid) | null | `opencode --agent` |
 | `opencode.interactive` | boolean | `false` | `true` で TUI (interactive mode) で起動。完了判定は report 機構（後述）を使用 |
 
+interactive mode の起動コマンドは runner 起動時に `opencode --version` を probe して決まる。
+
+- opencode v1: `opencode --auto --model <model> --agent <agent> --prompt <prompt>`
+- opencode v2: `opencode mini --model <model> --agent <agent> --prompt <prompt>`（v2 の TUI は `--model` / `--agent` を受け付けないため）
+
 #### Claude Code
 
 ```yaml

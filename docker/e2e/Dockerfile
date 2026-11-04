@@ -20,7 +20,7 @@ RUN curl -fsSL https://herdr.dev/install.sh | sh
 ENV PATH="/home/agent/.local/bin:${PATH}"
 
 RUN npm config set prefix /home/agent/.npm-global \
-    && npm install -g @anthropic-ai/claude-code
+    && npm install -g @anthropic-ai/claude-code@2.1.246
 ENV PATH="/home/agent/.npm-global/bin:${PATH}"
 
 RUN printf '%s\n' \
@@ -50,10 +50,11 @@ RUN printf '%s\n' \
 RUN mkdir -p /home/agent/.claude && \
     printf '%s\n' '{"theme":"dark","hasCompletedOnboarding":true}' > /home/agent/.claude/settings.json
 
+ARG OPENCODE_VERSION=v1.17.13
 ARG TARGETARCH
 RUN arch="${TARGETARCH:-$(dpkg --print-architecture)}" \
     && case "$arch" in amd64) opencode_arch=x64 ;; arm64) opencode_arch=arm64 ;; *) exit 1 ;; esac \
-    && curl -fsSL "https://github.com/anomalyco/opencode/releases/download/v1.17.13/opencode-linux-${opencode_arch}.tar.gz" -o /tmp/opencode.tar.gz \
+    && curl -fsSL "https://github.com/anomalyco/opencode/releases/download/${OPENCODE_VERSION}/opencode-linux-${opencode_arch}.tar.gz" -o /tmp/opencode.tar.gz \
     && tar xzf /tmp/opencode.tar.gz -C /tmp \
     && mkdir -p /home/agent/.opencode/bin \
     && mv /tmp/opencode /home/agent/.opencode/bin/opencode \
