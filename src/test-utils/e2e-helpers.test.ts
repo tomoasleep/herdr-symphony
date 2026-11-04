@@ -56,7 +56,7 @@ test("normalizeScreenOutput は Claude footer の Worked for 0s の末尾余白�
       "  │✻ Worked for 0s          ▐\n│✻ Worked for 0s          │\n│❯ reminder: ✻ Pending for 0s          ▐\n│Bash(herdr-symphony report --status done)          ▐\n│● Completed after reminder.          ▐",
     ),
   ).toBe(
-    "│✻ Worked for 0s ▐\n│✻ Worked for 0s │\n│❯ reminder: ✻ Pending for 0s          ▐\n│Bash(herdr-symphony report --status done)          ▐\n│● Completed after reminder.          ▐",
+    "│✻ Worked for 0s\n│✻ Worked for 0s │\n│❯ reminder: ✻ Pending for 0s\n│Bash(herdr-symphony report --status done)\n│● Completed after reminder.",
   )
 })
 
@@ -65,7 +65,7 @@ test("normalizeScreenOutput は Claude footer の done タイムスタンプを�
     normalizeScreenOutput(
       "  │✻ Worked for 0s · done 1:36 AM          ▐\n│✻ Sautéed for 10s · done 1:36 AM          ▐",
     ),
-  ).toBe("│✻ Worked for 0s ▐\n│✻ Worked for TIME ▐")
+  ).toBe("│✻ Worked for 0s\n│✻ Worked for TIME")
 })
 
 test("normalizeScreenOutput は agent pane の上枠線を正規化する", () => {

@@ -122,7 +122,14 @@ export function normalizeScreenOutput(text: string): string {
     /(?:[^\n]*?││)[^\n]*▐▛███▜▌[^\n]*\r?\n(?:[^\n]*?││[^\n]*\r?\n)*?[^\n]*?│╰─+╯▐\r?\n/g,
     "││ WELCOME_BANNER │▐\n│╰─╯▐\n",
   )
-  return result.replace(/─+/g, "─")
+  result = result.replace(/─+/g, "─")
+  return result
+    .split("\n")
+    .map((line) => {
+      const withoutChrome = line.replace(/\s+▐$/, "").replace(/▐$/, "")
+      return withoutChrome.replace(/\s+$/, "")
+    })
+    .join("\n")
 }
 
 export async function captureOutput(session: Session): Promise<string> {
