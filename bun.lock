@@ -16,7 +16,6 @@
         "zod": "^4.3.6",
       },
       "devDependencies": {
-        "@ai-sdk/openai-compatible": "^3.0.5",
         "@biomejs/biome": "^2.4.7",
         "@copilotkit/aimock": "^1.27.1",
         "@types/bun": "latest",

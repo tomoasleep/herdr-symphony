@@ -22,7 +22,6 @@
     "test:e2e:build": "docker build -t herdr-e2e:latest -f docker/e2e/Dockerfile ."
   },
   "devDependencies": {
-    "@ai-sdk/openai-compatible": "^3.0.5",
     "@biomejs/biome": "^2.4.7",
     "@copilotkit/aimock": "^1.27.1",
     "@types/bun": "latest",
