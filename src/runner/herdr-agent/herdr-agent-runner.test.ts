@@ -7,7 +7,7 @@ import { formatAgmsgMessage } from "../../agmsg/agmsg-message"
 import type { Issue, ServiceConfig } from "../../domain/types"
 import type { HerdrAgentInfo, HerdrClient, HerdrWorkspaceInfo } from "../../herdr/herdr-client"
 import { writeReport } from "../../report/write-report"
-import type { RunnerOptions, RunnerResult } from "../types"
+import type { RunnerHandle, RunnerOptions, RunnerResult } from "../types"
 import { buildAgentName, HerdrAgentRunner } from "./herdr-agent-runner"
 import type { ReportContext, ReportResolver } from "./report"
 
@@ -2498,5 +2498,194 @@ describe("HerdrAgentRunner", () => {
       expect(result.status).toBe("succeeded")
       expect(result.responseText).toBe("完了")
     })
+  })
+})
+
+describe("reattach", () => {
+  const tmpDirs: string[] = []
+
+  afterEach(() => {
+    for (const dir of tmpDirs) {
+      rmSync(dir, { recursive: true, force: true })
+    }
+    tmpDirs.length = 0
+  })
+
+  function makeWorkspace(): string {
+    const dir = join(
+      tmpdir(),
+      `hs-runner-reattach-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+    )
+    mkdirSync(dir, { recursive: true })
+    tmpDirs.push(dir)
+    return dir
+  }
+
+  function makeReportPath(): string {
+    return join(makeWorkspace(), "report.json")
+  }
+
+  async function pollUntilDone(
+    runner: HerdrAgentRunner,
+    handle: RunnerHandle,
+  ): Promise<RunnerResult> {
+    for (let i = 0; i < 200; i++) {
+      const poll = await runner.pollCompletion(handle)
+      if (poll.state === "done") {
+        return poll.result
+      }
+      await new Promise((resolve) => setTimeout(resolve, 1))
+    }
+    throw new Error("pollUntilDone: exceeded max poll iterations")
+  }
+
+  test("startIssue が再接続に必要な meta を返す", async () => {
+    const client = makeMockHerdrClient({})
+    const runner = new HerdrAgentRunner(makeConfig(), {
+      herdrClient: client,
+      reportResolver: nullReportResolver(),
+      now: () => 1_000_000,
+    })
+    const workspacePath = makeWorkspace()
+
+    const handle = await runner.startIssue(makeIssue(), {
+      content: "Fix the bug",
+      agentKind: "opencode",
+      attempt: null,
+      workspacePath,
+    })
+
+    expect(handle.sessionId).toBe("w1:p1")
+    expect(handle.meta).toEqual({
+      agentName: expect.any(String),
+      workspacePath,
+      agentKind: "opencode",
+      interactive: false,
+      reportPath: null,
+      resultPath: join(workspacePath, ".herdr-symphony-result.json"),
+      startedAt: expect.any(String),
+      deadlineMs: 1_000_000 + 3_600_000,
+      onBlocked: null,
+      agmsg: null,
+      closePaneAfterDoneMs: null,
+    })
+  })
+
+  test("claude は reportPath を meta に含める", async () => {
+    const client = makeMockHerdrClient({})
+    const runner = new HerdrAgentRunner(makeConfig(), {
+      herdrClient: client,
+      reportResolver: nullReportResolver(),
+      now: () => 1_000_000,
+    })
+    const reportPath = makeReportPath()
+
+    const handle = await runner.startIssue(makeIssue(), {
+      content: "Fix the bug",
+      agentKind: "claude",
+      attempt: null,
+      workspacePath: "/repo/worktree",
+      reportPath,
+    })
+
+    expect(handle.meta?.agentKind).toBe("claude")
+    expect(handle.meta?.reportPath).toBe(reportPath)
+    expect(handle.meta?.resultPath).toBeNull()
+  })
+
+  test("再起動後の runner が非対話エージェントの監視を再開する", async () => {
+    const client = makeMockHerdrClient({})
+    const runner1 = new HerdrAgentRunner(makeConfig(), {
+      herdrClient: client,
+      reportResolver: nullReportResolver(),
+      now: () => 1_000_000,
+    })
+    const workspacePath = makeWorkspace()
+
+    const handle = await runner1.startIssue(makeIssue(), {
+      content: "Fix the bug",
+      agentKind: "opencode",
+      attempt: null,
+      workspacePath,
+    })
+
+    const runner2 = new HerdrAgentRunner(makeConfig(), {
+      herdrClient: client,
+      reportResolver: nullReportResolver(),
+      now: () => 2_000_000,
+    })
+    expect(await runner2.reattach(handle)).toBeTrue()
+
+    writeNonInteractiveResult(workspacePath, 0, "Implementation complete.")
+    const result = await pollUntilDone(runner2, handle)
+    expect(result.status).toBe("succeeded")
+    expect(result.responseText).toBe("Implementation complete.")
+  })
+
+  test("再起動後の runner が report ファイル経由でエージェントを監視し直す", async () => {
+    const client = makeMockHerdrClient({
+      getAgentResult: [{ name: "TEST-1", state: "idle", paneId: "w1:p1", workspaceId: "w1" }],
+    })
+    const runner1 = new HerdrAgentRunner(makeConfig(), {
+      herdrClient: client,
+      reportResolver: nullReportResolver(),
+      now: () => 1_000_000,
+    })
+    const reportPath = makeReportPath()
+
+    const handle = await runner1.startIssue(makeIssue(), {
+      content: "Fix the bug",
+      agentKind: "claude",
+      attempt: null,
+      workspacePath: "/repo/worktree",
+      reportPath,
+    })
+
+    const runner2 = new HerdrAgentRunner(makeConfig(), {
+      herdrClient: client,
+      reportResolver: nullReportResolver(),
+      now: () => 2_000_000,
+    })
+    expect(await runner2.reattach(handle)).toBeTrue()
+
+    writeReport(reportPath, "done", "実装完了しました")
+    const result = await pollUntilDone(runner2, handle)
+    expect(result.status).toBe("succeeded")
+    expect(result.responseText).toBe("実装完了しました")
+  })
+
+  test("pane が存在しない場合は再接続に失敗する", async () => {
+    const client = makeMockHerdrClient({ getAgentResult: null })
+    const runner1 = new HerdrAgentRunner(makeConfig(), {
+      herdrClient: client,
+      reportResolver: nullReportResolver(),
+      now: () => 1_000_000,
+    })
+    const reportPath = makeReportPath()
+
+    const handle = await runner1.startIssue(makeIssue(), {
+      content: "Fix the bug",
+      agentKind: "claude",
+      attempt: null,
+      workspacePath: "/repo/worktree",
+      reportPath,
+    })
+
+    const runner2 = new HerdrAgentRunner(makeConfig(), {
+      herdrClient: client,
+      reportResolver: nullReportResolver(),
+      now: () => 2_000_000,
+    })
+    expect(await runner2.reattach(handle)).toBeFalse()
+  })
+
+  test("meta を持たない handle の再接続は失敗する", async () => {
+    const client = makeMockHerdrClient({})
+    const runner = new HerdrAgentRunner(makeConfig(), {
+      herdrClient: client,
+      reportResolver: nullReportResolver(),
+    })
+
+    expect(await runner.reattach({ sessionId: "w1:p1", issueId: "issue-1" })).toBeFalse()
   })
 })

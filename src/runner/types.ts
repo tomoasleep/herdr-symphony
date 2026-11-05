@@ -38,9 +38,24 @@ export type RunnerOptions = {
   onEvent?: (event: RunnerEvent) => void
 }
 
+export type RunnerHandleMeta = {
+  agentName: string
+  workspacePath: string
+  agentKind: "opencode" | "claude"
+  interactive: boolean
+  reportPath: string | null
+  resultPath: string | null
+  startedAt: string
+  deadlineMs: number
+  onBlocked: "continue" | "fail" | null
+  agmsg: { team: string; orchestratorAgent: string } | null
+  closePaneAfterDoneMs: number | null
+}
+
 export type RunnerHandle = {
   sessionId: string
   issueId: string
+  meta?: RunnerHandleMeta
 }
 
 export type RunnerPollResult = { state: "running" } | { state: "done"; result: RunnerResult }
@@ -50,4 +65,5 @@ export type Runner = {
   pollCompletion(handle: RunnerHandle): Promise<RunnerPollResult>
   cancelRun(target: string): Promise<void>
   sweep(): Promise<void>
+  reattach(handle: RunnerHandle): Promise<boolean>
 }

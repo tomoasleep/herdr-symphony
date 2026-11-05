@@ -105,6 +105,9 @@ function makeMockRunner(): Runner {
     },
     async cancelRun() {},
     async sweep() {},
+    async reattach() {
+      return false
+    },
   }
 }
 

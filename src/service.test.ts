@@ -6,15 +6,21 @@ import { join } from "node:path"
 import type { Issue, ServiceConfig } from "./domain/types"
 import { createLogger } from "./logging/create-logger"
 import type { Logger, LogLevel } from "./logging/types"
+import { OrchestratorState } from "./orchestrator/orchestrator"
 import { isActiveState } from "./orchestrator/scheduling"
 import type {
   Runner,
   RunnerHandle,
+  RunnerHandleMeta,
   RunnerOptions,
   RunnerPollResult,
   RunnerResult,
 } from "./runner/types"
 import { SymphonyService } from "./service"
+import { SqliteCompletedRepository } from "./storage/completed-repository"
+import { openDatabase } from "./storage/database"
+import { SqliteLogRepository } from "./storage/log-repository"
+import { SqliteStateRepository } from "./storage/state-repository"
 import type { Storage } from "./storage/types"
 import type { IssueTrackerClient } from "./tracker/types"
 import type { WorkspaceResult } from "./workspace/workspace-manager"
@@ -108,6 +114,9 @@ function makeMockRunner(result: Partial<RunnerResult> = {}): Runner {
     },
     async cancelRun() {},
     async sweep() {},
+    async reattach() {
+      return false
+    },
   }
 }
 
@@ -133,6 +142,9 @@ function makeCapturingRunner(result: Partial<RunnerResult> = {}): Runner & {
     },
     async cancelRun() {},
     async sweep() {},
+    async reattach() {
+      return false
+    },
     get options() {
       return options
     },
@@ -749,5 +761,191 @@ describe("SymphonyService", () => {
     expect(testLogger.lines.some((l) => l.includes("done BUILD-1"))).toBe(true)
     expect(testLogger.lines.some((l) => l.includes("done PLAN-1"))).toBe(false)
     service.shutdown()
+  })
+})
+
+describe("SymphonyService startupCleanup (durable restore)", () => {
+  function makeSqliteStorage(): Storage {
+    const db = openDatabase(":memory:")
+    return {
+      completed: new SqliteCompletedRepository(db),
+      logs: new SqliteLogRepository(db),
+      state: new SqliteStateRepository(db),
+      close: () => db.close(),
+    }
+  }
+
+  function makeMeta(overrides: Partial<RunnerHandleMeta> = {}): RunnerHandleMeta {
+    return {
+      agentName: "TEST-1-wf",
+      workspacePath: "/tmp/ws",
+      agentKind: "opencode",
+      interactive: false,
+      reportPath: null,
+      resultPath: "/tmp/ws/.herdr-symphony-result.json",
+      startedAt: new Date().toISOString(),
+      deadlineMs: Date.now() + 3_600_000,
+      onBlocked: null,
+      agmsg: null,
+      closePaneAfterDoneMs: null,
+      ...overrides,
+    }
+  }
+
+  function makeStateCapturingTracker(issue: Issue): {
+    tracker: IssueTrackerClient
+    movedStates: { id: string; state: string }[]
+  } {
+    const movedStates: { id: string; state: string }[] = []
+    return {
+      movedStates,
+      tracker: {
+        fetchCandidateIssues: async () => [],
+        fetchIssuesByStates: async () => [],
+        fetchIssueStatesByIds: async (ids) => (ids.includes(issue.id) ? [issue] : []),
+        moveIssueToState: async (id, state) => {
+          movedStates.push({ id, state })
+        },
+        shouldRun: (i, activeStates) => isActiveState(i.state, activeStates),
+      },
+    }
+  }
+
+  test("前プロセスの実行中セッションに再接続して完了処理を再開する", async () => {
+    const storage = makeSqliteStorage()
+    const config = makeConfig()
+    const seed = new OrchestratorState(config, storage, "default")
+    seed.markRunning(makeIssue({ state: "In progress" }), "w1:p1", "/tmp/ws")
+    seed.updateRunningMeta("issue-1", makeMeta())
+
+    const reattached: RunnerHandle[] = []
+    const { tracker, movedStates } = makeStateCapturingTracker(makeIssue({ state: "In progress" }))
+    const runner: Runner = {
+      async startIssue(): Promise<RunnerHandle> {
+        throw new Error("should not dispatch")
+      },
+      async pollCompletion(): Promise<RunnerPollResult> {
+        return {
+          state: "done",
+          result: { status: "succeeded", error: null, responseText: "resumed" },
+        }
+      },
+      async cancelRun() {},
+      async sweep() {},
+      async reattach(handle) {
+        reattached.push(handle)
+        return true
+      },
+    }
+
+    const testLogger = makeTestLogger()
+    const service = new SymphonyService(config, "prompt", {
+      tracker,
+      runner,
+      storage,
+      workflowId: "default",
+      logger: testLogger.logger,
+      claimIssue: () => true,
+      releaseIssue: () => {},
+    })
+
+    await service.startupCleanup()
+    await service.reconcileRunning()
+
+    expect(reattached).toHaveLength(1)
+    expect(reattached[0]?.sessionId).toBe("w1:p1")
+    expect(reattached[0]?.meta?.agentName).toBe("TEST-1-wf")
+    expect(movedStates).toEqual([{ id: "issue-1", state: "Done" }])
+    expect(storage.state.loadByCategory("default", "running")).toHaveLength(0)
+    service.shutdown()
+    storage.close()
+  })
+
+  test("再接続できないセッションは failure_state へ移動して中断扱いにする", async () => {
+    const storage = makeSqliteStorage()
+    const config = makeConfig({ failureState: "Blocked" })
+    const seed = new OrchestratorState(config, storage, "default")
+    seed.markRunning(makeIssue({ state: "In progress" }), "w1:p1", "/tmp/ws")
+    seed.updateRunningMeta("issue-1", makeMeta())
+
+    const { tracker, movedStates } = makeStateCapturingTracker(makeIssue({ state: "In progress" }))
+    const runner: Runner = {
+      async startIssue(): Promise<RunnerHandle> {
+        throw new Error("should not dispatch")
+      },
+      async pollCompletion(): Promise<RunnerPollResult> {
+        throw new Error("should not poll")
+      },
+      async cancelRun() {},
+      async sweep() {},
+      async reattach() {
+        return false
+      },
+    }
+
+    const testLogger = makeTestLogger()
+    const service = new SymphonyService(config, "prompt", {
+      tracker,
+      runner,
+      storage,
+      workflowId: "default",
+      logger: testLogger.logger,
+      claimIssue: () => true,
+      releaseIssue: () => {},
+    })
+
+    await service.startupCleanup()
+
+    expect(movedStates).toEqual([{ id: "issue-1", state: "Blocked" }])
+    const completed = storage.completed.loadRecent("default", 10)
+    expect(completed[0]?.status).toBe("interrupted")
+    expect(storage.state.loadByCategory("default", "running")).toHaveLength(0)
+    service.shutdown()
+    storage.close()
+  })
+
+  test("sessionId を記録していない旧レコードは再接続せず中断扱いにする", async () => {
+    const storage = makeSqliteStorage()
+    const config = makeConfig({ failureState: "Blocked" })
+    const seed = new OrchestratorState(config, storage, "default")
+    seed.markRunning(makeIssue({ state: "In progress" }), null, null)
+
+    const reattached: RunnerHandle[] = []
+    const { tracker, movedStates } = makeStateCapturingTracker(makeIssue({ state: "In progress" }))
+    const runner: Runner = {
+      async startIssue(): Promise<RunnerHandle> {
+        throw new Error("should not dispatch")
+      },
+      async pollCompletion(): Promise<RunnerPollResult> {
+        throw new Error("should not poll")
+      },
+      async cancelRun() {},
+      async sweep() {},
+      async reattach(handle) {
+        reattached.push(handle)
+        return true
+      },
+    }
+
+    const testLogger = makeTestLogger()
+    const service = new SymphonyService(config, "prompt", {
+      tracker,
+      runner,
+      storage,
+      workflowId: "default",
+      logger: testLogger.logger,
+      claimIssue: () => true,
+      releaseIssue: () => {},
+    })
+
+    await service.startupCleanup()
+
+    expect(reattached).toHaveLength(0)
+    expect(movedStates).toEqual([{ id: "issue-1", state: "Blocked" }])
+    const completed = storage.completed.loadRecent("default", 10)
+    expect(completed[0]?.status).toBe("interrupted")
+    expect(storage.state.loadByCategory("default", "running")).toHaveLength(0)
+    service.shutdown()
+    storage.close()
   })
 })

@@ -5,7 +5,7 @@ import { createAgmsgClient, getAgmsgScriptsDir, isAgmsgAvailable } from "../../a
 import type { AgentReportMessage } from "../../agmsg/agmsg-message"
 import { formatAgmsgMessage, parseInboxForMessages } from "../../agmsg/agmsg-message"
 import type { Issue, ServiceConfig } from "../../domain/types"
-import type { HerdrAgentState, HerdrClient } from "../../herdr/herdr-client"
+import type { HerdrAgentInfo, HerdrAgentState, HerdrClient } from "../../herdr/herdr-client"
 import { createHerdrClient, defaultCommandRunner } from "../../herdr/herdr-client"
 import { readReport } from "../../report/write-report"
 import { formatError } from "../../utils/error"
@@ -15,6 +15,7 @@ import type {
   Runner,
   RunnerEvent,
   RunnerHandle,
+  RunnerHandleMeta,
   RunnerOptions,
   RunnerPollResult,
   RunnerResult,
@@ -258,7 +259,25 @@ export class HerdrAgentRunner implements Runner {
       workspaceId: workspace.id,
     })
 
-    const handle: RunnerHandle = { sessionId: target, issueId: issue.id }
+    const deadline = this.now() + timeoutMs
+    const buildMeta: RunnerHandleMeta = {
+      agentName,
+      workspacePath: options.workspacePath,
+      agentKind: options.agentKind,
+      interactive: options.interactive === true,
+      reportPath: effectiveReportPath ?? null,
+      resultPath,
+      startedAt,
+      deadlineMs: deadline,
+      onBlocked: options.onBlocked ?? null,
+      agmsg: agmsgContext
+        ? { team: agmsgContext.team, orchestratorAgent: agmsgContext.orchestratorAgent }
+        : null,
+      closePaneAfterDoneMs:
+        options.closePaneAfterDoneMs ?? this.config.work.herdrAgent.closePaneAfterDoneMs ?? null,
+    }
+
+    const handle: RunnerHandle = { sessionId: target, issueId: issue.id, meta: buildMeta }
 
     if (agmsgContext) {
       const handshake = await this.waitForTaskAck(
@@ -292,7 +311,7 @@ export class HerdrAgentRunner implements Runner {
           this.config.work.herdrAgent.claude.reminderGracePeriodMs ??
           DEFAULT_REMINDER_GRACE_PERIOD_MS),
       agmsgContext,
-      deadline: this.now() + timeoutMs,
+      deadline,
       closePaneAfterDoneMs:
         options.closePaneAfterDoneMs ?? this.config.work.herdrAgent.closePaneAfterDoneMs ?? null,
       sawActive: false,
@@ -301,6 +320,68 @@ export class HerdrAgentRunner implements Runner {
     })
 
     return handle
+  }
+
+  async reattach(handle: RunnerHandle): Promise<boolean> {
+    const meta = handle.meta
+    if (!meta) {
+      return false
+    }
+
+    let info: HerdrAgentInfo | null = null
+    if (meta.resultPath === null) {
+      info = await this.client.getAgent(handle.sessionId)
+      if (info === null && meta.agentName !== handle.sessionId) {
+        info = await this.client.getAgent(meta.agentName)
+      }
+      if (info === null) {
+        return false
+      }
+    }
+
+    this.contexts.set(handle.sessionId, this.buildReattachedContext(handle, meta, info))
+    return true
+  }
+
+  private buildReattachedContext(
+    handle: RunnerHandle,
+    meta: RunnerHandleMeta,
+    info: HerdrAgentInfo | null,
+  ): AgentContext {
+    const agmsgContext: AgmsgWaitContext | null = meta.agmsg
+      ? {
+          client: this.agmsgClient,
+          team: meta.agmsg.team,
+          orchestratorAgent: meta.agmsg.orchestratorAgent,
+          agentName: meta.agentName,
+          issueId: handle.issueId,
+          runId: meta.agentName,
+          reminderAckDeadlineMs: DEFAULT_REMINDER_ACK_DEADLINE_MS,
+        }
+      : null
+
+    return {
+      handle,
+      target: handle.sessionId,
+      agentName: meta.agentName,
+      workspacePath: meta.workspacePath,
+      startedAt: meta.startedAt,
+      agentKind: meta.agentKind,
+      onBlocked: meta.onBlocked,
+      reportPath: meta.reportPath ?? undefined,
+      resultPath: meta.resultPath,
+      pendingRemindIntervalMs: this.config.work.herdrAgent.claude.pendingRemindIntervalMs,
+      reminderGraceUntil:
+        this.now() +
+        (this.config.work.herdrAgent.claude.reminderGracePeriodMs ??
+          DEFAULT_REMINDER_GRACE_PERIOD_MS),
+      agmsgContext,
+      deadline: meta.deadlineMs,
+      closePaneAfterDoneMs: meta.closePaneAfterDoneMs,
+      sawActive: info?.state === "working" || info?.state === "blocked",
+      sawAgent: info !== null,
+      onEvent: undefined,
+    }
   }
 
   async pollCompletion(handle: RunnerHandle): Promise<RunnerPollResult> {
