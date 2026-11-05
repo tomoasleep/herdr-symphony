@@ -3,6 +3,7 @@ import { join } from "node:path"
 import type { Issue, ResolvedIssueRuntimeConfig, ServiceConfig } from "./domain/types"
 import { createLogger } from "./logging/create-logger"
 import type { Logger, LogLevel } from "./logging/types"
+import type { RestoredRunningEntry } from "./orchestrator/orchestrator"
 import { OrchestratorState } from "./orchestrator/orchestrator"
 import { createRunner } from "./runner/create-runner"
 import type { Runner, RunnerHandle, RunnerPollResult, RunnerResult } from "./runner/types"
@@ -37,8 +38,8 @@ const CLAUDE_REPORT_INSTRUCTION = [
 type DispatchContext = {
   handle: RunnerHandle
   issue: Issue
-  runtimeConfig: ResolvedIssueRuntimeConfig
-  workspace: WorkspaceResult
+  runtimeConfig: ResolvedIssueRuntimeConfig | null
+  workspace: { path: string }
   reportPath: string | undefined
 }
 
@@ -183,7 +184,59 @@ export class SymphonyService {
   }
 
   async startupCleanup(): Promise<void> {
-    this.state.restoreFromStorage()
+    const restored = this.state.restoreFromStorage()
+    for (const record of restored) {
+      if (!record.sessionId) {
+        await this.abandonRestored(record, "no session id recorded")
+        continue
+      }
+
+      const handle: RunnerHandle = {
+        sessionId: record.sessionId,
+        issueId: record.issueId,
+        meta: record.meta ?? undefined,
+      }
+
+      let reattached = false
+      try {
+        reattached = await this.runner.reattach(handle)
+      } catch (error) {
+        this.logger.warn(
+          `reattach error issue=${record.issue.identifier} error=${formatError(error)}`,
+        )
+      }
+
+      if (reattached) {
+        this.dispatchContexts.set(record.issueId, {
+          handle,
+          issue: record.issue,
+          runtimeConfig: null,
+          workspace: { path: record.meta?.workspacePath ?? record.workspacePath ?? "" },
+          reportPath: record.meta?.reportPath ?? undefined,
+        })
+        this.persistLog(
+          record.issueId,
+          record.issue.identifier,
+          "reattach",
+          `sessionId=${record.sessionId}`,
+        )
+        this.logger.info(`reattached ${record.issue.identifier} sessionId=${record.sessionId}`)
+      } else {
+        await this.abandonRestored(record, "agent pane not found")
+      }
+    }
+  }
+
+  private async abandonRestored(record: RestoredRunningEntry, reason: string): Promise<void> {
+    const error = `process restarted: ${reason}`
+    this.state.interruptRunning(record.issueId, error)
+    await this.finalizeIssueState(record.issue, {
+      status: "failed",
+      error,
+      responseText: null,
+    })
+    this.persistLog(record.issueId, record.issue.identifier, "interrupted", `reason=${reason}`)
+    this.logger.warn(`abandoned restored running issue=${record.issue.identifier} reason=${reason}`)
   }
 
   async refresh(): Promise<void> {
@@ -315,7 +368,7 @@ export class SymphonyService {
     }
 
     const { issue, runtimeConfig, workspace } = ctx
-    const finalizedIssue = await this.finalizeIssueState(runtimeConfig.issue, result)
+    const finalizedIssue = await this.finalizeIssueState(runtimeConfig?.issue ?? issue, result)
 
     if (result.status === "succeeded" && result.responseText) {
       const reporters = this.config.work.reporter ?? ["file"]

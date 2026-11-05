@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test"
 import type { ServiceConfig } from "../domain/types"
+import type { RunnerHandleMeta } from "../runner/types"
 import { SqliteCompletedRepository } from "../storage/completed-repository"
 import { openDatabase } from "../storage/database"
 import { SqliteLogRepository } from "../storage/log-repository"
@@ -177,6 +178,53 @@ describe("OrchestratorState with storage", () => {
     storage.close()
   })
 
+  test("setSessionId() and setWorkspacePath() re-persist running state to SQLite", () => {
+    const storage = makeStorage()
+    const orchestrator = new OrchestratorState(makeConfig(), storage, workflowKey)
+    const issue = makeIssue({ id: "r1" })
+
+    orchestrator.markRunning(issue, null, null)
+    orchestrator.setSessionId("r1", "w1:p1")
+    orchestrator.setWorkspacePath("r1", "/tmp/ws")
+
+    const records = storage.state.loadByCategory(workflowKey, "running")
+    expect(records).toHaveLength(1)
+    const data = records[0]?.data as { sessionId: string | null; workspacePath: string | null }
+    expect(data.sessionId).toBe("w1:p1")
+    expect(data.workspacePath).toBe("/tmp/ws")
+    storage.close()
+  })
+
+  test("updateRunningMeta() persists runner meta to SQLite", () => {
+    const storage = makeStorage()
+    const orchestrator = new OrchestratorState(makeConfig(), storage, workflowKey)
+    const issue = makeIssue({ id: "r1" })
+    const meta: RunnerHandleMeta = {
+      agentName: "TEST-1-wf",
+      workspacePath: "/tmp/ws",
+      agentKind: "opencode",
+      interactive: false,
+      reportPath: null,
+      resultPath: "/tmp/ws/.herdr-symphony-result.json",
+      startedAt: "2026-01-01T00:00:00.000Z",
+      deadlineMs: 123_456,
+      onBlocked: null,
+      agmsg: null,
+      closePaneAfterDoneMs: null,
+    }
+
+    orchestrator.markRunning(issue, null, null)
+    orchestrator.updateRunningMeta("r1", meta)
+
+    const records = storage.state.loadByCategory(workflowKey, "running")
+    expect(records).toHaveLength(1)
+    const data = records[0]?.data as { meta: RunnerHandleMeta }
+    expect(data.meta.agentName).toBe("TEST-1-wf")
+    expect(data.meta.deadlineMs).toBe(123_456)
+    expect(data.meta.resultPath).toBe("/tmp/ws/.herdr-symphony-result.json")
+    storage.close()
+  })
+
   test("release() deletes running state from SQLite", () => {
     const storage = makeStorage()
     const orchestrator = new OrchestratorState(makeConfig(), storage, workflowKey)
@@ -304,7 +352,56 @@ describe("OrchestratorState with storage", () => {
     storage.close()
   })
 
-  test("restoreFromStorage moves running entries to completed as interrupted", () => {
+  test("restoreFromStorage restores running entries into the running map and returns them", () => {
+    const storage = makeStorage()
+    const orchestrator1 = new OrchestratorState(makeConfig(), storage, workflowKey)
+    const issue = makeIssue({ id: "running-1", identifier: "A-1" })
+    orchestrator1.markRunning(issue, "session-1", "/tmp/ws")
+
+    const orchestrator2 = new OrchestratorState(makeConfig(), storage, workflowKey)
+    const restored = orchestrator2.restoreFromStorage()
+
+    expect(orchestrator2.running.has("running-1")).toBeTrue()
+    expect(storage.state.loadByCategory(workflowKey, "running")).toHaveLength(1)
+
+    const record = restored.find((r) => r.issueId === "running-1")
+    expect(record?.issue.identifier).toBe("A-1")
+    expect(record?.sessionId).toBe("session-1")
+    expect(record?.workspacePath).toBe("/tmp/ws")
+    expect(record?.meta).toBeNull()
+    storage.close()
+  })
+
+  test("restoreFromStorage restores persisted runner meta", () => {
+    const storage = makeStorage()
+    const orchestrator1 = new OrchestratorState(makeConfig(), storage, workflowKey)
+    const issue = makeIssue({ id: "running-1", identifier: "A-1" })
+    orchestrator1.markRunning(issue, "w1:p1", "/tmp/ws")
+    orchestrator1.updateRunningMeta("running-1", {
+      agentName: "A-1-wf",
+      workspacePath: "/tmp/ws",
+      agentKind: "opencode",
+      interactive: false,
+      reportPath: null,
+      resultPath: "/tmp/ws/.herdr-symphony-result.json",
+      startedAt: "2026-01-01T00:00:00.000Z",
+      deadlineMs: 123_456,
+      onBlocked: null,
+      agmsg: null,
+      closePaneAfterDoneMs: null,
+    })
+
+    const orchestrator2 = new OrchestratorState(makeConfig(), storage, workflowKey)
+    const restored = orchestrator2.restoreFromStorage()
+
+    const record = restored.find((r) => r.issueId === "running-1")
+    expect(record?.meta?.agentName).toBe("A-1-wf")
+    expect(record?.meta?.deadlineMs).toBe(123_456)
+    expect(orchestrator2.running.get("running-1")?.meta?.agentName).toBe("A-1-wf")
+    storage.close()
+  })
+
+  test("interruptRunning() writes interrupted record and removes running state", () => {
     const storage = makeStorage()
     const orchestrator1 = new OrchestratorState(makeConfig(), storage, workflowKey)
     const issue = makeIssue({ id: "running-1", identifier: "A-1" })
@@ -312,15 +409,15 @@ describe("OrchestratorState with storage", () => {
 
     const orchestrator2 = new OrchestratorState(makeConfig(), storage, workflowKey)
     orchestrator2.restoreFromStorage()
+    orchestrator2.interruptRunning("running-1", "reattach failed")
 
     expect(orchestrator2.running.has("running-1")).toBeFalse()
-
+    expect(storage.state.loadByCategory(workflowKey, "running")).toHaveLength(0)
     const completed = storage.completed.loadRecent(workflowKey, 10)
     const interrupted = completed.find((c) => c.issueId === "running-1")
     expect(interrupted?.status).toBe("interrupted")
-    expect(interrupted?.error).toContain("restart")
-
-    expect(storage.state.loadByCategory(workflowKey, "running")).toHaveLength(0)
+    expect(interrupted?.error).toBe("reattach failed")
+    expect(interrupted?.sessionId).toBe("session-1")
     storage.close()
   })
 

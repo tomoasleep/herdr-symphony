@@ -1,4 +1,5 @@
 import type { Issue, RetryEntry, ServiceConfig } from "../domain/types"
+import type { RunnerHandleMeta } from "../runner/types"
 import type { Storage } from "../storage/types"
 import type { IssueTrackerClient } from "../tracker/types"
 import {
@@ -16,6 +17,7 @@ export type RunningEntry = {
   lastEventAt: number
   sessionId: string | null
   workspacePath: string | null
+  meta: RunnerHandleMeta | null
 }
 
 export type CompletedEntry = {
@@ -25,6 +27,16 @@ export type CompletedEntry = {
   finishedAt: string
   sessionId: string | null
   workspacePath: string | null
+}
+
+export type RestoredRunningEntry = {
+  issueId: string
+  issue: Issue
+  startedAt: number
+  lastEventAt: number
+  sessionId: string | null
+  workspacePath: string | null
+  meta: RunnerHandleMeta | null
 }
 
 export type RuntimeSnapshot = {
@@ -188,21 +200,39 @@ export class OrchestratorState {
       lastEventAt: Date.now(),
       sessionId,
       workspacePath,
+      meta: null,
     })
-    if (this.storage && this.workflowKey) {
-      this.storage.state.save({
-        workflowKey: this.workflowKey,
-        issueId: issue.id,
-        category: "running",
-        data: {
-          issue,
-          startedAt: Date.now(),
-          lastEventAt: Date.now(),
-          sessionId,
-          workspacePath,
-        },
-      })
+    this.persistRunning(issue.id)
+  }
+
+  private persistRunning(issueId: string): void {
+    const entry = this.running.get(issueId)
+    if (!entry || !this.storage || !this.workflowKey) {
+      return
     }
+    this.storage.state.save({
+      workflowKey: this.workflowKey,
+      issueId,
+      category: "running",
+      data: {
+        issue: entry.issue,
+        startedAt: entry.startedAt,
+        lastEventAt: entry.lastEventAt,
+        sessionId: entry.sessionId,
+        workspacePath: entry.workspacePath,
+        meta: entry.meta,
+      },
+    })
+  }
+
+  updateRunningMeta(issueId: string, meta: RunnerHandleMeta): void {
+    const current = this.running.get(issueId)
+    if (!current) {
+      return
+    }
+    current.meta = meta
+    this.running.set(issueId, current)
+    this.persistRunning(issueId)
   }
 
   markEvent(issueId: string): void {
@@ -221,6 +251,7 @@ export class OrchestratorState {
     }
     current.sessionId = sessionId
     this.running.set(issueId, current)
+    this.persistRunning(issueId)
   }
 
   setWorkspacePath(issueId: string, workspacePath: string): void {
@@ -230,6 +261,7 @@ export class OrchestratorState {
     }
     current.workspacePath = workspacePath
     this.running.set(issueId, current)
+    this.persistRunning(issueId)
   }
 
   release(
@@ -378,8 +410,11 @@ export class OrchestratorState {
     return due
   }
 
-  restoreFromStorage(): void {
-    if (!this.storage || !this.workflowKey) return
+  restoreFromStorage(): RestoredRunningEntry[] {
+    const restored: RestoredRunningEntry[] = []
+    if (!this.storage || !this.workflowKey) {
+      return restored
+    }
 
     for (const record of this.storage.state.loadByCategory(this.workflowKey, "stopped")) {
       this.stopped.add(record.issueId)
@@ -398,18 +433,27 @@ export class OrchestratorState {
         lastEventAt: number
         sessionId: string | null
         workspacePath: string | null
+        meta?: RunnerHandleMeta | null
       }
-      this.storage.completed.save({
-        workflowKey: this.workflowKey,
-        issueId: data.issue.id,
+      const meta = data.meta ?? null
+      this.running.set(record.issueId, {
         issue: data.issue,
-        status: "interrupted",
-        error: "process restarted",
+        startedAt: data.startedAt,
+        lastEventAt: data.lastEventAt,
         sessionId: data.sessionId,
         workspacePath: data.workspacePath,
-        finishedAt: new Date().toISOString(),
+        meta,
       })
-      this.storage.state.delete(this.workflowKey, "running", record.issueId)
+      this.claimed.add(record.issueId)
+      restored.push({
+        issueId: record.issueId,
+        issue: data.issue,
+        startedAt: data.startedAt,
+        lastEventAt: data.lastEventAt,
+        sessionId: data.sessionId,
+        workspacePath: data.workspacePath,
+        meta,
+      })
     }
 
     const recent = this.storage.completed.loadRecent(this.workflowKey, 200)
@@ -422,6 +466,38 @@ export class OrchestratorState {
         sessionId: record.sessionId,
         workspacePath: record.workspacePath,
       })
+    }
+
+    return restored
+  }
+
+  interruptRunning(issueId: string, error: string): void {
+    const running = this.running.get(issueId)
+    if (running && this.storage && this.workflowKey) {
+      const finishedAt = new Date().toISOString()
+      this.storage.completed.save({
+        workflowKey: this.workflowKey,
+        issueId,
+        issue: running.issue,
+        status: "interrupted",
+        error,
+        sessionId: running.sessionId,
+        workspacePath: running.workspacePath,
+        finishedAt,
+      })
+      this.completed.set(issueId, {
+        issue: running.issue,
+        status: "failed",
+        error,
+        finishedAt,
+        sessionId: running.sessionId,
+        workspacePath: running.workspacePath,
+      })
+    }
+    this.running.delete(issueId)
+    this.claimed.delete(issueId)
+    if (this.storage && this.workflowKey) {
+      this.storage.state.delete(this.workflowKey, "running", issueId)
     }
   }
 }
