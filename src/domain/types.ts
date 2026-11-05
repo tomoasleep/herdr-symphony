@@ -109,8 +109,7 @@ export type WorkspaceConfig = {
   gwq: GwqWorkspaceConfig
 }
 
-export type ResolvedHerdrAgentRunnerConfig = {
-  kind: "herdr_agent"
+export type ResolvedRunnerCommonConfig = {
   agent: "opencode" | "claude"
   opencode: {
     model: string | null
@@ -132,7 +131,11 @@ export type ResolvedHerdrAgentRunnerConfig = {
   onBlocked: OnBlockedStrategy | null
 }
 
-export type ResolvedRunnerConfig = ResolvedHerdrAgentRunnerConfig
+export type ResolvedHerdrAgentRunnerConfig = ResolvedRunnerCommonConfig & { kind: "herdr_agent" }
+
+export type ResolvedHcRunnerConfig = ResolvedRunnerCommonConfig & { kind: "herdr_core" }
+
+export type ResolvedRunnerConfig = ResolvedHerdrAgentRunnerConfig | ResolvedHcRunnerConfig
 
 export type ResolvedIssueRuntimeConfig = {
   issue: Issue

@@ -10,12 +10,18 @@ export type CommandResult = {
   stderr: string
 }
 
-export type CommandRunner = (command: string, args: string[], cwd: string) => Promise<CommandResult>
+export type CommandRunner = (
+  command: string,
+  args: string[],
+  cwd: string,
+  env?: Record<string, string>,
+) => Promise<CommandResult>
 
 export type RecordedCall = {
   command: string
   args: string[]
   cwd: string
+  env?: Record<string, string>
 }
 
 export type HerdrAgentState = "working" | "blocked" | "done" | "idle" | "unknown"
@@ -423,9 +429,14 @@ export function defaultCommandRunner(
   command: string,
   args: string[],
   cwd: string,
+  env?: Record<string, string>,
 ): Promise<CommandResult> {
   return new Promise((resolve, reject) => {
-    const child = spawn(command, args, { cwd, stdio: ["ignore", "pipe", "pipe"] })
+    const child = spawn(command, args, {
+      cwd,
+      stdio: ["ignore", "pipe", "pipe"],
+      ...(env && Object.keys(env).length > 0 ? { env: { ...process.env, ...env } } : {}),
+    })
     let stdout = ""
     let stderr = ""
     child.stdout.on("data", (chunk) => {
