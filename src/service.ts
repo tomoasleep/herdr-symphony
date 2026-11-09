@@ -502,6 +502,10 @@ export class SymphonyService {
           : runtimeConfig.runner.opencode.model
       const runnerPermissionMode =
         runtimeConfig.runner.agent === "claude" ? runtimeConfig.runner.claude.permissionMode : null
+      const runnerThinkingEffort =
+        runtimeConfig.runner.agent === "claude"
+          ? runtimeConfig.runner.claude.thinkingEffort
+          : runtimeConfig.runner.opencode.thinkingEffort
       const runnerOnBlocked = runtimeConfig.runner.onBlocked
       const runnerEnv =
         runtimeConfig.runner.agent === "claude"
@@ -510,7 +514,8 @@ export class SymphonyService {
       this.logger.info(
         `runner start kind=${runtimeConfig.runner.kind} workspace=${workspace.path}` +
           (runnerAgent ? ` agent=${runnerAgent}` : "") +
-          (runnerModel ? ` model=${runnerModel}` : ""),
+          (runnerModel ? ` model=${runnerModel}` : "") +
+          (runnerThinkingEffort ? ` effort=${runnerThinkingEffort}` : ""),
       )
       const handle = await this.runner.startIssue(runtimeConfig.issue, {
         content: finalContent,
@@ -519,6 +524,7 @@ export class SymphonyService {
         agentKind: runtimeConfig.runner.agent,
         agent: runnerAgent,
         model: runnerModel,
+        thinkingEffort: runnerThinkingEffort,
         permissionMode: runnerPermissionMode,
         onBlocked: runnerOnBlocked,
         timeoutMs: runnerTimeoutMs,

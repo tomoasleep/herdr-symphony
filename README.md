@@ -565,6 +565,7 @@ herdr_agent:
 |------|-----|-----------|------|
 | `opencode.model` | string (Liquid) | null | `opencode --model` |
 | `opencode.agent` | string (Liquid) | null | `opencode --agent` |
+| `opencode.thinking_effort` | string (Liquid) | null | 推論強度 (variant)。`opencode --model <model>#<thinking_effort>` として渡す。値はモデルの variant 名 (例: `low` / `high` / `xhigh`)。`model` 未指定のまま指定すると config エラーになる |
 | `opencode.interactive` | boolean | `false` | `true` で TUI (interactive mode) で起動。完了判定は report 機構（後述）を使用 |
 
 interactive mode の起動コマンドは runner 起動時に `opencode --version` を probe して決まる。
@@ -587,6 +588,7 @@ herdr_agent:
 |------|-----|-----------|------|
 | `claude.model` | string (Liquid) | null | `claude --model` |
 | `claude.permission_mode` | string (Liquid) | null | `claude --permission-mode` (`bypassPermissions` の場合は `--dangerously-skip-permissions` も付与) |
+| `claude.thinking_effort` | string (Liquid) | null | `claude --effort`。対応レベル (`low` / `medium` / `high` / `xhigh` / `max`) はモデルに依存 |
 
 #### 完了判定機構
 

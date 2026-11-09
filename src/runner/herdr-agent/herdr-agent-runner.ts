@@ -147,6 +147,14 @@ function formatTaskBody(issueId: string, runId: string, toAgent: string, prompt:
   })
 }
 
+function withThinkingEffort(model: string, thinkingEffort: string | null | undefined): string {
+  if (!thinkingEffort) {
+    return model
+  }
+  const [base] = model.split("#")
+  return `${base!}#${thinkingEffort}`
+}
+
 export class HerdrAgentRunner implements Runner {
   private readonly client: HerdrClient
   private readonly agmsgClient: AgmsgClient
@@ -748,6 +756,10 @@ export class HerdrAgentRunner implements Runner {
         argv.push("--model", options.model)
       }
 
+      if (options.thinkingEffort) {
+        argv.push("--effort", options.thinkingEffort)
+      }
+
       if (options.permissionMode) {
         argv.push("--permission-mode", options.permissionMode)
         if (options.permissionMode === "bypassPermissions") {
@@ -769,7 +781,7 @@ export class HerdrAgentRunner implements Runner {
       }
 
       if (options.model) {
-        argv.push("--model", options.model)
+        argv.push("--model", withThinkingEffort(options.model, options.thinkingEffort))
       }
       if (options.agent) {
         argv.push("--agent", options.agent)
@@ -782,7 +794,7 @@ export class HerdrAgentRunner implements Runner {
     const innerArgv: string[] = ["opencode", "run"]
 
     if (options.model) {
-      innerArgv.push("--model", options.model)
+      innerArgv.push("--model", withThinkingEffort(options.model, options.thinkingEffort))
     }
     if (options.agent) {
       innerArgv.push("--agent", options.agent)

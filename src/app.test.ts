@@ -63,10 +63,11 @@ function _makeConfig(baseDir: string): ServiceConfig {
       runner: "herdr_agent",
       herdrAgent: {
         agent: "opencode",
-        opencode: { model: null, agent: null, interactive: false, env: {} },
+        opencode: { model: null, agent: null, thinkingEffort: null, interactive: false, env: {} },
         claude: {
           model: null,
           permissionMode: null,
+          thinkingEffort: null,
           messenger: "agmsg",
           pendingRemindIntervalMs: 900_000,
           reminderGracePeriodMs: 180_000,

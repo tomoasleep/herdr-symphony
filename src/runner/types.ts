@@ -18,6 +18,7 @@ export type RunnerOptions = {
   agentKind: "opencode" | "claude"
   agent?: string | null
   model?: string | null
+  thinkingEffort?: string | null
   permissionMode?: string | null
   onBlocked?: "continue" | "fail" | null
   timeoutMs?: number | null
