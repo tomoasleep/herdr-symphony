@@ -37,10 +37,11 @@ function makeWorkConfig(overrides: Partial<WorkConfig> = {}): WorkConfig {
     runner: "herdr_agent",
     herdrAgent: {
       agent: "opencode",
-      opencode: { model: null, agent: null, interactive: false, env: {} },
+      opencode: { model: null, agent: null, thinkingEffort: null, interactive: false, env: {} },
       claude: {
         model: null,
         permissionMode: null,
+        thinkingEffort: null,
         messenger: "agmsg",
         pendingRemindIntervalMs: 900_000,
         reminderGracePeriodMs: 180_000,
@@ -81,12 +82,14 @@ test("opencode model/agent を Liquid で解決できる", async () => {
       opencode: {
         model: '{{ issue.fields["Model"] | default: "openai/gpt-5.4" }}',
         agent: '{{ issue.fields["Agent"] | default: "build" }}',
+        thinkingEffort: null,
         env: {},
         interactive: false,
       },
       claude: {
         model: null,
         permissionMode: null,
+        thinkingEffort: null,
         messenger: "agmsg",
         pendingRemindIntervalMs: 900_000,
         reminderGracePeriodMs: 180_000,
@@ -151,10 +154,11 @@ test("workspaceLabel を Liquid で解決できる", async () => {
   const config = makeWorkConfig({
     herdrAgent: {
       agent: "opencode",
-      opencode: { model: null, agent: null, interactive: false, env: {} },
+      opencode: { model: null, agent: null, thinkingEffort: null, interactive: false, env: {} },
       claude: {
         model: null,
         permissionMode: null,
+        thinkingEffort: null,
         messenger: "agmsg",
         pendingRemindIntervalMs: 900_000,
         reminderGracePeriodMs: 180_000,
@@ -175,10 +179,11 @@ test("claude permissionMode を Liquid で解決できる", async () => {
   const config = makeWorkConfig({
     herdrAgent: {
       agent: "claude",
-      opencode: { model: null, agent: null, interactive: false, env: {} },
+      opencode: { model: null, agent: null, thinkingEffort: null, interactive: false, env: {} },
       claude: {
         model: null,
         permissionMode: '{{ issue.fields["PermissionMode"] | default: "acceptEdits" }}',
+        thinkingEffort: null,
         messenger: "agmsg",
         pendingRemindIntervalMs: 900_000,
         reminderGracePeriodMs: 180_000,
@@ -199,10 +204,11 @@ test("claude permissionMode が null のときは null になる", async () => {
   const config = makeWorkConfig({
     herdrAgent: {
       agent: "claude",
-      opencode: { model: null, agent: null, interactive: false, env: {} },
+      opencode: { model: null, agent: null, thinkingEffort: null, interactive: false, env: {} },
       claude: {
         model: null,
         permissionMode: null,
+        thinkingEffort: null,
         messenger: "agmsg",
         pendingRemindIntervalMs: 900_000,
         reminderGracePeriodMs: 180_000,
@@ -223,10 +229,11 @@ test("claude messenger が runner に引き継がれる", async () => {
   const config = makeWorkConfig({
     herdrAgent: {
       agent: "claude",
-      opencode: { model: null, agent: null, interactive: false, env: {} },
+      opencode: { model: null, agent: null, thinkingEffort: null, interactive: false, env: {} },
       claude: {
         model: null,
         permissionMode: null,
+        thinkingEffort: null,
         messenger: "report_file",
         pendingRemindIntervalMs: 900_000,
         reminderGracePeriodMs: 180_000,
@@ -247,10 +254,11 @@ test("turnTimeoutMs が引き継がれる", async () => {
   const config = makeWorkConfig({
     herdrAgent: {
       agent: "opencode",
-      opencode: { model: null, agent: null, interactive: false, env: {} },
+      opencode: { model: null, agent: null, thinkingEffort: null, interactive: false, env: {} },
       claude: {
         model: null,
         permissionMode: null,
+        thinkingEffort: null,
         messenger: "agmsg",
         pendingRemindIntervalMs: 900_000,
         reminderGracePeriodMs: 180_000,
@@ -271,10 +279,11 @@ test("closePaneAfterDoneMs が引き継がれる", async () => {
   const config = makeWorkConfig({
     herdrAgent: {
       agent: "opencode",
-      opencode: { model: null, agent: null, interactive: false, env: {} },
+      opencode: { model: null, agent: null, thinkingEffort: null, interactive: false, env: {} },
       claude: {
         model: null,
         permissionMode: null,
+        thinkingEffort: null,
         messenger: "agmsg",
         pendingRemindIntervalMs: 900_000,
         reminderGracePeriodMs: 180_000,
@@ -295,10 +304,11 @@ test("onBlocked が runner に引き継がれる", async () => {
   const config = makeWorkConfig({
     herdrAgent: {
       agent: "opencode",
-      opencode: { model: null, agent: null, interactive: false, env: {} },
+      opencode: { model: null, agent: null, thinkingEffort: null, interactive: false, env: {} },
       claude: {
         model: null,
         permissionMode: null,
+        thinkingEffort: null,
         messenger: "agmsg",
         pendingRemindIntervalMs: 900_000,
         reminderGracePeriodMs: 180_000,
@@ -351,12 +361,14 @@ test("opencode.env の値が Liquid で解決される", async () => {
       opencode: {
         model: null,
         agent: null,
+        thinkingEffort: null,
         interactive: false,
         env: { SOME_ENV: '{{ issue.fields["Model"] }}' },
       },
       claude: {
         model: null,
         permissionMode: null,
+        thinkingEffort: null,
         messenger: "agmsg",
         pendingRemindIntervalMs: 900_000,
         reminderGracePeriodMs: 180_000,
@@ -377,10 +389,11 @@ test("claude.env の値が Liquid で解決される", async () => {
   const config = makeWorkConfig({
     herdrAgent: {
       agent: "claude",
-      opencode: { model: null, agent: null, interactive: false, env: {} },
+      opencode: { model: null, agent: null, thinkingEffort: null, interactive: false, env: {} },
       claude: {
         model: null,
         permissionMode: null,
+        thinkingEffort: null,
         messenger: "agmsg",
         pendingRemindIntervalMs: 900_000,
         reminderGracePeriodMs: 180_000,
@@ -403,4 +416,67 @@ test("env 未指定時は空オブジェクトで runner に渡される", async
 
   expect(result.runner.opencode.env).toEqual({})
   expect(result.runner.claude.env).toEqual({})
+})
+
+test("opencode thinkingEffort を Liquid で解決できる", async () => {
+  const config = makeWorkConfig({
+    herdrAgent: {
+      agent: "opencode",
+      opencode: {
+        model: null,
+        agent: null,
+        interactive: false,
+        thinkingEffort: '{{ issue.fields["Effort"] | default: "high" }}',
+        env: {},
+      },
+      claude: {
+        model: null,
+        permissionMode: null,
+        thinkingEffort: null,
+        messenger: "agmsg",
+        pendingRemindIntervalMs: 900_000,
+        reminderGracePeriodMs: 180_000,
+        env: {},
+      },
+      workspaceLabel: null,
+      turnTimeoutMs: 3_600_000,
+      closePaneAfterDoneMs: null,
+      onBlocked: null,
+    },
+  })
+  const result = await resolveIssueRuntimeConfig(makeIssue(), config, null)
+
+  expect(result.runner.opencode.thinkingEffort).toBe("high")
+})
+
+test("opencode thinkingEffort が null のときは null になる", async () => {
+  const config = makeWorkConfig()
+  const result = await resolveIssueRuntimeConfig(makeIssue(), config, null)
+
+  expect(result.runner.opencode.thinkingEffort).toBeNull()
+})
+
+test("claude thinkingEffort を Liquid で解決できる", async () => {
+  const config = makeWorkConfig({
+    herdrAgent: {
+      agent: "claude",
+      opencode: { model: null, agent: null, thinkingEffort: null, interactive: false, env: {} },
+      claude: {
+        model: null,
+        permissionMode: null,
+        thinkingEffort: '{{ issue.fields["Effort"] | default: "xhigh" }}',
+        messenger: "agmsg",
+        pendingRemindIntervalMs: 900_000,
+        reminderGracePeriodMs: 180_000,
+        env: {},
+      },
+      workspaceLabel: null,
+      turnTimeoutMs: 3_600_000,
+      closePaneAfterDoneMs: null,
+      onBlocked: null,
+    },
+  })
+  const result = await resolveIssueRuntimeConfig(makeIssue(), config, null)
+
+  expect(result.runner.claude.thinkingEffort).toBe("xhigh")
 })

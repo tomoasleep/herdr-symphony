@@ -387,6 +387,91 @@ test("opencode.interactive 未指定時は false になる", () => {
   expect(config.work.herdrAgent.opencode.interactive).toBe(false)
 })
 
+test("opencode.thinking_effort を解決できる", () => {
+  const config = resolveConfig({
+    tracker: { kind: "file", file: { base_dir: "/issues" } },
+    work: {
+      runner: "herdr_agent",
+      herdr_agent: {
+        agent: "opencode",
+        opencode: {
+          model: "openai/gpt-5.2",
+          thinking_effort: "high",
+        },
+      },
+    },
+  })
+
+  expect(config.work.herdrAgent.opencode.thinkingEffort).toBe("high")
+})
+
+test("opencode.thinking_effort 未指定時は null になる", () => {
+  const config = resolveConfig({
+    tracker: { kind: "file", file: { base_dir: "/issues" } },
+  })
+
+  expect(config.work.herdrAgent.opencode.thinkingEffort).toBeNull()
+})
+
+test("opencode.thinking_effort 指定時に opencode.model がないとエラー", () => {
+  expect(() =>
+    resolveConfig({
+      tracker: { kind: "file", file: { base_dir: "/issues" } },
+      work: {
+        runner: "herdr_agent",
+        herdr_agent: {
+          agent: "opencode",
+          opencode: {
+            thinking_effort: "high",
+          },
+        },
+      },
+    }),
+  ).toThrow()
+})
+
+test("agent: claude のときは opencode.thinking_effort が model 未指定でもエラーにならない", () => {
+  const config = resolveConfig({
+    tracker: { kind: "file", file: { base_dir: "/issues" } },
+    work: {
+      runner: "herdr_agent",
+      herdr_agent: {
+        agent: "claude",
+        opencode: {
+          thinking_effort: "high",
+        },
+      },
+    },
+  })
+
+  expect(config.work.herdrAgent.opencode.thinkingEffort).toBe("high")
+})
+
+test("claude.thinking_effort を解決できる", () => {
+  const config = resolveConfig({
+    tracker: { kind: "file", file: { base_dir: "/issues" } },
+    work: {
+      runner: "herdr_agent",
+      herdr_agent: {
+        agent: "claude",
+        claude: {
+          thinking_effort: "xhigh",
+        },
+      },
+    },
+  })
+
+  expect(config.work.herdrAgent.claude.thinkingEffort).toBe("xhigh")
+})
+
+test("claude.thinking_effort 未指定時は null になる", () => {
+  const config = resolveConfig({
+    tracker: { kind: "file", file: { base_dir: "/issues" } },
+  })
+
+  expect(config.work.herdrAgent.claude.thinkingEffort).toBeNull()
+})
+
 test("work.if に Liquid テンプレート文字列を指定できる", () => {
   const config = resolveConfig({
     tracker: { kind: "file", file: { base_dir: "/issues" } },

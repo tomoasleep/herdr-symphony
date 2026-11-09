@@ -105,10 +105,17 @@ function makeConfig(overrides: Partial<ServiceConfig["work"]> = {}): ServiceConf
       runner: "herdr_agent",
       herdrAgent: {
         agent: "opencode",
-        opencode: { model: "openai/gpt-5.4", agent: "build", interactive: false, env: {} },
+        opencode: {
+          model: "openai/gpt-5.4",
+          agent: "build",
+          thinkingEffort: null,
+          interactive: false,
+          env: {},
+        },
         claude: {
           model: null,
           permissionMode: null,
+          thinkingEffort: null,
           messenger: "agmsg",
           pendingRemindIntervalMs: 900_000,
           reminderGracePeriodMs: 180_000,
@@ -657,6 +664,105 @@ describe("HerdrAgentRunner", () => {
       "--prompt",
       "Fix the bug",
     ])
+  })
+
+  test("thinkingEffort 指定時は model に #variant を合成する (opencode run)", async () => {
+    const client = makeMockHerdrClient({})
+    const runner = new HerdrAgentRunner(makeConfig(), {
+      herdrClient: client,
+      pollIntervalMs: 10,
+      reportResolver: nullReportResolver(),
+    })
+
+    await runNonInteractiveUntilDone(runner, makeIssue(), {
+      content: "Fix the bug",
+      agentKind: "opencode",
+      attempt: null,
+      workspacePath: makeNonInteractiveWorkspace(),
+      model: "openai/gpt-5.2",
+      thinkingEffort: "high",
+    })
+
+    const args = client.startAgentArgs
+    const modelIndex = args?.argv.indexOf("--model") ?? -1
+    expect(args?.argv[modelIndex + 1]).toBe("openai/gpt-5.2#high")
+  })
+
+  test("thinkingEffort 指定時は model に #variant を合成する (opencode mini)", async () => {
+    const client = makeMockHerdrClient({})
+    const runner = new HerdrAgentRunner(makeConfig(), {
+      herdrClient: client,
+      pollIntervalMs: 10,
+      reportResolver: nullReportResolver(),
+      opencodeVersionProbe: () => Promise.resolve(2),
+    })
+
+    await runUntilDone(runner, makeIssue(), {
+      content: "Fix the bug",
+      agentKind: "opencode",
+      attempt: null,
+      workspacePath: "/repo/worktree",
+      interactive: true,
+      model: "openai/gpt-5.2",
+      agent: "build",
+      thinkingEffort: "high",
+    })
+
+    const args = client.startAgentArgs
+    expect(args?.argv).toEqual([
+      "opencode",
+      "mini",
+      "--model",
+      "openai/gpt-5.2#high",
+      "--agent",
+      "build",
+      "--prompt",
+      "Fix the bug",
+    ])
+  })
+
+  test("model に既存 variant がある場合は thinkingEffort で置き換える", async () => {
+    const client = makeMockHerdrClient({})
+    const runner = new HerdrAgentRunner(makeConfig(), {
+      herdrClient: client,
+      pollIntervalMs: 10,
+      reportResolver: nullReportResolver(),
+    })
+
+    await runNonInteractiveUntilDone(runner, makeIssue(), {
+      content: "Fix the bug",
+      agentKind: "opencode",
+      attempt: null,
+      workspacePath: makeNonInteractiveWorkspace(),
+      model: "openai/gpt-5.2#low",
+      thinkingEffort: "high",
+    })
+
+    const args = client.startAgentArgs
+    const modelIndex = args?.argv.indexOf("--model") ?? -1
+    expect(args?.argv[modelIndex + 1]).toBe("openai/gpt-5.2#high")
+  })
+
+  test("thinkingEffort 未指定時は model をそのまま渡す", async () => {
+    const client = makeMockHerdrClient({})
+    const runner = new HerdrAgentRunner(makeConfig(), {
+      herdrClient: client,
+      pollIntervalMs: 10,
+      reportResolver: nullReportResolver(),
+    })
+
+    await runNonInteractiveUntilDone(runner, makeIssue(), {
+      content: "Fix the bug",
+      agentKind: "opencode",
+      attempt: null,
+      workspacePath: makeNonInteractiveWorkspace(),
+      model: "openai/gpt-5.2",
+      thinkingEffort: null,
+    })
+
+    const args = client.startAgentArgs
+    const modelIndex = args?.argv.indexOf("--model") ?? -1
+    expect(args?.argv[modelIndex + 1]).toBe("openai/gpt-5.2")
   })
 
   test("opencode バージョン不明時は v1 形式にフォールバックする", async () => {
@@ -1522,6 +1628,47 @@ describe("HerdrAgentRunner", () => {
     expect(args?.argv).toContain("claude-sonnet-4-20250514")
   })
 
+  test("claude に thinkingEffort が渡される", async () => {
+    const client = makeMockHerdrClient({})
+    const runner = new HerdrAgentRunner(makeConfig(), {
+      herdrClient: client,
+      pollIntervalMs: 10,
+      reportResolver: nullReportResolver(),
+    })
+
+    await runUntilDone(runner, makeIssue(), {
+      content: "Fix the bug",
+      agentKind: "claude",
+      attempt: null,
+      workspacePath: "/repo/worktree",
+      thinkingEffort: "high",
+    })
+
+    const args = client.startAgentArgs
+    const effortIndex = args?.argv.indexOf("--effort") ?? -1
+    expect(args?.argv[effortIndex + 1]).toBe("high")
+  })
+
+  test("claude thinkingEffort 未指定時は --effort を付けない", async () => {
+    const client = makeMockHerdrClient({})
+    const runner = new HerdrAgentRunner(makeConfig(), {
+      herdrClient: client,
+      pollIntervalMs: 10,
+      reportResolver: nullReportResolver(),
+    })
+
+    await runUntilDone(runner, makeIssue(), {
+      content: "Fix the bug",
+      agentKind: "claude",
+      attempt: null,
+      workspacePath: "/repo/worktree",
+      thinkingEffort: null,
+    })
+
+    const args = client.startAgentArgs
+    expect(args?.argv).not.toContain("--effort")
+  })
+
   test("claude に permission_mode が渡される", async () => {
     const client = makeMockHerdrClient({})
     const runner = new HerdrAgentRunner(makeConfig(), {
@@ -1536,6 +1683,7 @@ describe("HerdrAgentRunner", () => {
       attempt: null,
       workspacePath: "/repo/worktree",
       permissionMode: "acceptEdits",
+      thinkingEffort: null,
     })
 
     const args = client.startAgentArgs
@@ -1557,6 +1705,7 @@ describe("HerdrAgentRunner", () => {
       attempt: null,
       workspacePath: "/repo/worktree",
       permissionMode: "bypassPermissions",
+      thinkingEffort: null,
     })
 
     const args = client.startAgentArgs
@@ -1599,6 +1748,7 @@ describe("HerdrAgentRunner", () => {
       attempt: null,
       workspacePath: makeNonInteractiveWorkspace(),
       permissionMode: "bypassPermissions",
+      thinkingEffort: null,
     })
 
     const args = client.startAgentArgs

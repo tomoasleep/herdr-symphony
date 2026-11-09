@@ -71,10 +71,11 @@ export async function resolveIssueConfig(issue: Issue, attempt: number | null): 
       runner: null,
       herdrAgent: {
         agent: "opencode",
-        opencode: { model: null, agent: null, interactive: false, env: {} },
+        opencode: { model: null, agent: null, thinkingEffort: null, interactive: false, env: {} },
         claude: {
           model: null,
           permissionMode: null,
+          thinkingEffort: null,
           messenger: "report_file",
           pendingRemindIntervalMs: 900_000,
           reminderGracePeriodMs: 180_000,
@@ -114,11 +115,13 @@ export async function resolveIssueRuntimeConfig(
       opencode: {
         agent: work.herdrAgent.opencode.agent,
         model: work.herdrAgent.opencode.model,
+        thinkingEffort: work.herdrAgent.opencode.thinkingEffort,
         env: work.herdrAgent.opencode.env,
       },
       claude: {
         model: work.herdrAgent.claude.model,
         permissionMode: work.herdrAgent.claude.permissionMode,
+        thinkingEffort: work.herdrAgent.claude.thinkingEffort,
         env: work.herdrAgent.claude.env,
       },
       workspaceLabel: work.herdrAgent.workspaceLabel,
@@ -139,8 +142,18 @@ export async function resolveIssueRuntimeConfig(
     attempt,
   )) as {
     repository: string | null
-    opencode: { agent: string | null; model: string | null; env: Record<string, string> }
-    claude: { model: string | null; permissionMode: string | null; env: Record<string, string> }
+    opencode: {
+      agent: string | null
+      model: string | null
+      thinkingEffort: string | null
+      env: Record<string, string>
+    }
+    claude: {
+      model: string | null
+      permissionMode: string | null
+      thinkingEffort: string | null
+      env: Record<string, string>
+    }
     workspaceLabel: string | null
     workspace: WorkConfig["workspace"]
   }
@@ -159,12 +172,14 @@ export async function resolveIssueRuntimeConfig(
       opencode: {
         agent: normalizeOverride(rendered.opencode.agent),
         model: normalizeOverride(rendered.opencode.model),
+        thinkingEffort: normalizeOverride(rendered.opencode.thinkingEffort),
         interactive: work.herdrAgent.opencode.interactive,
         env: rendered.opencode.env,
       },
       claude: {
         model: normalizeOverride(rendered.claude.model),
         permissionMode: normalizeOverride(rendered.claude.permissionMode),
+        thinkingEffort: normalizeOverride(rendered.claude.thinkingEffort),
         messenger: work.herdrAgent.claude.messenger,
         pendingRemindIntervalMs: work.herdrAgent.claude.pendingRemindIntervalMs,
         reminderGracePeriodMs: work.herdrAgent.claude.reminderGracePeriodMs,

@@ -115,6 +115,7 @@ const WorkspaceSchema = z.object({
 const HerdrAgentOpencodeSchema = z.object({
   model: z.string().optional().nullable(),
   agent: z.string().optional().nullable(),
+  thinking_effort: z.string().optional().nullable(),
   interactive: z.boolean().optional(),
   env: z.record(z.string(), z.string()).optional(),
 })
@@ -122,6 +123,7 @@ const HerdrAgentOpencodeSchema = z.object({
 const HerdrAgentClaudeSchema = z.object({
   model: z.string().optional().nullable(),
   permission_mode: z.string().optional().nullable(),
+  thinking_effort: z.string().optional().nullable(),
   messenger: z.enum(["agmsg", "report_file"]).optional().nullable(),
   pending_remind_interval_ms: z.union([z.number(), z.string()]).optional(),
   reminder_grace_period_ms: z.union([z.number(), z.string()]).optional(),
@@ -244,6 +246,7 @@ export function resolveConfigFromSchema(input: unknown): ServiceConfig {
             typeof herdrAgentRaw?.opencode?.agent === "string"
               ? herdrAgentRaw.opencode.agent
               : null,
+          thinkingEffort: normalizeOptionalString(herdrAgentRaw?.opencode?.thinking_effort),
           interactive: herdrAgentRaw?.opencode?.interactive === true,
           env: herdrAgentRaw?.opencode?.env ?? {},
         },
@@ -251,6 +254,7 @@ export function resolveConfigFromSchema(input: unknown): ServiceConfig {
           model:
             typeof herdrAgentRaw?.claude?.model === "string" ? herdrAgentRaw.claude.model : null,
           permissionMode: normalizeOptionalString(herdrAgentRaw?.claude?.permission_mode),
+          thinkingEffort: normalizeOptionalString(herdrAgentRaw?.claude?.thinking_effort),
           messenger: herdrAgentRaw?.claude?.messenger ?? "report_file",
           pendingRemindIntervalMs: Math.max(
             toInt(herdrAgentRaw?.claude?.pending_remind_interval_ms, 900_000),
@@ -354,6 +358,17 @@ export function validateDispatchConfig(config: ServiceConfig): void {
     throw new WorkflowError(
       ErrorCode.INVALID_FRONT_MATTER,
       `unsupported herdr_agent.agent: ${config.work.herdrAgent.agent}`,
+    )
+  }
+
+  if (
+    config.work.herdrAgent.agent === "opencode" &&
+    config.work.herdrAgent.opencode.thinkingEffort &&
+    !config.work.herdrAgent.opencode.model
+  ) {
+    throw new WorkflowError(
+      ErrorCode.INVALID_FRONT_MATTER,
+      "herdr_agent.opencode.thinking_effort requires herdr_agent.opencode.model",
     )
   }
 }
