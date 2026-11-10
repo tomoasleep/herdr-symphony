@@ -207,6 +207,7 @@ export class SymphonyService {
       }
 
       if (reattached) {
+        this.claimIssue(record.issueId)
         this.dispatchContexts.set(record.issueId, {
           handle,
           issue: record.issue,
@@ -543,6 +544,9 @@ export class SymphonyService {
       })
 
       this.state.setSessionId(issue.id, handle.sessionId)
+      if (handle.meta) {
+        this.state.updateRunningMeta(issue.id, handle.meta)
+      }
       this.dispatchContexts.set(issue.id, {
         handle,
         issue: runningIssue,

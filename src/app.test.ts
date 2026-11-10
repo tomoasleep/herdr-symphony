@@ -178,6 +178,45 @@ describe("startHerdrSymphony", () => {
     expect(startupLine!.line).toContain("polling=45s")
   })
 
+  test("storage を開けない場合は warn ログを出力する", async () => {
+    const tmpDir = join(tmpdir(), `hs-app-storage-${Date.now()}`)
+    tmpDirs.push(tmpDir)
+    await mkdir(join(tmpDir, "Ready"), { recursive: true })
+    await writeFile(
+      join(tmpDir, "WORKFLOW.md"),
+      `---\ntracker:\n  kind: file\n  file:\n    base_dir: ${tmpDir}\nwork:\n  active_states: [Ready]\n---\nFix the issue\n`,
+    )
+
+    const testLogger = makeTestLogger("info")
+
+    await startHerdrSymphony(
+      join(tmpDir, "WORKFLOW.md"),
+      {
+        logLevel: "info",
+        storageConfig: { databasePath: join(tmpDir, "WORKFLOW.md", "test.db") },
+      },
+      {
+        logger: testLogger.logger,
+        createService: (config, template, _options, input) =>
+          new SymphonyService(config, template, {
+            logLevel: "info",
+            workflowId: input.workflowId,
+            workflowName: input.workflowName,
+            storage: input.storage ?? undefined,
+            tracker: makeMockTracker([]),
+            runner: makeMockRunner(),
+            claimIssue: () => true,
+            releaseIssue: () => {},
+          }),
+        schedule: () => () => {},
+      },
+    )
+
+    expect(
+      testLogger.entries.some((e) => e.level === "warn" && e.line.includes("storage unavailable")),
+    ).toBe(true)
+  })
+
   test("workflow を読み込んで refresh を実行する", async () => {
     const tmpDir = join(tmpdir(), `hs-app-${Date.now()}`)
     tmpDirs.push(tmpDir)
