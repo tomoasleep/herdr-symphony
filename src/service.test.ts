@@ -938,6 +938,108 @@ describe("SymphonyService startupCleanup (durable restore)", () => {
     storage.close()
   })
 
+  test("dispatch した実行中セッションは再起動後に再接続され、新たに dispatch されない", async () => {
+    const storage = makeSqliteStorage()
+    const config = makeConfig({ activeStates: ["Ready", "In progress"] })
+    const issue = makeIssue({ state: "In progress" })
+    const tracker = makeMockTrackerClient([issue])
+    const meta = makeMeta()
+
+    let started = 0
+    const firstRunner: Runner = {
+      async startIssue(i): Promise<RunnerHandle> {
+        started++
+        return { sessionId: "w1:p1", issueId: i.id, meta }
+      },
+      async pollCompletion(): Promise<RunnerPollResult> {
+        return { state: "running" }
+      },
+      async cancelRun() {},
+      async sweep() {},
+      async reattach() {
+        return false
+      },
+    }
+    const first = new SymphonyService(config, "prompt", {
+      tracker,
+      runner: firstRunner,
+      storage,
+      workflowId: "default",
+      logger: makeTestLogger().logger,
+      ensureWorkspace: makeMockWorkspace("/tmp/ws"),
+      claimIssue: () => true,
+      releaseIssue: () => {},
+    })
+    await first.refresh()
+    await first.waitForDispatches()
+    first.shutdown()
+
+    const reattached: RunnerHandle[] = []
+    const secondRunner: Runner = {
+      async startIssue(i): Promise<RunnerHandle> {
+        started++
+        return { sessionId: "w1:p2", issueId: i.id }
+      },
+      async pollCompletion(): Promise<RunnerPollResult> {
+        return { state: "running" }
+      },
+      async cancelRun() {},
+      async sweep() {},
+      async reattach(handle) {
+        reattached.push(handle)
+        return true
+      },
+    }
+    const second = new SymphonyService(config, "prompt", {
+      tracker,
+      runner: secondRunner,
+      storage,
+      workflowId: "default",
+      logger: makeTestLogger().logger,
+      ensureWorkspace: makeMockWorkspace("/tmp/ws"),
+      claimIssue: () => true,
+      releaseIssue: () => {},
+    })
+    await second.startupCleanup()
+    await second.refresh()
+    await second.waitForDispatches()
+
+    expect(reattached).toHaveLength(1)
+    expect(reattached[0]?.meta).toEqual(meta)
+    expect(started).toBe(1)
+    second.shutdown()
+    storage.close()
+  })
+
+  test("再接続した Issue は他の workflow から claim されない", async () => {
+    const storage = makeSqliteStorage()
+    const config = makeConfig()
+    const seed = new OrchestratorState(config, storage, "default")
+    seed.markRunning(makeIssue({ state: "In progress" }), "w1:p1", "/tmp/ws")
+    seed.updateRunningMeta("issue-1", makeMeta())
+
+    const claimed: string[] = []
+    const { tracker } = makeStateCapturingTracker(makeIssue({ state: "In progress" }))
+    const service = new SymphonyService(config, "prompt", {
+      tracker,
+      runner: { ...makeMockRunner(), reattach: async () => true },
+      storage,
+      workflowId: "default",
+      logger: makeTestLogger().logger,
+      claimIssue: (issueId) => {
+        claimed.push(issueId)
+        return true
+      },
+      releaseIssue: () => {},
+    })
+
+    await service.startupCleanup()
+
+    expect(claimed).toEqual(["issue-1"])
+    service.shutdown()
+    storage.close()
+  })
+
   test("再接続できないセッションは failure_state へ移動して中断扱いにする", async () => {
     const storage = makeSqliteStorage()
     const config = makeConfig({ failureState: "Blocked" })

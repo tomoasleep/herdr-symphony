@@ -6,6 +6,7 @@ import { GlobalClaimRegistry } from "./orchestrator/global-claim-registry"
 import { SymphonyService } from "./service"
 import { createStorage, DEFAULT_STORAGE_CONFIG } from "./storage/create-storage"
 import type { Storage } from "./storage/types"
+import { formatError } from "./utils/error"
 import { loadWorkflow } from "./workflow/load-workflow"
 
 export type StartOptions = {
@@ -43,6 +44,16 @@ export async function startHerdrSymphony(
   const loadWorkflowImpl = deps.loadWorkflow ?? loadWorkflow
   const issueRegistry = new GlobalClaimRegistry()
 
+  const logger =
+    deps.logger ??
+    createLogger({
+      minLevel: options.logLevel ?? "info",
+      sink: (level, line) => {
+        if (level === "error") console.error(line)
+        else console.log(line)
+      },
+    })
+
   const storageConfig = {
     ...DEFAULT_STORAGE_CONFIG,
     ...options.storageConfig,
@@ -50,7 +61,10 @@ export async function startHerdrSymphony(
   let storage: Storage | null = null
   try {
     storage = createStorage(storageConfig)
-  } catch {
+  } catch (error) {
+    logger.warn(
+      `storage unavailable path=${storageConfig.databasePath} error=${formatError(error)}`,
+    )
     storage = null
   }
 
@@ -72,16 +86,6 @@ export async function startHerdrSymphony(
       return () => {
         clearInterval(timer)
       }
-    })
-
-  const logger =
-    deps.logger ??
-    createLogger({
-      minLevel: options.logLevel ?? "info",
-      sink: (level, line) => {
-        if (level === "error") console.error(line)
-        else console.log(line)
-      },
     })
 
   const runtimes = await Promise.all(

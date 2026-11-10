@@ -1,4 +1,7 @@
 import { describe, expect, test } from "bun:test"
+import { existsSync, mkdtempSync, rmSync } from "node:fs"
+import { tmpdir } from "node:os"
+import { join } from "node:path"
 import { openDatabase } from "./database"
 
 describe("openDatabase", () => {
@@ -6,6 +9,17 @@ describe("openDatabase", () => {
     const db = openDatabase(":memory:")
     expect(db).toBeDefined()
     db.close()
+  })
+
+  test("親ディレクトリが存在しなくても作成して開く", () => {
+    const dir = mkdtempSync(join(tmpdir(), "hs-db-"))
+    try {
+      const db = openDatabase(join(dir, "nested", "db.sqlite3"))
+      expect(existsSync(join(dir, "nested", "db.sqlite3"))).toBe(true)
+      db.close()
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
   })
 
   test("enables WAL mode", () => {
