@@ -347,7 +347,11 @@ export function validateDispatchConfig(config: ServiceConfig): void {
     )
   }
 
-  if (config.work.runner && config.work.runner !== "herdr_agent") {
+  if (
+    config.work.runner &&
+    config.work.runner !== "herdr_agent" &&
+    config.work.runner !== "herdr_core"
+  ) {
     throw new WorkflowError(
       ErrorCode.INVALID_FRONT_MATTER,
       `unsupported runner: ${config.work.runner}`,

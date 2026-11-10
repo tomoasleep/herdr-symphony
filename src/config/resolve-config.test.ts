@@ -120,6 +120,26 @@ test("runner に herdr_agent 以外を指定するとエラー", () => {
   ).toThrow()
 })
 
+test("runner に herdr_core を指定できる", () => {
+  const config = resolveConfig({
+    tracker: { kind: "file", file: { base_dir: "/issues" } },
+    work: {
+      runner: "herdr_core",
+      herdr_agent: { agent: "opencode" },
+    },
+  })
+
+  expect(config.work.runner).toBe("herdr_core")
+})
+
+test("runner 未指定時はデフォルトで herdr_agent のまま", () => {
+  const config = resolveConfig({
+    tracker: { kind: "file", file: { base_dir: "/issues" } },
+  })
+
+  expect(config.work.runner).toBe("herdr_agent")
+})
+
 test("herdr_agent.agent に opencode 以外を指定するとエラー", () => {
   expect(() =>
     resolveConfig({

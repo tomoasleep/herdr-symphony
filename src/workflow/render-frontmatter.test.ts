@@ -75,6 +75,14 @@ test("resolveIssueRuntimeConfig が herdr_agent runner を返す", async () => {
   expect(result.runner.agent).toBe("opencode")
 })
 
+test("resolveIssueRuntimeConfig が work.runner に従って herdr_core runner を返す", async () => {
+  const config = makeWorkConfig({ runner: "herdr_core" })
+  const result = await resolveIssueRuntimeConfig(makeIssue(), config, null)
+
+  expect(result.runner.kind).toBe("herdr_core")
+  expect(result.runner.agent).toBe("opencode")
+})
+
 test("opencode model/agent を Liquid で解決できる", async () => {
   const config = makeWorkConfig({
     herdrAgent: {
