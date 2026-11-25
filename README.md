@@ -659,7 +659,6 @@ work:
 | `cccm.ack_timeout_ms` | number | `300000` (5分) | agent が `cccm report init` しなかった場合の失敗判定時間 (`--ack-timeout`) |
 | `cccm.reminder_grace_ms` | number | `180000` (3分) | 起動直後の reminder 送信を抑制する時間 (`--reminder-grace`) |
 | `cccm.pending_remind_interval_ms` | number | `900000` (15分) | `pending` の間のリマインダ再送間隔 (`--pending-remind-interval`) |
-| `cccm.no_wait` | boolean | `false` | セッション作成後に待たず launch を終える (`--no-wait`)。以後は `cccm monitor` 相当で待つ |
 
 クラウド側の環境には cccm の setup script（`npm install -g @tomoasleep/claude-code-cloud-monitor` + `cccm plugin install`）が必要。詳細は [cccm の README](https://github.com/tomoasleep/claude-code-cloud-monitor#setup) を参照。
 

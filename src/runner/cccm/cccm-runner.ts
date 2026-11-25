@@ -180,6 +180,10 @@ export class CccmRunner implements Runner {
       hub,
       prompt: options.content,
       timeoutMs: options.timeoutMs ?? this.config.work.herdrAgent.turnTimeoutMs ?? null,
+      ackTimeoutMs: cccm.ackTimeoutMs,
+      reminderGraceMs: cccm.reminderGraceMs,
+      pendingRemindIntervalMs: cccm.pendingRemindIntervalMs,
+      claudeOptions: cccm.claudeOptions,
     }
   }
 

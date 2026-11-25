@@ -67,7 +67,6 @@ function resolveCccmConfig(input: CccmSchemaInput | undefined): CccmConfig {
     ackTimeoutMs: Math.max(toInt(input?.ack_timeout_ms, 300_000), 1_000),
     reminderGraceMs: Math.max(toInt(input?.reminder_grace_ms, 180_000), 0),
     pendingRemindIntervalMs: Math.max(toInt(input?.pending_remind_interval_ms, 900_000), 1_000),
-    noWait: input?.no_wait === true,
   }
 }
 
@@ -166,7 +165,6 @@ const CccmSchema = z.object({
   ack_timeout_ms: z.union([z.number(), z.string()]).optional(),
   reminder_grace_ms: z.union([z.number(), z.string()]).optional(),
   pending_remind_interval_ms: z.union([z.number(), z.string()]).optional(),
-  no_wait: z.boolean().optional(),
 })
 
 type CccmSchemaInput = z.infer<typeof CccmSchema>

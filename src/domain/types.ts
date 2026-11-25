@@ -96,7 +96,6 @@ export type CccmConfig = {
   ackTimeoutMs: number
   reminderGraceMs: number
   pendingRemindIntervalMs: number
-  noWait: boolean
 }
 
 export type HerdrAgentConfig = {
