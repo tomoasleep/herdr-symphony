@@ -113,7 +113,6 @@ function makeConfig(overrides: Partial<ServiceConfig["work"]> = {}): ServiceConf
         ackTimeoutMs: 300_000,
         reminderGraceMs: 180_000,
         pendingRemindIntervalMs: 900_000,
-        noWait: false,
       },
       workspace: {
         provider: "none",
@@ -214,7 +213,6 @@ describe("CccmRunner", () => {
         ackTimeoutMs: 300_000,
         reminderGraceMs: 180_000,
         pendingRemindIntervalMs: 900_000,
-        noWait: false,
       },
     })
     const runner = new CccmRunner(config, { spawnProcess })
@@ -245,7 +243,6 @@ describe("CccmRunner", () => {
         ackTimeoutMs: 300_000,
         reminderGraceMs: 180_000,
         pendingRemindIntervalMs: 900_000,
-        noWait: false,
       },
     })
     const runner = new CccmRunner(config, { spawnProcess })
@@ -258,11 +255,55 @@ describe("CccmRunner", () => {
       "routine",
       "--routine",
       "my-hub",
+      "--ack-timeout",
+      "300000ms",
+      "--reminder-grace",
+      "180000ms",
+      "--pending-remind-interval",
+      "900000ms",
       "--hub",
       "github:owner/repo#123",
       "--output-format",
       "stream-json",
-      "--no-wait",
+      "Issue を解決してください",
+    ])
+  })
+
+  test("cccm 設定の待ち時間と claude options を launch に渡す", async () => {
+    const { spawnProcess, records } = makeSpawn()
+    const config = makeConfig({
+      cccm: {
+        via: "cloud",
+        routine: null,
+        envId: "env_01",
+        hub: null,
+        claudeOptions: ["--model=opus"],
+        ackTimeoutMs: 600_000,
+        reminderGraceMs: 0,
+        pendingRemindIntervalMs: 60_000,
+      },
+    })
+    const runner = new CccmRunner(config, { spawnProcess })
+
+    await startRunner(runner, makeIssue(), makeOptions(), records, "github:owner/repo#123")
+
+    expect(records[0]!.args).toEqual([
+      "launch",
+      "--via",
+      "cloud",
+      "--env",
+      "env_01",
+      "--ack-timeout",
+      "600000ms",
+      "--reminder-grace",
+      "0ms",
+      "--pending-remind-interval",
+      "60000ms",
+      "--hub",
+      "github:owner/repo#123",
+      "--output-format",
+      "stream-json",
+      "--model=opus",
       "Issue を解決してください",
     ])
   })

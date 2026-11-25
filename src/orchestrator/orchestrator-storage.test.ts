@@ -60,7 +60,6 @@ function makeConfig(): ServiceConfig {
         ackTimeoutMs: 300_000,
         reminderGraceMs: 180_000,
         pendingRemindIntervalMs: 900_000,
-        noWait: false,
       },
       workspace: {
         provider: "gwq",

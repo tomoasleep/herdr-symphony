@@ -133,6 +133,10 @@ export type CccmLaunchOptions = {
   hub: string
   prompt: string
   timeoutMs?: number | null
+  ackTimeoutMs: number
+  reminderGraceMs: number
+  pendingRemindIntervalMs: number
+  claudeOptions: string[]
 }
 
 export type CccmMonitorOptions = {
@@ -225,7 +229,20 @@ export class CccmClient {
     if (options.timeoutMs !== null && options.timeoutMs !== undefined) {
       args.push("--timeout", `${options.timeoutMs}ms`)
     }
-    args.push("--hub", options.hub, "--output-format", "stream-json", "--no-wait", options.prompt)
+    args.push(
+      "--ack-timeout",
+      `${options.ackTimeoutMs}ms`,
+      "--reminder-grace",
+      `${options.reminderGraceMs}ms`,
+      "--pending-remind-interval",
+      `${options.pendingRemindIntervalMs}ms`,
+      "--hub",
+      options.hub,
+      "--output-format",
+      "stream-json",
+      ...options.claudeOptions,
+      options.prompt,
+    )
     return args
   }
 

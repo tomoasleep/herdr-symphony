@@ -128,6 +128,12 @@ describe("parseCccmHubFromIdentifier", () => {
 })
 
 describe("CccmClient", () => {
+  const timingOptions = {
+    ackTimeoutMs: 300_000,
+    reminderGraceMs: 180_000,
+    pendingRemindIntervalMs: 900_000,
+  }
+
   function launchedLine(): string {
     return JSON.stringify({
       type: "launched",
@@ -174,7 +180,7 @@ describe("CccmClient", () => {
     expect(handle.commentUrl).toBe("https://github.com/owner/repo/issues/123#issuecomment-1")
   })
 
-  test("startLaunch で cccm launch --no-wait を spawn する", async () => {
+  test("startLaunch は完了まで待つ cccm launch を spawn する", async () => {
     const proc = new FakeStreamProcess()
     const spawned: { command: string; args: string[] }[] = []
     const client = new CccmClient({
@@ -188,6 +194,8 @@ describe("CccmClient", () => {
       via: "cloud",
       hub: "github:owner/repo#123",
       prompt: "Issue を解決してください",
+      ...timingOptions,
+      claudeOptions: [],
     })
     proc.writeStdout(`${launchedLine()}\n`)
     await pending
@@ -199,15 +207,80 @@ describe("CccmClient", () => {
           "launch",
           "--via",
           "cloud",
+          "--ack-timeout",
+          "300000ms",
+          "--reminder-grace",
+          "180000ms",
+          "--pending-remind-interval",
+          "900000ms",
           "--hub",
           "github:owner/repo#123",
           "--output-format",
           "stream-json",
-          "--no-wait",
           "Issue を解決してください",
         ],
       },
     ])
+  })
+
+  test("launch は cloud 経由で claude options を prompt の前に渡す", async () => {
+    const proc = new FakeStreamProcess()
+    const spawned: { command: string; args: string[] }[] = []
+    const client = new CccmClient({
+      spawnProcess: (command, args) => {
+        spawned.push({ command, args: [...args] })
+        return proc as unknown as CccmStreamProcess
+      },
+    })
+
+    const pending = client.startLaunch({
+      via: "cloud",
+      envId: "env_01",
+      hub: "github:owner/repo#123",
+      prompt: "hello",
+      ...timingOptions,
+      claudeOptions: ["--model=opus"],
+    })
+    proc.writeStdout(`${launchedLine()}\n`)
+    await pending
+
+    expect(spawned[0]?.args.slice(-6)).toEqual([
+      "--hub",
+      "github:owner/repo#123",
+      "--output-format",
+      "stream-json",
+      "--model=opus",
+      "hello",
+    ])
+    expect(spawned[0]?.args).toContain("env_01")
+  })
+
+  test("launch で done まで待った結果を pollMonitor で返す", async () => {
+    const proc = new FakeStreamProcess()
+    const client = new CccmClient({
+      spawnProcess: () => proc as unknown as CccmStreamProcess,
+    })
+
+    const pending = client.startLaunch({
+      via: "cloud",
+      hub: "github:owner/repo#123",
+      prompt: "hello",
+      ...timingOptions,
+      claudeOptions: [],
+    })
+    proc.writeStdout(`${launchedLine()}\n`)
+    const handle = await pending
+
+    expect(client.pollMonitor(handle)).toEqual({ state: "running" })
+
+    proc.writeStdout(`${JSON.stringify({ type: "done", summary: "完了した" })}\n`)
+    proc.close(0)
+    await waitForClose(handle)
+
+    expect(client.pollMonitor(handle)).toEqual({
+      state: "done",
+      result: { status: "succeeded", error: null, responseText: "完了した" },
+    })
   })
 
   test("launch は routine 経由のオプションを渡す", async () => {
@@ -225,6 +298,8 @@ describe("CccmClient", () => {
       routine: "my-hub",
       hub: "github:owner/repo#123",
       prompt: "hello",
+      ...timingOptions,
+      claudeOptions: [],
     })
     proc.writeStdout(`${launchedLine()}\n`)
     await pending
@@ -235,11 +310,16 @@ describe("CccmClient", () => {
       "routine",
       "--routine",
       "my-hub",
+      "--ack-timeout",
+      "300000ms",
+      "--reminder-grace",
+      "180000ms",
+      "--pending-remind-interval",
+      "900000ms",
       "--hub",
       "github:owner/repo#123",
       "--output-format",
       "stream-json",
-      "--no-wait",
       "hello",
     ])
   })

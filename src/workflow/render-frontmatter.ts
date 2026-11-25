@@ -95,7 +95,6 @@ export async function resolveIssueConfig(issue: Issue, attempt: number | null): 
         ackTimeoutMs: 300_000,
         reminderGraceMs: 180_000,
         pendingRemindIntervalMs: 900_000,
-        noWait: false,
       },
       workspace: {
         provider: "gwq",

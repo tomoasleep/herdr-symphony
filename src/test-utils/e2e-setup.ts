@@ -89,7 +89,6 @@ export function makeOpencodeServiceConfig(trackerDir: string): ServiceConfig {
         ackTimeoutMs: 300_000,
         reminderGraceMs: 180_000,
         pendingRemindIntervalMs: 900_000,
-        noWait: false,
       },
       workspace: {
         provider: "git",
@@ -160,7 +159,6 @@ export function makeClaudeServiceConfig(
         ackTimeoutMs: 300_000,
         reminderGraceMs: 180_000,
         pendingRemindIntervalMs: 900_000,
-        noWait: false,
       },
       workspace: {
         provider: "git",
