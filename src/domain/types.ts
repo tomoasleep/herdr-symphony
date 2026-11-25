@@ -85,6 +85,20 @@ export type HerdrAgentClaudeConfig = {
 
 export type OnBlockedStrategy = "continue" | "fail"
 
+export type CccmVia = "cloud" | "routine"
+
+export type CccmConfig = {
+  via: CccmVia
+  routine: string | null
+  envId: string | null
+  hub: string | null
+  claudeOptions: string[]
+  ackTimeoutMs: number
+  reminderGraceMs: number
+  pendingRemindIntervalMs: number
+  noWait: boolean
+}
+
 export type HerdrAgentConfig = {
   agent: "opencode" | "claude"
   opencode: HerdrAgentOpencodeConfig
@@ -139,7 +153,15 @@ export type ResolvedHerdrAgentRunnerConfig = ResolvedRunnerCommonConfig & { kind
 
 export type ResolvedHcRunnerConfig = ResolvedRunnerCommonConfig & { kind: "herdr_core" }
 
-export type ResolvedRunnerConfig = ResolvedHerdrAgentRunnerConfig | ResolvedHcRunnerConfig
+export type ResolvedCccmRunnerConfig = ResolvedRunnerCommonConfig & {
+  kind: "cccm"
+  cccm: CccmConfig
+}
+
+export type ResolvedRunnerConfig =
+  | ResolvedHerdrAgentRunnerConfig
+  | ResolvedHcRunnerConfig
+  | ResolvedCccmRunnerConfig
 
 export type ResolvedIssueRuntimeConfig = {
   issue: Issue
@@ -157,6 +179,7 @@ export type WorkConfig = {
   stoppedState: string | null
   runner: string | null
   herdrAgent: HerdrAgentConfig
+  cccm: CccmConfig
   workspace: WorkspaceConfig
   reporter?: ("file" | "tracker")[]
 }

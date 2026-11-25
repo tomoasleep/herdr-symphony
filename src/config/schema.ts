@@ -1,6 +1,6 @@
 import { z } from "zod"
 import { ErrorCode, WorkflowError } from "../domain/errors"
-import type { ServiceConfig } from "../domain/types"
+import type { CccmConfig, ServiceConfig } from "../domain/types"
 import { normalizeState, parseList, toInt } from "../utils/normalize"
 
 function normalizePerState(input: unknown): Record<string, number> {
@@ -52,6 +52,23 @@ function normalizeReporter(input: unknown): ("file" | "tracker")[] {
   }
 
   return validValues.length > 0 ? validValues : ["file"]
+}
+
+function resolveCccmConfig(input: CccmSchemaInput | undefined): CccmConfig {
+  const via = input?.via === "routine" ? "routine" : "cloud"
+  return {
+    via,
+    routine: normalizeOptionalString(input?.routine),
+    envId: normalizeOptionalString(input?.env_id),
+    hub: normalizeOptionalString(input?.hub),
+    claudeOptions: Array.isArray(input?.claude_options)
+      ? input.claude_options.filter((item): item is string => typeof item === "string")
+      : [],
+    ackTimeoutMs: Math.max(toInt(input?.ack_timeout_ms, 300_000), 1_000),
+    reminderGraceMs: Math.max(toInt(input?.reminder_grace_ms, 180_000), 0),
+    pendingRemindIntervalMs: Math.max(toInt(input?.pending_remind_interval_ms, 900_000), 1_000),
+    noWait: input?.no_wait === true,
+  }
 }
 
 const GitHubProjectTrackerSchema = z.object({
@@ -140,6 +157,20 @@ const HerdrAgentSchema = z.object({
   on_blocked: z.enum(["continue", "fail"]).optional().nullable(),
 })
 
+const CccmSchema = z.object({
+  via: z.enum(["cloud", "routine"]).optional(),
+  routine: z.string().optional().nullable(),
+  env_id: z.string().optional().nullable(),
+  hub: z.string().optional().nullable(),
+  claude_options: z.array(z.string()).optional(),
+  ack_timeout_ms: z.union([z.number(), z.string()]).optional(),
+  reminder_grace_ms: z.union([z.number(), z.string()]).optional(),
+  pending_remind_interval_ms: z.union([z.number(), z.string()]).optional(),
+  no_wait: z.boolean().optional(),
+})
+
+type CccmSchemaInput = z.infer<typeof CccmSchema>
+
 const WorkSchema = z.object({
   if: z.string().optional().nullable(),
   active_states: z.union([z.string(), z.array(z.string())]).optional(),
@@ -150,6 +181,7 @@ const WorkSchema = z.object({
   stopped_state: z.string().optional().nullable(),
   runner: z.string().optional(),
   herdr_agent: HerdrAgentSchema.optional(),
+  cccm: CccmSchema.optional(),
   workspace: WorkspaceSchema.optional(),
   reporter: z.array(z.unknown()).optional(),
 })
@@ -235,6 +267,7 @@ export function resolveConfigFromSchema(input: unknown): ServiceConfig {
       failureState: normalizeOptionalString(work.failure_state),
       stoppedState: normalizeOptionalString(work.stopped_state),
       runner: normalizeOptionalString(work.runner) ?? "herdr_agent",
+      cccm: resolveCccmConfig(work.cccm),
       herdrAgent: {
         agent: herdrAgentRaw?.agent ?? "opencode",
         opencode: {
@@ -350,12 +383,22 @@ export function validateDispatchConfig(config: ServiceConfig): void {
   if (
     config.work.runner &&
     config.work.runner !== "herdr_agent" &&
-    config.work.runner !== "herdr_core"
+    config.work.runner !== "herdr_core" &&
+    config.work.runner !== "cccm"
   ) {
     throw new WorkflowError(
       ErrorCode.INVALID_FRONT_MATTER,
       `unsupported runner: ${config.work.runner}`,
     )
+  }
+
+  if (config.work.runner === "cccm" && config.work.cccm.via === "routine") {
+    if (!config.work.cccm.routine) {
+      throw new WorkflowError(
+        ErrorCode.INVALID_FRONT_MATTER,
+        "work.cccm.routine is required when work.cccm.via is routine",
+      )
+    }
   }
 
   if (config.work.herdrAgent.agent !== "opencode" && config.work.herdrAgent.agent !== "claude") {

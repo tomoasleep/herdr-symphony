@@ -86,6 +86,17 @@ export async function resolveIssueConfig(issue: Issue, attempt: number | null): 
         closePaneAfterDoneMs: null,
         onBlocked: null,
       },
+      cccm: {
+        via: "cloud",
+        routine: null,
+        envId: null,
+        hub: null,
+        claudeOptions: [],
+        ackTimeoutMs: 300_000,
+        reminderGraceMs: 180_000,
+        pendingRemindIntervalMs: 900_000,
+        noWait: false,
+      },
       workspace: {
         provider: "gwq",
         reuseExisting: true,
@@ -167,7 +178,12 @@ export async function resolveIssueRuntimeConfig(
     },
     workspace: normalizeWorkspaceConfig(rendered.workspace, work.workspace),
     runner: {
-      kind: work.runner === "herdr_core" ? "herdr_core" : "herdr_agent",
+      kind:
+        work.runner === "herdr_core"
+          ? "herdr_core"
+          : work.runner === "cccm"
+            ? "cccm"
+            : "herdr_agent",
       agent: work.herdrAgent.agent,
       opencode: {
         agent: normalizeOverride(rendered.opencode.agent),
@@ -189,6 +205,7 @@ export async function resolveIssueRuntimeConfig(
       turnTimeoutMs: work.herdrAgent.turnTimeoutMs,
       closePaneAfterDoneMs: work.herdrAgent.closePaneAfterDoneMs,
       onBlocked: work.herdrAgent.onBlocked,
+      cccm: work.cccm,
     },
   }
 }

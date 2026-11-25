@@ -62,6 +62,17 @@ function makeConfig(overrides: Partial<ServiceConfig["work"]> = {}): ServiceConf
         closePaneAfterDoneMs: null,
         onBlocked: null,
       },
+      cccm: {
+        via: "cloud",
+        routine: null,
+        envId: null,
+        hub: null,
+        claudeOptions: [],
+        ackTimeoutMs: 300_000,
+        reminderGraceMs: 180_000,
+        pendingRemindIntervalMs: 900_000,
+        noWait: false,
+      },
       workspace: {
         provider: "gwq",
         reuseExisting: true,
@@ -354,6 +365,17 @@ describe("SymphonyService", () => {
         ...makeConfig().work.herdrAgent,
         agent: "claude",
       },
+      cccm: {
+        via: "cloud",
+        routine: null,
+        envId: null,
+        hub: null,
+        claudeOptions: [],
+        ackTimeoutMs: 300_000,
+        reminderGraceMs: 180_000,
+        pendingRemindIntervalMs: 900_000,
+        noWait: false,
+      },
     })
 
     const service = new SymphonyService(config, "prompt", {
@@ -424,6 +446,17 @@ describe("SymphonyService", () => {
           env: {},
         },
       },
+      cccm: {
+        via: "cloud",
+        routine: null,
+        envId: null,
+        hub: null,
+        claudeOptions: [],
+        ackTimeoutMs: 300_000,
+        reminderGraceMs: 180_000,
+        pendingRemindIntervalMs: 900_000,
+        noWait: false,
+      },
     })
 
     const service = new SymphonyService(config, "Fix the bug.", {
@@ -457,6 +490,17 @@ describe("SymphonyService", () => {
         ...makeConfig().work.herdrAgent,
         agent: "claude",
       },
+      cccm: {
+        via: "cloud",
+        routine: null,
+        envId: null,
+        hub: null,
+        claudeOptions: [],
+        ackTimeoutMs: 300_000,
+        reminderGraceMs: 180_000,
+        pendingRemindIntervalMs: 900_000,
+        noWait: false,
+      },
     })
 
     const service = new SymphonyService(config, "Fix the bug.", {
@@ -477,6 +521,41 @@ describe("SymphonyService", () => {
       orchestratorAgent: "herdr-symphony",
     })
     expect(runner.options?.reportPath).toBeUndefined()
+    expect(runner.options?.content).toBe("Fix the bug.")
+    service.shutdown()
+  })
+
+  test("cccm runner の場合は agmsg も reportPath も渡さない", async () => {
+    const tmpDir = join(tmpdir(), `hs-service-cccm-${Date.now()}`)
+    tmpDirs.push(tmpDir)
+    await mkdir(tmpDir, { recursive: true })
+    const issue = makeIssue()
+    const tracker = makeMockTrackerClient([issue])
+    const runner = makeCapturingRunner()
+    const config = makeConfig({
+      runner: "cccm",
+      herdrAgent: {
+        ...makeConfig().work.herdrAgent,
+        agent: "claude",
+      },
+    })
+
+    const service = new SymphonyService(config, "Fix the bug.", {
+      tracker,
+      runner,
+      logger: makeTestLogger().logger,
+      ensureWorkspace: makeMockWorkspace(tmpDir),
+      claimIssue: () => true,
+      releaseIssue: () => {},
+    })
+
+    await service.refresh()
+    await service.waitForDispatches()
+    await service.reconcileRunning()
+
+    expect(runner.options?.agmsg).toBeUndefined()
+    expect(runner.options?.reportPath).toBeUndefined()
+    expect(runner.options?.agentKind).toBe("claude")
     expect(runner.options?.content).toBe("Fix the bug.")
     service.shutdown()
   })
@@ -660,6 +739,17 @@ describe("SymphonyService", () => {
         ...baseConfig.work.herdrAgent,
         opencode: { model: null, agent: null, thinkingEffort: null, interactive: true, env: {} },
       },
+      cccm: {
+        via: "cloud",
+        routine: null,
+        envId: null,
+        hub: null,
+        claudeOptions: [],
+        ackTimeoutMs: 300_000,
+        reminderGraceMs: 180_000,
+        pendingRemindIntervalMs: 900_000,
+        noWait: false,
+      },
     })
 
     const service = new SymphonyService(config, "Fix the bug.", {
@@ -728,6 +818,17 @@ describe("SymphonyService", () => {
           env: {},
         },
       },
+      cccm: {
+        via: "cloud",
+        routine: null,
+        envId: null,
+        hub: null,
+        claudeOptions: [],
+        ackTimeoutMs: 300_000,
+        reminderGraceMs: 180_000,
+        pendingRemindIntervalMs: 900_000,
+        noWait: false,
+      },
     })
 
     const service = new SymphonyService(config, "Fix the bug.", {
@@ -764,6 +865,17 @@ describe("SymphonyService", () => {
           ...baseConfig.work.herdrAgent.claude,
           thinkingEffort: "xhigh",
         },
+      },
+      cccm: {
+        via: "cloud",
+        routine: null,
+        envId: null,
+        hub: null,
+        claudeOptions: [],
+        ackTimeoutMs: 300_000,
+        reminderGraceMs: 180_000,
+        pendingRemindIntervalMs: 900_000,
+        noWait: false,
       },
     })
 

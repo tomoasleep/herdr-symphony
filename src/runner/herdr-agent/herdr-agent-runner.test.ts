@@ -126,6 +126,17 @@ function makeConfig(overrides: Partial<ServiceConfig["work"]> = {}): ServiceConf
         closePaneAfterDoneMs: null,
         onBlocked: null,
       },
+      cccm: {
+        via: "cloud",
+        routine: null,
+        envId: null,
+        hub: null,
+        claudeOptions: [],
+        ackTimeoutMs: 300_000,
+        reminderGraceMs: 180_000,
+        pendingRemindIntervalMs: 900_000,
+        noWait: false,
+      },
       workspace: {
         provider: "gwq",
         reuseExisting: true,

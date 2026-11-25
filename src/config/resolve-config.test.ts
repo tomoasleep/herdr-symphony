@@ -132,6 +132,60 @@ test("runner に herdr_core を指定できる", () => {
   expect(config.work.runner).toBe("herdr_core")
 })
 
+test("runner に cccm を指定できる", () => {
+  const config = resolveConfig({
+    tracker: { kind: "file", file: { base_dir: "/issues" } },
+    work: {
+      runner: "cccm",
+      cccm: {
+        via: "routine",
+        routine: "my-hub",
+        hub: "github:other/repo#999",
+        ack_timeout_ms: 600_000,
+      },
+    },
+  })
+
+  expect(config.work.runner).toBe("cccm")
+  expect(config.work.cccm.via).toBe("routine")
+  expect(config.work.cccm.routine).toBe("my-hub")
+  expect(config.work.cccm.hub).toBe("github:other/repo#999")
+  expect(config.work.cccm.ackTimeoutMs).toBe(600_000)
+})
+
+test("cccm のデフォルト値を解決できる", () => {
+  const config = resolveConfig({
+    tracker: { kind: "file", file: { base_dir: "/issues" } },
+    work: {
+      runner: "cccm",
+    },
+  })
+
+  expect(config.work.cccm).toEqual({
+    via: "cloud",
+    routine: null,
+    envId: null,
+    hub: null,
+    claudeOptions: [],
+    ackTimeoutMs: 300_000,
+    reminderGraceMs: 180_000,
+    pendingRemindIntervalMs: 900_000,
+    noWait: false,
+  })
+})
+
+test("cccm.via が routine のとき routine 未指定はエラーになる", () => {
+  expect(() =>
+    resolveConfig({
+      tracker: { kind: "file", file: { base_dir: "/issues" } },
+      work: {
+        runner: "cccm",
+        cccm: { via: "routine" },
+      },
+    }),
+  ).toThrow("routine")
+})
+
 test("runner 未指定時はデフォルトで herdr_agent のまま", () => {
   const config = resolveConfig({
     tracker: { kind: "file", file: { base_dir: "/issues" } },

@@ -31,6 +31,7 @@ bun install
 | `gwq` | `workspace.provider: gwq`（デフォルト）| [gwq](https://github.com/tomoasleep/gwq) のインストール手順に従う |
 | `gh` | `tracker.kind: github_project` | `gh auth login` 後 `gh auth refresh -s project` で `project` scope を付与 |
 | `agmsg` | `herdr_agent.agent: claude` + `claude.messenger: agmsg` | `~/.agents/skills/agmsg/scripts/send.sh` が存在すること。未インストール時は Claude runner が明確なエラーを返す |
+| `cccm` | `runner: cccm` | [cccm (@tomoasleep/claude-code-cloud-monitor)](https://github.com/tomoasleep/claude-code-cloud-monitor) を `npm install -g` し、クラウド環境の setup script も設定する（[cccm の README](https://github.com/tomoasleep/claude-code-cloud-monitor#setup) 参照）|
 
 ### 環境変数
 
@@ -451,7 +452,7 @@ work:
       command: gwq
       create_branch: true
 
-  runner: herdr_agent
+  runner: herdr_agent   # herdr_agent | herdr_core | cccm
   herdr_agent:
     agent: opencode
     opencode:
@@ -463,6 +464,8 @@ work:
     workspace_label: '{{ issue.identifier | replace: "/", "_" }}'
     turn_timeout_ms: 3600000
 ```
+
+`runner` で agent の実行方式を選ぶ。`herdr_agent` は手元の Herdr 上、`herdr_core` は herdr-core (`hc`) 上、`cccm` は Claude Code のクラウドセッション上で実行する（詳細は `work.herdr_agent` / `work.cccm` のセクション）。
 
 ### work.if（条件付き dispatch）
 
@@ -628,6 +631,45 @@ Claude は task を受け取ると `herdr-symphony.ack` (`ackOf=task`) を返す
 ##### `report_file` (デフォルト)
 
 ファイルベースの report 機構。プロンプト末尾に `herdr-symphony report --status ... --summary ...` の実行指示を追加し、`HERDR_SYMPHONY_REPORT_PATH` 環境変数で report file パスを Agent に注入する。Agent が `.herdr-symphony-report.json` に `done` / `pending` / `failed` を書き、runner が report file をポーリングして完了判定する。report 未送信のまま idle になった場合は、`herdr agent send` と `pane send-keys Enter` で pane に直接リマインドを送る。`pending` のまま `pending_remind_interval_ms` (デフォルト15分) 経過した場合も同様にリマインドを再送する。起動直後（`reminder_grace_period_ms`、デフォルト3分）は Agent がタスクを受け取る前の idle と誤判定されるのを防ぐため、reminder 送信を抑制する。`0` を指定すれば無効化できる。
+
+### work.cccm（`runner: cccm`）
+
+[Claude Code のクラウドセッション](https://claude.ai/code)（claude.ai/code）を agent の実行先にする runner。[cccm](https://github.com/tomoasleep/claude-code-cloud-monitor) を使ってセッションを起動し、GitHub Issue のコメント（hub）経由で完了を待つ。手元のマシンで agent を動かさないため、手元の負荷を減らせる。
+
+```yaml
+work:
+  runner: cccm
+  cccm:
+    via: cloud                  # cloud (claude --cloud) | routine (cccm routine fire)
+    routine: null               # via: routine 時の routine 名 (cccm routine add で登録した名前)
+    env_id: null                # via: cloud 時のクラウド環境 ID (env_...)
+    hub: null                   # hub issue の spec (github:owner/repo#N)。省略時は tracker の issue を使う
+    turn_timeout_ms: null       # cccm --timeout に渡す (work.herdr_agent.turn_timeout_ms を流用)
+  workspace:
+    provider: none              # cccm では worktree を作らずリポジトリルートを cwd にする (他の provider は無視して警告)
+```
+
+| 設定 | 型 | デフォルト | 説明 |
+|------|-----|-----------|------|
+| `cccm.via` | `"cloud"` \| `"routine"` | `"cloud"` | セッションの起動方式。`cloud` は cwd の repo で `claude --cloud`、`routine` は登録済み routine を fire する |
+| `cccm.routine` | string | null | `via: routine` 時の routine プロファイル名。未指定で `via: routine` だと config エラーになる |
+| `cccm.env_id` | string | null | `via: cloud` 時のクラウド環境 ID |
+| `cccm.hub` | string | null | hub issue の spec (`github:owner/repo#N` 形式)。省略時は tracker の issue (`owner/repo#N`) を hub に使う。将来的な Slack 対応などに備えた指定も想定 |
+| `cccm.claude_options` | string[] | `[]` | `claude --cloud` への追加オプション (`--model=...` 等) |
+| `cccm.ack_timeout_ms` | number | `300000` (5分) | agent が `cccm report init` しなかった場合の失敗判定時間 (`--ack-timeout`) |
+| `cccm.reminder_grace_ms` | number | `180000` (3分) | 起動直後の reminder 送信を抑制する時間 (`--reminder-grace`) |
+| `cccm.pending_remind_interval_ms` | number | `900000` (15分) | `pending` の間のリマインダ再送間隔 (`--pending-remind-interval`) |
+| `cccm.no_wait` | boolean | `false` | セッション作成後に待たず launch を終える (`--no-wait`)。以後は `cccm monitor` 相当で待つ |
+
+クラウド側の環境には cccm の setup script（`npm install -g @tomoasleep/claude-code-cloud-monitor` + `cccm plugin install`）が必要。詳細は [cccm の README](https://github.com/tomoasleep/claude-code-cloud-monitor#setup) を参照。
+
+完了判定は cccm の stream-json 出力に従う。`done` イベントは成功（`summary` を reporter に記録）、`failed` イベントと終了コード 1/3/4/5 は失敗。プロセス再起動後は hub issue と session ID から `cccm monitor` で再接続する。
+
+制約:
+
+- hub の Issue はセッションから書ける repo に置く必要がある（`via: cloud` では作業 repo に紐づく。別 repo を hub にする場合は routine に両方の repo を入れる）
+- クラウドセッションからは GitHub の GraphQL を使えないため、GitHub Project の状態更新は従来どおり手元の herdr-symphony が行う
+- tracker の issue が GitHub issue に紐づかない形式（`draft:` や schedule tracker）の場合、`cccm.hub` を指定しないと dispatch がエラーになる
 
 ### 状態遷移
 
