@@ -454,16 +454,15 @@ export class SymphonyService {
       this.logger.debug(
         `runtime resolved issue=${runtimeConfig.issue.identifier} runner=${runtimeConfig.runner.kind} workspaceProvider=${runtimeConfig.workspace.provider}`,
       )
-      const runtimeWorkspace =
-        runtimeConfig.runner.kind === "cccm" && runtimeConfig.workspace.provider !== "none"
-          ? { ...runtimeConfig.workspace, provider: "none" as const }
-          : runtimeConfig.workspace
-      if (runtimeWorkspace !== runtimeConfig.workspace) {
+      const isCccm = runtimeConfig.runner.kind === "cccm"
+      if (isCccm && runtimeConfig.workspace.provider !== "none") {
         this.logger.warn(
-          `workspace provider=${runtimeConfig.workspace.provider} is ignored with runner=cccm; using repository root`,
+          `workspace provider=${runtimeConfig.workspace.provider} is ignored with runner=cccm; using current directory`,
         )
       }
-      const workspace = await this.ensureWorkspaceFn(runtimeConfig.issue, runtimeWorkspace)
+      const workspace = isCccm
+        ? { path: process.cwd(), createdNow: false, branch: null }
+        : await this.ensureWorkspaceFn(runtimeConfig.issue, runtimeConfig.workspace)
       this.state.setWorkspacePath(issue.id, workspace.path)
       this.logger.debug(
         `workspace ready path=${workspace.path} createdNow=${workspace.createdNow} branch=${workspace.branch ?? "none"}`,
@@ -480,7 +479,6 @@ export class SymphonyService {
       }
 
       const content = await this.renderPromptFn(this.template, runtimeConfig.issue, null)
-      const isCccm = runtimeConfig.runner.kind === "cccm"
       let agmsg:
         | {
             team: string

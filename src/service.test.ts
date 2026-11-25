@@ -556,6 +556,34 @@ describe("SymphonyService", () => {
     service.shutdown()
   })
 
+  test("cccm runner の場合は workspace を解決せず起動 directory を渡す", async () => {
+    const issue = makeIssue()
+    const tracker = makeMockTrackerClient([issue])
+    const runner = makeCapturingRunner()
+    const config = makeConfig({ runner: "cccm" })
+    const ensuredIssues: string[] = []
+
+    const service = new SymphonyService(config, "Fix the bug.", {
+      tracker,
+      runner,
+      logger: makeTestLogger().logger,
+      ensureWorkspace: async (target) => {
+        ensuredIssues.push(target.identifier)
+        throw new Error("ensureWorkspace should not be called")
+      },
+      claimIssue: () => true,
+      releaseIssue: () => {},
+    })
+
+    await service.refresh()
+    await service.waitForDispatches()
+    await service.reconcileRunning()
+
+    expect(ensuredIssues).toEqual([])
+    expect(runner.options?.workspacePath).toBe(process.cwd())
+    service.shutdown()
+  })
+
   test("dispatch の catch ブロックで二次エラーが起きても unhandled rejection にならない", async () => {
     const issue = makeIssue()
     const tracker = makeMockTrackerClient([issue])

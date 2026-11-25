@@ -646,7 +646,7 @@ work:
     hub: null                   # hub issue の spec (github:owner/repo#N)。省略時は tracker の issue を使う
     turn_timeout_ms: null       # cccm --timeout に渡す (work.herdr_agent.turn_timeout_ms を流用)
   workspace:
-    provider: none              # cccm では worktree を作らずリポジトリルートを cwd にする (他の provider は無視して警告)
+    provider: none              # cccm では workspace を解決せず herdr-symphony の起動 directory を使う (他の provider は無視して警告)
 ```
 
 | 設定 | 型 | デフォルト | 説明 |
@@ -662,7 +662,7 @@ work:
 
 クラウド側の環境には cccm の setup script（`npm install -g @tomoasleep/claude-code-cloud-monitor` + `cccm plugin install`）が必要。詳細は [cccm の README](https://github.com/tomoasleep/claude-code-cloud-monitor#setup) を参照。
 
-完了判定は cccm の stream-json 出力に従う。`done` イベントは成功（`summary` を reporter に記録）、`failed` イベントと終了コード 1/3/4/5 は失敗。プロセス再起動後は hub issue と session ID から `cccm monitor` で再接続する。
+完了判定は cccm の stream-json 出力に従う。`done` イベントは成功（`summary` を reporter に記録）、`failed` イベントと終了コード 1/3/4/5 は失敗。プロセス再起動後は hub issue と session ID から `cccm monitor` で再接続する（`ack_timeout_ms` などの待ち時間も launch と同じく渡す）。
 
 制約:
 

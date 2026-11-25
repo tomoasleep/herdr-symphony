@@ -157,6 +157,7 @@ describe("CccmClient", () => {
     const pending = client.startMonitor({
       hub: "github:owner/repo#123",
       sessionId: "session_01",
+      ...timingOptions,
     })
     proc.writeStdout(`${launchedLine()}\n`)
     const handle = await pending
@@ -170,6 +171,12 @@ describe("CccmClient", () => {
           "github:owner/repo#123",
           "--session",
           "session_01",
+          "--ack-timeout",
+          "300000ms",
+          "--reminder-grace",
+          "180000ms",
+          "--pending-remind-interval",
+          "900000ms",
           "--output-format",
           "stream-json",
         ],
@@ -461,7 +468,13 @@ async function startAndLaunch(
   proc: FakeStreamProcess,
   launchedLine: string,
 ): Promise<CccmMonitorHandle> {
-  const pending = client.startMonitor({ hub: "github:owner/repo#123", sessionId: "session_01" })
+  const pending = client.startMonitor({
+    hub: "github:owner/repo#123",
+    sessionId: "session_01",
+    ackTimeoutMs: 300_000,
+    reminderGraceMs: 180_000,
+    pendingRemindIntervalMs: 900_000,
+  })
   proc.writeStdout(`${launchedLine}\n`)
   return await pending
 }
