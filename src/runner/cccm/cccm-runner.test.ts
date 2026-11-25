@@ -438,10 +438,21 @@ describe("CccmRunner", () => {
 
     expect(ok).toBe(true)
     expect(records).toHaveLength(2)
-    expect(records[1]!.args).toContain("monitor")
-    expect(records[1]!.args).toContain("--session")
-    expect(records[1]!.args).toContain("session_01")
-    expect(records[1]!.args).toContain("github:owner/repo#123")
+    expect(records[1]!.args).toEqual([
+      "monitor",
+      "--hub",
+      "github:owner/repo#123",
+      "--session",
+      "session_01",
+      "--ack-timeout",
+      "300000ms",
+      "--reminder-grace",
+      "180000ms",
+      "--pending-remind-interval",
+      "900000ms",
+      "--output-format",
+      "stream-json",
+    ])
   })
 
   test("meta なしの handle は reattach できない", async () => {

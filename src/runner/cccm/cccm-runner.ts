@@ -148,6 +148,7 @@ export class CccmRunner implements Runner {
       monitor = await this.client.startMonitor({
         hub: meta.cccm.hub,
         sessionId: meta.cccm.sessionId,
+        ...this.waitOptions(),
       })
     } catch (error) {
       this.logger(`cccm monitor reattach failed error=${formatError(error)}`)
@@ -180,10 +181,17 @@ export class CccmRunner implements Runner {
       hub,
       prompt: options.content,
       timeoutMs: options.timeoutMs ?? this.config.work.herdrAgent.turnTimeoutMs ?? null,
+      ...this.waitOptions(),
+      claudeOptions: cccm.claudeOptions,
+    }
+  }
+
+  private waitOptions() {
+    const cccm = this.config.work.cccm
+    return {
       ackTimeoutMs: cccm.ackTimeoutMs,
       reminderGraceMs: cccm.reminderGraceMs,
       pendingRemindIntervalMs: cccm.pendingRemindIntervalMs,
-      claudeOptions: cccm.claudeOptions,
     }
   }
 

@@ -126,20 +126,23 @@ export type CccmClientDeps = {
   spawnProcess?: CccmSpawnProcess
 }
 
-export type CccmLaunchOptions = {
+export type CccmWaitOptions = {
+  ackTimeoutMs: number
+  reminderGraceMs: number
+  pendingRemindIntervalMs: number
+}
+
+export type CccmLaunchOptions = CccmWaitOptions & {
   via: "cloud" | "routine"
   routine?: string | null
   envId?: string | null
   hub: string
   prompt: string
   timeoutMs?: number | null
-  ackTimeoutMs: number
-  reminderGraceMs: number
-  pendingRemindIntervalMs: number
   claudeOptions: string[]
 }
 
-export type CccmMonitorOptions = {
+export type CccmMonitorOptions = CccmWaitOptions & {
   hub: string
   sessionId?: string | null
 }
@@ -157,6 +160,17 @@ export type CccmPollResult =
       state: "done"
       result: { status: "succeeded" | "failed"; error: string | null; responseText: string | null }
     }
+
+function buildWaitArgs(options: CccmWaitOptions): string[] {
+  return [
+    "--ack-timeout",
+    `${options.ackTimeoutMs}ms`,
+    "--reminder-grace",
+    `${options.reminderGraceMs}ms`,
+    "--pending-remind-interval",
+    `${options.pendingRemindIntervalMs}ms`,
+  ]
+}
 
 export function createCccmClient(deps: CccmClientDeps = {}): CccmClient {
   return new CccmClient(deps)
@@ -230,12 +244,7 @@ export class CccmClient {
       args.push("--timeout", `${options.timeoutMs}ms`)
     }
     args.push(
-      "--ack-timeout",
-      `${options.ackTimeoutMs}ms`,
-      "--reminder-grace",
-      `${options.reminderGraceMs}ms`,
-      "--pending-remind-interval",
-      `${options.pendingRemindIntervalMs}ms`,
+      ...buildWaitArgs(options),
       "--hub",
       options.hub,
       "--output-format",
@@ -251,7 +260,7 @@ export class CccmClient {
     if (options.sessionId) {
       args.push("--session", options.sessionId)
     }
-    args.push("--output-format", "stream-json")
+    args.push(...buildWaitArgs(options), "--output-format", "stream-json")
     return args
   }
 
