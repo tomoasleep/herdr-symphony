@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test"
 import { resolveConfig } from "../config/resolve-config"
+import { CccmRunner } from "./cccm/cccm-runner"
 import { createRunner } from "./create-runner"
 import { HerdrAgentRunner } from "./herdr-agent/herdr-agent-runner"
 
@@ -27,5 +28,12 @@ describe("createRunner", () => {
     expect(typeof runner.pollCompletion).toBe("function")
     expect(typeof runner.cancelRun).toBe("function")
     expect(typeof runner.sweep).toBe("function")
+  })
+
+  test("cccm を指定すると CccmRunner を返す", () => {
+    const config = resolveConfig(makeRawConfig("cccm"))
+    const runner = createRunner(config)
+
+    expect(runner).toBeInstanceOf(CccmRunner)
   })
 })

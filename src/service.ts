@@ -454,7 +454,16 @@ export class SymphonyService {
       this.logger.debug(
         `runtime resolved issue=${runtimeConfig.issue.identifier} runner=${runtimeConfig.runner.kind} workspaceProvider=${runtimeConfig.workspace.provider}`,
       )
-      const workspace = await this.ensureWorkspaceFn(runtimeConfig.issue, runtimeConfig.workspace)
+      const runtimeWorkspace =
+        runtimeConfig.runner.kind === "cccm" && runtimeConfig.workspace.provider !== "none"
+          ? { ...runtimeConfig.workspace, provider: "none" as const }
+          : runtimeConfig.workspace
+      if (runtimeWorkspace !== runtimeConfig.workspace) {
+        this.logger.warn(
+          `workspace provider=${runtimeConfig.workspace.provider} is ignored with runner=cccm; using repository root`,
+        )
+      }
+      const workspace = await this.ensureWorkspaceFn(runtimeConfig.issue, runtimeWorkspace)
       this.state.setWorkspacePath(issue.id, workspace.path)
       this.logger.debug(
         `workspace ready path=${workspace.path} createdNow=${workspace.createdNow} branch=${workspace.branch ?? "none"}`,
@@ -471,6 +480,7 @@ export class SymphonyService {
       }
 
       const content = await this.renderPromptFn(this.template, runtimeConfig.issue, null)
+      const isCccm = runtimeConfig.runner.kind === "cccm"
       let agmsg:
         | {
             team: string
@@ -480,7 +490,7 @@ export class SymphonyService {
       let reportPath: string | undefined
       let finalContent = content
 
-      if (runtimeConfig.runner.agent === "claude") {
+      if (!isCccm && runtimeConfig.runner.agent === "claude") {
         const messenger = runtimeConfig.runner.claude.messenger
         if (messenger === "report_file") {
           reportPath = join(workspace.path, ".herdr-symphony-report.json")

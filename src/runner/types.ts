@@ -1,5 +1,11 @@
 import type { Issue } from "../domain/types"
 
+export type RunnerCccmMeta = {
+  hub: string
+  sessionId: string
+  commentUrl: string | null
+}
+
 export type RunnerEvent =
   | { event: "stdout"; timestamp: string; message: string }
   | { event: "agent_started"; timestamp: string; agentName: string; workspaceId: string }
@@ -51,6 +57,7 @@ export type RunnerHandleMeta = {
   onBlocked: "continue" | "fail" | null
   agmsg: { team: string; orchestratorAgent: string } | null
   closePaneAfterDoneMs: number | null
+  cccm?: RunnerCccmMeta | null
 }
 
 export type RunnerHandle = {

@@ -52,6 +52,17 @@ function makeWorkConfig(overrides: Partial<WorkConfig> = {}): WorkConfig {
       closePaneAfterDoneMs: null,
       onBlocked: null,
     },
+    cccm: {
+      via: "cloud",
+      routine: null,
+      envId: null,
+      hub: null,
+      claudeOptions: [],
+      ackTimeoutMs: 300_000,
+      reminderGraceMs: 180_000,
+      pendingRemindIntervalMs: 900_000,
+      noWait: false,
+    },
     workspace: {
       provider: "gwq",
       reuseExisting: true,
@@ -81,6 +92,14 @@ test("resolveIssueRuntimeConfig が work.runner に従って herdr_core runner �
 
   expect(result.runner.kind).toBe("herdr_core")
   expect(result.runner.agent).toBe("opencode")
+})
+
+test("resolveIssueRuntimeConfig が work.runner に従って cccm runner を返す", async () => {
+  const config = makeWorkConfig({ runner: "cccm" })
+  const result = await resolveIssueRuntimeConfig(makeIssue(), config, null)
+
+  expect(result.runner.kind).toBe("cccm")
+  expect(result.runner.kind === "cccm" && result.runner.cccm.hub).toBe(null)
 })
 
 test("opencode model/agent を Liquid で解決できる", async () => {
