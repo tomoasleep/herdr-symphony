@@ -6,6 +6,7 @@ import {
   GitHubProjectClient,
   type GraphqlPayload,
   normalizeProjectItem,
+  parseGhGraphqlResult,
 } from "./github-project-client"
 
 function makeConfig(owner = "tomoasleep", number = 4): TrackerConfig {
@@ -718,6 +719,49 @@ test("fetchIssueStatesByIds は nodes 戻り値の null をスキップする", 
 
   const issues = await client.fetchIssueStatesByIds(["PVTI_missing", "PVTI_b"])
   expect(issues.map((i) => i.id)).toEqual(["PVTI_b"])
+})
+
+test("fetchIssueStatesByIds は存在しない ID を許容するよう allowNotFound を指定する", async () => {
+  const optionsSeen: unknown[] = []
+  const client = new GitHubProjectClient(makeConfig(), async (_query, _variables, options) => {
+    optionsSeen.push(options)
+    return { data: { nodes: [null] } }
+  })
+
+  const issues = await client.fetchIssueStatesByIds(["PVTI_missing"])
+
+  expect(issues).toEqual([])
+  expect(optionsSeen).toEqual([{ allowNotFound: true }])
+})
+
+const NOT_FOUND_STDOUT = JSON.stringify({
+  data: { nodes: [null] },
+  errors: [{ type: "NOT_FOUND", path: ["nodes", 0], message: "Could not resolve to a node" }],
+})
+
+test("parseGhGraphqlResult は allowNotFound なら NOT_FOUND だけのエラーで payload を返す", () => {
+  const payload = parseGhGraphqlResult(1, NOT_FOUND_STDOUT, "gh: Could not resolve", {
+    allowNotFound: true,
+  })
+
+  expect(payload.data?.nodes).toEqual([null])
+})
+
+test("parseGhGraphqlResult は allowNotFound がなければ NOT_FOUND で失敗する", () => {
+  expect(() => parseGhGraphqlResult(1, NOT_FOUND_STDOUT, "gh: Could not resolve", {})).toThrow(
+    "gh_graphql_failed:gh: Could not resolve",
+  )
+})
+
+test("parseGhGraphqlResult は allowNotFound でも NOT_FOUND 以外のエラーがあれば失敗する", () => {
+  const stdout = JSON.stringify({
+    data: { nodes: [null] },
+    errors: [{ type: "NOT_FOUND" }, { type: "FORBIDDEN" }],
+  })
+
+  expect(() => parseGhGraphqlResult(1, stdout, "gh: forbidden", { allowNotFound: true })).toThrow(
+    "gh_graphql_failed:gh: forbidden",
+  )
 })
 
 test("fetchIssueStatesByIds は空配列の場合 GraphQL を呼ばない", async () => {
