@@ -39,9 +39,12 @@ type ViewerPayload = {
   } | null
 }
 
+type GraphqlRunOptions = { allowNotFound?: boolean }
+
 type GraphqlRunner = (
   query: string,
   variables: Record<string, string | number | string[]>,
+  options?: GraphqlRunOptions,
 ) => Promise<GraphqlPayload>
 
 type ProjectItemNode = {
@@ -363,7 +366,8 @@ export class GitHubProjectClient implements IssueTrackerClient {
     private readonly writeLog?: (line: string) => void,
   ) {
     this.runQuery =
-      runQuery ?? ((query, variables) => runGhGraphql(query, variables, this.writeLog))
+      runQuery ??
+      ((query, variables, options) => runGhGraphql(query, variables, options ?? {}, this.writeLog))
   }
 
   async fetchProjectFields(): Promise<ProjectField[]> {
@@ -438,7 +442,7 @@ export class GitHubProjectClient implements IssueTrackerClient {
     }
 
     this.debugLog(`tracker fetchIssueStatesByIds start ids=${ids.length}`)
-    const payload = await this.runQuery(ITEMS_BY_IDS_QUERY, { ids })
+    const payload = await this.runQuery(ITEMS_BY_IDS_QUERY, { ids }, { allowNotFound: true })
     this.logRateLimit(payload)
     const rawNodes =
       (payload as { data?: { nodes?: Array<ProjectItemNode | null> | null } | null }).data?.nodes ??
@@ -768,9 +772,46 @@ export function buildGhArgs(
   return args
 }
 
+export function parseGhGraphqlResult(
+  code: number,
+  stdout: string,
+  stderr: string,
+  options: GraphqlRunOptions,
+): GraphqlPayload {
+  if (options.allowNotFound) {
+    const parsed = tryParsePayload(stdout)
+    if (parsed?.data && parsed.errors?.every(isNotFoundError)) {
+      return parsed
+    }
+  }
+
+  if (code !== 0) {
+    throw new Error(`gh_graphql_failed:${stderr.trim()}`)
+  }
+
+  const parsed = JSON.parse(stdout) as GraphqlPayload
+  if (Array.isArray(parsed.errors) && parsed.errors.length > 0) {
+    throw new Error(`gh_graphql_errors:${JSON.stringify(parsed.errors)}`)
+  }
+  return parsed
+}
+
+function tryParsePayload(stdout: string): GraphqlPayload | null {
+  try {
+    return JSON.parse(stdout) as GraphqlPayload
+  } catch {
+    return null
+  }
+}
+
+function isNotFoundError(error: unknown): boolean {
+  return (error as { type?: unknown } | null)?.type === "NOT_FOUND"
+}
+
 async function runGhGraphqlOnce(
   query: string,
   variables: Record<string, string | number | string[]>,
+  options: GraphqlRunOptions,
   writeLog?: (line: string) => void,
 ): Promise<GraphqlPayload> {
   const args = buildGhArgs(query, variables)
@@ -792,20 +833,9 @@ async function runGhGraphqlOnce(
     })
 
     child.on("close", (code) => {
-      if (code !== 0) {
-        writeLog?.(`tracker gh result exit=${code ?? 1} stderr=${stderr.trim() || "-"}`)
-        reject(new Error(`gh_graphql_failed:${stderr.trim()}`))
-        return
-      }
-
+      writeLog?.(`tracker gh result exit=${code ?? 1} stderr=${stderr.trim() || "-"}`)
       try {
-        writeLog?.(`tracker gh result exit=0 stderr=${stderr.trim() || "-"}`)
-        const parsed = JSON.parse(stdout) as GraphqlPayload
-        if (Array.isArray(parsed.errors) && parsed.errors.length > 0) {
-          reject(new Error(`gh_graphql_errors:${JSON.stringify(parsed.errors)}`))
-          return
-        }
-        resolve(parsed)
+        resolve(parseGhGraphqlResult(code ?? 1, stdout, stderr, options))
       } catch (error) {
         reject(error)
       }
@@ -821,9 +851,10 @@ async function runGhGraphqlOnce(
 async function runGhGraphql(
   query: string,
   variables: Record<string, string | number | string[]>,
+  options: GraphqlRunOptions,
   writeLog?: (line: string) => void,
 ): Promise<GraphqlPayload> {
-  return withRetry(() => runGhGraphqlOnce(query, variables, writeLog), {
+  return withRetry(() => runGhGraphqlOnce(query, variables, options, writeLog), {
     times: 2,
     baseDelayMs: 1000,
     onRetry: (error, attempt) => {
